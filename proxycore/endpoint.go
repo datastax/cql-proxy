@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -27,21 +28,27 @@ import (
 )
 
 type Endpoint interface {
+	fmt.Stringer
 	Addr() string
 	IsResolved() bool
 	TlsConfig() *tls.Config
+	Key() string
 }
 
 type defaultEndpoint struct {
 	addr string
 }
 
-func (e *defaultEndpoint) IsResolved() bool {
-	return true
+func (e *defaultEndpoint) String() string {
+	return e.Key()
 }
 
-func NewEndpoint(addr string) Endpoint {
-	return &defaultEndpoint{addr}
+func (e *defaultEndpoint) Key() string {
+	return e.addr
+}
+
+func (e *defaultEndpoint) IsResolved() bool {
+	return true
 }
 
 func (e *defaultEndpoint) Addr() string {
@@ -52,23 +59,14 @@ func (e *defaultEndpoint) TlsConfig() *tls.Config {
 	return nil
 }
 
-type ContactPointResolver interface {
-	Resolve() ([]Endpoint, error)
+type EndpointFactory interface {
+	ContactPoints() []Endpoint
+	Create(row Row) (Endpoint, error)
 }
 
-func NewDefaultResolver(contactPoints ...string) ContactPointResolver {
-	return &defaultResolver {
-		contactPoints: contactPoints,
-	}
-}
-
-type defaultResolver struct {
-	contactPoints []string
-}
-
-func (d *defaultResolver) Resolve() ([]Endpoint, error) {
+func Resolve(contactPoints ...string) (EndpointFactory, error) {
 	var endpoints []Endpoint
-	for _, cp := range d.contactPoints {
+	for _, cp := range contactPoints {
 		addrs, err := net.LookupHost(cp)
 		if err != nil {
 			return nil, err
@@ -79,22 +77,41 @@ func (d *defaultResolver) Resolve() ([]Endpoint, error) {
 			})
 		}
 	}
-	return endpoints, nil
+	return &defaultEndpointFactory{
+		contactPoints: endpoints,
+	}, nil
 }
 
-func NewAstraResolver(bundle *Bundle) ContactPointResolver {
-	return &astraResolver{
-		bundle,
-	}
+type defaultEndpointFactory struct {
+	contactPoints []Endpoint
 }
 
-func (m *astraResolver) Resolve() ([]Endpoint, error) {
+func (d *defaultEndpointFactory) Create(row Row) (Endpoint, error) {
+	panic("implement me")
+}
+
+func (d *defaultEndpointFactory) ContactPoints() []Endpoint {
+	return d.contactPoints
+}
+
+type astraResolver struct {
+	contactPoints []Endpoint
+	host          string
+	bundle        *Bundle
+}
+
+type astraEndpoint struct {
+	addr      string
+	tlsConfig *tls.Config
+}
+
+func ResolveAstra(bundle *Bundle) (EndpointFactory, error) {
 	var metadata *astraMetadata
 
-	url := fmt.Sprintf("https://%s:%d/metadata", m.bundle.Host(), m.bundle.Port())
+	url := fmt.Sprintf("https://%s:%d/metadata", bundle.Host(), bundle.Port())
 	httpsClient := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: m.bundle.TLSConfig(),
+			TLSClientConfig: bundle.TLSConfig(),
 		},
 	}
 	response, err := httpsClient.Get(url)
@@ -104,58 +121,81 @@ func (m *astraResolver) Resolve() ([]Endpoint, error) {
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	err = json.Unmarshal(body, &metadata)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	var endpoints []Endpoint
 	for _, cp := range metadata.ContactInfo.ContactPoints {
-		tlsConfig := m.bundle.TLSConfig()
-		tlsConfig.ServerName = cp
-		tlsConfig.InsecureSkipVerify = true
-		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			certs := make([]*x509.Certificate, len(rawCerts))
-			for i, asn1Data := range rawCerts {
-				cert, err := x509.ParseCertificate(asn1Data)
-				if err != nil {
-					return errors.New("tls: failed to parse certificate from server: " + err.Error())
-				}
-				certs[i] = cert
-			}
-
-			opts := x509.VerifyOptions{
-				Roots:         tlsConfig.RootCAs,
-				CurrentTime:   time.Now(),
-				DNSName:       m.bundle.Host(),
-				Intermediates: x509.NewCertPool(),
-			}
-			for _, cert := range certs[1:] {
-				opts.Intermediates.AddCert(cert)
-			}
-			var err error
-			verifiedChains, err = certs[0].Verify(opts)
-			return err
-		}
 		endpoints = append(endpoints, &astraEndpoint{
 			addr:      metadata.ContactInfo.SniProxyAddress,
-			tlsConfig: tlsConfig,
+			tlsConfig: copyTLSConfig(bundle, cp),
 		})
 	}
 
-	return endpoints, nil
+	return &astraResolver{
+		contactPoints: endpoints,
+		host:          metadata.ContactInfo.SniProxyAddress,
+		bundle:        bundle,
+	}, nil
 }
 
-type astraResolver struct {
-	bundle *Bundle
+func (m *astraResolver) ContactPoints() []Endpoint {
+	return m.contactPoints
 }
 
-type astraEndpoint struct {
-	addr string
-	tlsConfig *tls.Config
+func (m *astraResolver) Create(row Row) (Endpoint, error) {
+	hostId, err := row.ByName("host_id")
+	if err != nil {
+		return nil, err
+	}
+	uuid := hostId.(primitive.UUID)
+	return &astraEndpoint{
+		addr:      m.host,
+		tlsConfig: copyTLSConfig(m.bundle, uuid.String()),
+	}, nil
+}
+
+func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
+	tlsConfig := bundle.TLSConfig()
+	tlsConfig.ServerName = serverName
+	tlsConfig.InsecureSkipVerify = true
+	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		certs := make([]*x509.Certificate, len(rawCerts))
+		for i, asn1Data := range rawCerts {
+			cert, err := x509.ParseCertificate(asn1Data)
+			if err != nil {
+				return errors.New("tls: failed to parse certificate from server: " + err.Error())
+			}
+			certs[i] = cert
+		}
+
+		opts := x509.VerifyOptions{
+			Roots:         tlsConfig.RootCAs,
+			CurrentTime:   time.Now(),
+			DNSName:       bundle.Host(),
+			Intermediates: x509.NewCertPool(),
+		}
+		for _, cert := range certs[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		var err error
+		verifiedChains, err = certs[0].Verify(opts)
+		return err
+	}
+	return tlsConfig
+}
+
+func (a *astraEndpoint) String() string {
+	return a.Key()
+}
+
+func (a *astraEndpoint) Key() string {
+	return fmt.Sprintf("%s:%s", a.addr, a.tlsConfig.ServerName) // TODO: cache?
 }
 
 func (a *astraEndpoint) Addr() string {
@@ -170,17 +210,15 @@ func (a *astraEndpoint) TlsConfig() *tls.Config {
 	return a.tlsConfig
 }
 
-
 type contactInfo struct {
-	TypeName string `json:"type"`
-	LocalDc string `json:"local_dc"`
-	SniProxyAddress string `json:"sni_proxy_address"`
-	ContactPoints []string `json:"contact_points"`
+	TypeName        string   `json:"type"`
+	LocalDc         string   `json:"local_dc"`
+	SniProxyAddress string   `json:"sni_proxy_address"`
+	ContactPoints   []string `json:"contact_points"`
 }
 
 type astraMetadata struct {
-	Version int `json:"version"`
-	Region string `json:"region"`
+	Version     int         `json:"version"`
+	Region      string      `json:"region"`
 	ContactInfo contactInfo `json:"contact_info"`
 }
-

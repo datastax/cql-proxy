@@ -200,31 +200,30 @@ func connExample() {
 	time.Sleep(1 * time.Second)
 }
 
-func main() {
+func connWithBundleEx() {
 	bundle, err := proxycore.LoadBundleZip("secure-connect-testdb1.zip")
 	if err != nil {
 		log.Fatalf("unable to open bundle: %v", err)
 	}
 
-	resolver := proxycore.NewAstraResolver(bundle)
-
-	endpoints, err := resolver.Resolve()
+	factory, err := proxycore.ResolveAstra(bundle)
 	if err != nil {
 		log.Fatalf("unable to resolve endpoints: %v", err)
 	}
 
 	ctx := context.Background()
 
-	conn, err := proxycore.ClusterConnect(ctx, endpoints[0])
+	conn, err := proxycore.ClusterConnect(ctx, factory.ContactPoints()[0])
 	if err != nil {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
 
 	auth := proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE")
-	err = conn.Handshake(ctx, primitive.ProtocolVersion4, auth)
+	version, err := conn.Handshake(ctx, primitive.ProtocolVersion4, auth)
 	if err != nil {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
+	_ = version
 
 	timer := time.NewTimer(time.Second)
 
@@ -240,4 +239,43 @@ func main() {
 	}
 
 	time.Sleep(2 * time.Second)
+}
+
+func connClusterWithBundleEx() {
+	bundle, err := proxycore.LoadBundleZip("secure-connect-testdb1.zip")
+	if err != nil {
+		log.Fatalf("unable to open bundle: %v", err)
+	}
+
+	factory, err := proxycore.ResolveAstra(bundle)
+	if err != nil {
+		log.Fatalf("unable to resolve astra: %v", err)
+	}
+
+	ctx := context.Background()
+
+	auth := proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE")
+	conn, err := proxycore.ConnectToCluster(ctx, primitive.ProtocolVersion4, auth, factory)
+	if err != nil {
+		log.Fatalf("unable to connect to cluster: %v", err)
+	}
+
+	timer := time.NewTimer(time.Second)
+	timer.Stop()
+
+	closed := false
+	for !closed {
+		select {
+		case <-conn.IsClosed():
+			closed = true
+		case <-timer.C:
+			conn.Close()
+		}
+	}
+
+	time.Sleep(2 * time.Second)
+}
+
+func main() {
+	connClusterWithBundleEx()
 }

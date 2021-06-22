@@ -22,12 +22,13 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
-	"log"
+	"strings"
 )
 
 var (
-	InvalidStream    = errors.New("invalid stream")
-	StreamsExhausted = errors.New("streams exhausted")
+	InvalidStream                = errors.New("invalid stream")
+	StreamsExhausted             = errors.New("streams exhausted")
+	InvalidOrUnsupportedProtocol = errors.New("invalid or unsupported protocol version")
 )
 
 const (
@@ -40,10 +41,15 @@ type ClusterRequest interface {
 	OnResult(frame *frame.Frame)
 }
 
+type EventHandler interface {
+	OnEvent(frame *frame.Frame)
+}
+
 type ClusterConn struct {
-	conn    *Conn
-	codec   frame.Codec
-	pending *pendingRequests
+	conn         *Conn
+	codec        frame.Codec
+	pending      *pendingRequests
+	eventHandler EventHandler
 }
 
 type Authenticator interface {
@@ -53,10 +59,15 @@ type Authenticator interface {
 }
 
 func ClusterConnect(ctx context.Context, endpoint Endpoint) (*ClusterConn, error) {
+	return ClusterConnectWithEvents(ctx, endpoint, nil)
+}
+
+func ClusterConnectWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClusterConn, error) {
 	c := &ClusterConn{
-		conn:    nil,
-		codec:   frame.NewRawCodec(), // TODO
-		pending: newPendingRequests(MaxStreams),
+		conn:         nil,
+		codec:        frame.NewRawCodec(), // TODO
+		pending:      newPendingRequests(MaxStreams),
+		eventHandler: handler,
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -66,24 +77,41 @@ func ClusterConnect(ctx context.Context, endpoint Endpoint) (*ClusterConn, error
 	return c, nil
 }
 
-func (c *ClusterConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) error {
-	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup()))
-	if err != nil {
-		return err
-	}
-
-	switch msg := response.Body.Message.(type) {
-	case *message.Ready:
-	case *message.Authenticate:
-		if auth == nil {
-			return errors.New("authentication required, but no authenticator provided")
+func (c *ClusterConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) (primitive.ProtocolVersion, error) {
+	for {
+		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup()))
+		if err != nil {
+			return version, err
 		}
-		return c.authInitialResponse(ctx, version, auth, msg)
-	default:
-		return fmt.Errorf("expected READY or AUTHENTICATE response types, got: %v", response.Body.Message)
-	}
 
-	return nil
+		switch msg := response.Body.Message.(type) {
+		case *message.Ready:
+			return version, nil
+		case *message.Authenticate:
+			if auth == nil {
+				return version, errors.New("authentication required, but no authenticator provided")
+			}
+			return version, c.authInitialResponse(ctx, version, auth, msg)
+		default:
+			if pe, ok := msg.(*message.ProtocolError); ok {
+				if strings.Contains(pe.ErrorMessage, "Invalid or unsupported protocol version") {
+					switch version {
+					case primitive.ProtocolVersionDse2:
+						version = primitive.ProtocolVersionDse1
+						continue
+					case primitive.ProtocolVersionDse1:
+						version = primitive.ProtocolVersion4
+						continue
+					case primitive.ProtocolVersion2:
+					default:
+						version--
+						continue
+					}
+				}
+			}
+			return version, fmt.Errorf("expected READY or AUTHENTICATE response types, got: %v", response.Body.Message)
+		}
+	}
 }
 
 func (c *ClusterConn) authInitialResponse(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.Authenticate) error {
@@ -118,6 +146,20 @@ func (c *ClusterConn) authChallenge(ctx context.Context, version primitive.Proto
 	}
 }
 
+func (c *ClusterConn) Query(ctx context.Context, version primitive.ProtocolVersion, query *message.Query) (*ResultSet, error) {
+	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, query))
+	if err != nil {
+		return nil, err
+	}
+
+	switch msg := response.Body.Message.(type) {
+	case *message.RowsResult:
+		return NewResultSet(msg, version), nil
+	default:
+		return nil, fmt.Errorf("expected rows response type, got: %v", response.Body.Message)
+	}
+}
+
 func (c *ClusterConn) Receive(reader io.Reader) error {
 	frame, err := c.codec.DecodeFrame(reader)
 	if err != nil {
@@ -125,8 +167,9 @@ func (c *ClusterConn) Receive(reader io.Reader) error {
 	}
 
 	if frame.Header.OpCode == primitive.OpCodeEvent {
-		// TODO
-		log.Fatalln("events not handled yet")
+		if c.eventHandler != nil {
+			c.eventHandler.OnEvent(frame)
+		}
 	} else {
 		request := c.pending.loadAndDelete(frame.Header.StreamId)
 		if request == nil {
@@ -166,7 +209,7 @@ func (c *ClusterConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*fram
 		return r, nil
 	case e := <-request.err:
 		return nil, e
-	case <- ctx.Done():
+	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
