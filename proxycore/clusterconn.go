@@ -26,9 +26,8 @@ import (
 )
 
 var (
-	InvalidStream                = errors.New("invalid stream")
-	StreamsExhausted             = errors.New("streams exhausted")
-	InvalidOrUnsupportedProtocol = errors.New("invalid or unsupported protocol version")
+	InvalidStream    = errors.New("invalid stream")
+	StreamsExhausted = errors.New("streams exhausted")
 )
 
 const (
@@ -120,6 +119,9 @@ func (c *ClusterConn) authInitialResponse(ctx context.Context, version primitive
 		return err
 	}
 	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.AuthResponse{Token: token}))
+	if err != nil {
+		return err
+	}
 
 	switch msg := response.Body.Message.(type) {
 	case *message.AuthChallenge:
@@ -137,6 +139,9 @@ func (c *ClusterConn) authChallenge(ctx context.Context, version primitive.Proto
 		return err
 	}
 	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.AuthResponse{Token: token}))
+	if err != nil {
+		return err
+	}
 
 	switch msg := response.Body.Message.(type) {
 	case *message.AuthSuccess:
@@ -161,21 +166,21 @@ func (c *ClusterConn) Query(ctx context.Context, version primitive.ProtocolVersi
 }
 
 func (c *ClusterConn) Receive(reader io.Reader) error {
-	frame, err := c.codec.DecodeFrame(reader)
+	decoded, err := c.codec.DecodeFrame(reader)
 	if err != nil {
 		return err
 	}
 
-	if frame.Header.OpCode == primitive.OpCodeEvent {
+	if decoded.Header.OpCode == primitive.OpCodeEvent {
 		if c.eventHandler != nil {
-			c.eventHandler.OnEvent(frame)
+			c.eventHandler.OnEvent(decoded)
 		}
 	} else {
-		request := c.pending.loadAndDelete(frame.Header.StreamId)
+		request := c.pending.loadAndDelete(decoded.Header.StreamId)
 		if request == nil {
 			return InvalidStream
 		}
-		request.OnResult(frame)
+		request.OnResult(decoded)
 	}
 
 	return nil

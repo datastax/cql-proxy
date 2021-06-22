@@ -21,7 +21,6 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"log"
-	"sync"
 	"time"
 )
 
@@ -35,7 +34,8 @@ const (
 type ClusterEventType int
 
 const (
-	ClusterEventAdded = iota
+	ClusterEventBootstrap = iota
+	ClusterEventAdded
 	ClusterEventRemoved
 )
 
@@ -57,13 +57,9 @@ type Cluster struct {
 	hosts            []*Host
 	currentHostIndex int
 	listeners        []ClusterListener
+	addListener      chan ClusterListener
 	events           chan *frame.Frame
 	closed           chan struct{}
-	mu               *sync.Mutex
-}
-
-func (c *Cluster) OnEvent(frame *frame.Frame) {
-	c.events <- frame
 }
 
 func ConnectToCluster(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, factory EndpointFactory) (*Cluster, error) {
@@ -80,8 +76,8 @@ func ConnectToCluster(ctx context.Context, version primitive.ProtocolVersion, au
 		currentHostIndex: 0,
 		events:           make(chan *frame.Frame),
 		closed:           make(chan struct{}),
+		addListener:      make(chan ClusterListener),
 		listeners:        make([]ClusterListener, 0),
-		mu:               &sync.Mutex{},
 	}
 
 	var err error
@@ -98,8 +94,28 @@ func ConnectToCluster(ctx context.Context, version primitive.ProtocolVersion, au
 	return cluster, nil
 }
 
+func (c *Cluster) Listen(listener ClusterListener) {
+	c.addListener <- listener
+}
+
+func (c *Cluster) IsClosed() chan struct{} {
+	return c.closed
+}
+
+func (c *Cluster) Close() {
+	close(c.closed)
+}
+
+func (c *Cluster) OnEvent(frame *frame.Frame) {
+	c.events <- frame
+}
+
 func (c *Cluster) connect(ctx context.Context, endpoint Endpoint) error {
 	conn, err := ClusterConnectWithEvents(ctx, endpoint, c)
+	if err != nil {
+		return err
+	}
+
 	negotiated, err := conn.Handshake(ctx, c.version, c.auth)
 	if err != nil {
 		return err
@@ -141,7 +157,7 @@ func (c *Cluster) mergeHosts(hosts []*Host) {
 			c.sendEvent(&ClusterEvent{
 				eventType: ClusterEventAdded,
 				host:      host,
-				hosts:     hosts,
+				hosts:     nil,
 			})
 		}
 	}
@@ -150,7 +166,7 @@ func (c *Cluster) mergeHosts(hosts []*Host) {
 		c.sendEvent(&ClusterEvent{
 			eventType: ClusterEventRemoved,
 			host:      host,
-			hosts:     hosts,
+			hosts:     nil,
 		})
 	}
 
@@ -158,8 +174,6 @@ func (c *Cluster) mergeHosts(hosts []*Host) {
 }
 
 func (c *Cluster) sendEvent(event *ClusterEvent) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	for _, listener := range c.listeners {
 		listener.OnEvent(event)
 	}
@@ -207,25 +221,6 @@ func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 	return hosts
 }
 
-func (c *Cluster) Listen(listener ClusterListener) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for _, l := range c.listeners {
-		if l == listener {
-			return
-		}
-	}
-	c.listeners = append(c.listeners, listener)
-}
-
-func (c *Cluster) IsClosed() chan struct{} {
-	return c.closed
-}
-
-func (c *Cluster) Close() {
-	close(c.closed)
-}
-
 func (c *Cluster) reconnect() {
 	c.currentHostIndex = (c.currentHostIndex + 1) % len(c.hosts)
 	host := c.hosts[c.currentHostIndex]
@@ -243,7 +238,7 @@ func (c *Cluster) refreshHosts() {
 	hosts, err := c.queryHosts(ctx, c.controlConn)
 	if err != nil {
 		log.Printf("unable to refresh hosts: %v", err)
-		c.controlConn.Close()
+		_ = c.controlConn.Close()
 	} else {
 		c.mergeHosts(hosts)
 	}
@@ -269,7 +264,7 @@ func (c *Cluster) stayConnected() {
 				select {
 				case <-c.closed:
 					closed = true
-					c.controlConn.Close()
+					_ = c.controlConn.Close()
 				case <-connectTimer.C:
 					c.reconnect()
 					pendingConnect = false
@@ -279,9 +274,21 @@ func (c *Cluster) stayConnected() {
 			select {
 			case <-c.closed:
 				closed = true
-				c.controlConn.Close()
+				_ = c.controlConn.Close()
 			case <-c.controlConn.IsClosed():
 				c.controlConn = nil
+			case newListener := <-c.addListener:
+				for _, listener := range c.listeners {
+					if newListener == listener {
+						continue
+					}
+				}
+				newListener.OnEvent(&ClusterEvent{
+					eventType: ClusterEventBootstrap,
+					host:      nil,
+					hosts:     c.hosts,
+				})
+				c.listeners = append(c.listeners, newListener)
 			case <-refreshTimer.C:
 				c.refreshHosts()
 				pendingRefresh = false
