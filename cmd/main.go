@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"cql-proxy/proxy"
 	"cql-proxy/proxycore"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -159,45 +158,12 @@ func (f ReceiverFunc) Receive(r io.Reader) error {
 
 type SenderFunc func(io.Writer) error
 
-func (f SenderFunc) Send(w io.Writer) error {
+func (f SenderFunc) send(w io.Writer) error {
 	return f(w)
 }
 
 func (f SenderFunc) Closing(err error) {
-	log.Printf("################################### Closing %v ##################################", err)
-}
-
-func connExample() {
-	conn, err := proxy.Connect("tcp", "127.0.0.1:8000", ReceiverFunc(func(reader io.Reader) error {
-		b := make([]byte, 16)
-		n, err := reader.Read(b)
-		log.Println(string(b[:n]))
-		return err
-	}))
-
-	if err != nil {
-		log.Fatalf("error connecting  %v", err)
-	}
-
-	timer := time.NewTimer(time.Second)
-
-	closed := false
-	for !closed {
-		select {
-		case <-conn.IsClosed():
-			log.Printf("closed %v", conn.Err())
-			closed = true
-		case <-timer.C:
-			//conn.Close()
-		default:
-			conn.Write(SenderFunc(func(writer io.Writer) error {
-				_, err := writer.Write([]byte("a"))
-				return err
-			}))
-		}
-	}
-
-	time.Sleep(1 * time.Second)
+	log.Printf("################################### closing %v ##################################", err)
 }
 
 func connWithBundleEx() {
@@ -254,7 +220,8 @@ func connClusterWithBundleEx() {
 
 	factory, err := proxycore.Resolve("127.0.0.1")
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	auth := proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE")
 	cluster, err := proxycore.ConnectCluster(ctx, proxycore.ClusterConfig{
@@ -279,23 +246,34 @@ func connClusterWithBundleEx() {
 	}
 
 	timer := time.NewTimer(time.Second)
-	timer.Stop()
+
+	select {
+	case <-session.IsConnected():
+		fmt.Println("session is connected")
+	}
 
 	closed := false
 	for !closed {
 		select {
-		case <-cluster.Context().Done():
+		case <-ctx.Done():
 			closed = true
-		case <-session.IsConnected():
-			fmt.Println("session is connected")
 		case <-timer.C:
-			cluster.Cancel()
+			cancel()
 		}
 	}
 
 	time.Sleep(2 * time.Second)
 }
 
+func contextTimeoutEx() {
+	ctx, cancel := context.WithTimeout(context.Background(), 1)
+	defer cancel()
+	err := ctx.Err()
+	//time.Sleep(2 * time.Second)
+	fmt.Println(err)
+}
+
 func main() {
-	connClusterWithBundleEx()
+
+	//connClusterWithBundleEx()
 }

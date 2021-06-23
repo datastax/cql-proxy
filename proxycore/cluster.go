@@ -39,9 +39,9 @@ const (
 )
 
 type ClusterEvent struct {
-	eventType ClusterEventType
-	host      *Host
-	hosts     []*Host
+	typ   ClusterEventType
+	host  *Host
+	hosts []*Host
 }
 
 type ClusterListener interface {
@@ -57,7 +57,6 @@ type ClusterConfig struct {
 
 type Cluster struct {
 	ctx              context.Context
-	cancel           context.CancelFunc
 	config           ClusterConfig
 	controlConn      *ClientConn
 	hosts            []*Host
@@ -72,11 +71,8 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 		return nil, errors.New("no endpoints resolved")
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
 	cluster := &Cluster{
 		ctx:              ctx,
-		cancel:           cancel,
 		config:           config,
 		controlConn:      nil,
 		hosts:            nil,
@@ -107,14 +103,6 @@ func (c *Cluster) Listen(listener ClusterListener) error {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
 	}
-}
-
-func (c *Cluster) Context() context.Context {
-	return c.ctx
-}
-
-func (c *Cluster) Cancel() {
-	c.cancel()
 }
 
 func (c *Cluster) OnEvent(frame *frame.Frame) {
@@ -166,18 +154,18 @@ func (c *Cluster) mergeHosts(hosts []*Host) {
 			delete(existing, key)
 		} else {
 			c.sendEvent(&ClusterEvent{
-				eventType: ClusterEventAdded,
-				host:      host,
-				hosts:     nil,
+				typ:   ClusterEventAdded,
+				host:  host,
+				hosts: nil,
 			})
 		}
 	}
 
 	for _, host := range existing {
 		c.sendEvent(&ClusterEvent{
-			eventType: ClusterEventRemoved,
-			host:      host,
-			hosts:     nil,
+			typ:   ClusterEventRemoved,
+			host:  host,
+			hosts: nil,
 		})
 	}
 
@@ -297,9 +285,9 @@ func (c *Cluster) stayConnected() {
 					}
 				}
 				newListener.OnEvent(&ClusterEvent{
-					eventType: ClusterEventBootstrap,
-					host:      nil,
-					hosts:     c.hosts,
+					typ:   ClusterEventBootstrap,
+					host:  nil,
+					hosts: c.hosts,
 				})
 				c.listeners = append(c.listeners, newListener)
 			case <-refreshTimer.C:

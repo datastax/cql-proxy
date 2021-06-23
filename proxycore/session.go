@@ -39,18 +39,14 @@ type SessionConfig struct {
 
 type Session struct {
 	ctx       context.Context
-	cancel    context.CancelFunc
 	connected chan struct{}
 	config    SessionConfig
 	pools     sync.Map
 }
 
 func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
-	ctx, cancel := context.WithCancel(ctx)
-
 	session := &Session{
 		ctx:       ctx,
-		cancel:    cancel,
 		connected: make(chan struct{}),
 		config:    config,
 		pools:     sync.Map{},
@@ -81,7 +77,7 @@ func (s *Session) IsConnected() chan struct{} {
 }
 
 func (s *Session) OnEvent(event *ClusterEvent) {
-	switch event.eventType {
+	switch event.typ {
 	case ClusterEventBootstrap:
 		go func() {
 			pools := make([]*ConnPool, 0, len(event.hosts))
@@ -257,7 +253,7 @@ func (p *ConnPool) stayConnected(index int) {
 						reconnectPolicy.Reset()
 						pendingConnect = false
 					} else {
-						// TODO
+						// TODO: Fatal errors: protocol version, keyspace, auth
 					}
 					p.maybeConnected()
 				}

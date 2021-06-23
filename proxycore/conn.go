@@ -29,22 +29,22 @@ import (
 )
 
 var (
-	Closed = errors.New("connection closed")
+	Closed        = errors.New("connection closed")
 	AlreadyClosed = errors.New("connection already closed")
 )
 
 const (
-	MaxMessages = 1024
+	MaxMessages     = 1024
 	MaxCoalesceSize = 16 * 1024
 )
 
 type Conn struct {
-	conn   net.Conn
-	closed chan struct{}
+	conn     net.Conn
+	closed   chan struct{}
 	messages chan Sender
-	err    error
-	recv   Receiver
-	mu     sync.Mutex
+	err      error
+	recv     Receiver
+	mu       sync.Mutex
 }
 
 type Receiver interface {
@@ -86,21 +86,22 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, erro
 		conn = tlsConn
 	}
 
-	return FromConn(conn, recv)
+	c := NewConn(conn, recv)
+	c.Start()
+	return c, nil
 }
 
-func FromConn(conn net.Conn, recv Receiver) (*Conn, error) {
-	c := &Conn{
-		conn:   conn,
-		closed: make(chan struct{}),
+func NewConn(conn net.Conn, recv Receiver) *Conn {
+	return &Conn{
+		conn:     conn,
+		closed:   make(chan struct{}),
 		messages: make(chan Sender, MaxMessages),
-		recv: recv,
 	}
+}
 
+func (c *Conn) Start() {
 	go c.read()
 	go c.write()
-
-	return c, nil
 }
 
 func (c *Conn) read() {
@@ -119,7 +120,7 @@ func (c *Conn) write() {
 
 	for {
 		select {
-		case sender := <- c.messages:
+		case sender := <-c.messages:
 			done = c.checkErr(sender.Send(writer))
 			if !done {
 				senders = append(senders, sender)
@@ -127,18 +128,18 @@ func (c *Conn) write() {
 			coalescing := true
 			for coalescing && !done && writer.Len() < MaxCoalesceSize {
 				select {
-				case sender, coalescing = <- c.messages:
+				case sender, coalescing = <-c.messages:
 					done = c.checkErr(sender.Send(writer))
 					if !done {
 						senders = append(senders, sender)
 					}
-				case <- c.closed:
+				case <-c.closed:
 					done = true
 				default:
 					coalescing = false
 				}
 			}
-		case <- c.closed:
+		case <-c.closed:
 			done = true
 		}
 
@@ -158,7 +159,7 @@ func (c *Conn) Write(sender Sender) error {
 	select {
 	case c.messages <- sender:
 		return nil
-	case <- c.closed:
+	case <-c.closed:
 		return c.Err()
 	}
 }
