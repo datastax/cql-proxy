@@ -44,20 +44,16 @@ func (rs *ResultSet) RowCount() int {
 }
 
 func (r *Row) ByPos(i int) (interface{}, error) {
-	codec, err := codecFromDataType(r.resultSet.result.Metadata.Columns[i].Type)
+	val, err := DecodeType(r.resultSet.result.Metadata.Columns[i].Type, r.resultSet.version, r.row[i])
 	if err != nil {
-		return "", err
-	}
-	val, err := codec.Decode(r.row[i], r.resultSet.version)
-	if err != nil {
-		return "", err
+		return nil, err
 	}
 	return val, nil
 }
 
 func (r *Row) ByName(n string) (interface{}, error) {
 	if i, ok := r.resultSet.columnIndexes[n]; !ok {
-		return "", ColumnNameNotFound
+		return nil, ColumnNameNotFound
 	} else {
 		return r.ByPos(i)
 	}

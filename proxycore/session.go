@@ -1,3 +1,17 @@
+// Copyright 2020 DataStax
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package proxycore
 
 import (
@@ -31,7 +45,7 @@ type Session struct {
 	pools     sync.Map
 }
 
-func SessionConnect(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
+func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	session := &Session{
@@ -51,7 +65,7 @@ func SessionConnect(ctx context.Context, cluster *Cluster, config SessionConfig)
 }
 
 func (s *Session) Send(host *Host, request Request) error {
-	var conn *ClusterConn
+	var conn *ClientConn
 	if p, ok := s.pools.Load(host.Endpoint().Key()); ok {
 		pool := p.(ConnPool)
 		conn = pool.LeastBusyConn()
@@ -72,7 +86,7 @@ func (s *Session) OnEvent(event *ClusterEvent) {
 		go func() {
 			pools := make([]*ConnPool, 0, len(event.hosts))
 			for _, host := range event.hosts {
-				pool := PoolConnect(s.ctx, ConnPoolConfig{
+				pool := ConnectPool(s.ctx, ConnPoolConfig{
 					Endpoint:      host.Endpoint(),
 					SessionConfig: s.config,
 				})
@@ -90,7 +104,7 @@ func (s *Session) OnEvent(event *ClusterEvent) {
 		}()
 	case ClusterEventAdded:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
-		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), PoolConnect(s.ctx, ConnPoolConfig{
+		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), ConnectPool(s.ctx, ConnPoolConfig{
 			Endpoint:      event.host.Endpoint(),
 			SessionConfig: s.config,
 		})); loaded {
@@ -116,11 +130,11 @@ type ConnPool struct {
 	connected chan struct{}
 	remaining int32
 	config    ConnPoolConfig
-	conns     []*ClusterConn
+	conns     []*ClientConn
 	mu        *sync.RWMutex
 }
 
-func PoolConnect(ctx context.Context, config ConnPoolConfig) *ConnPool {
+func ConnectPool(ctx context.Context, config ConnPoolConfig) *ConnPool {
 	ctx, cancel := context.WithCancel(ctx)
 
 	pool := &ConnPool{
@@ -129,7 +143,7 @@ func PoolConnect(ctx context.Context, config ConnPoolConfig) *ConnPool {
 		connected: make(chan struct{}),
 		remaining: int32(config.NumConns),
 		config:    config,
-		conns:     make([]*ClusterConn, config.NumConns),
+		conns:     make([]*ClientConn, config.NumConns),
 		mu:        &sync.RWMutex{},
 	}
 
@@ -140,7 +154,7 @@ func PoolConnect(ctx context.Context, config ConnPoolConfig) *ConnPool {
 	return pool
 }
 
-func (p *ConnPool) LeastBusyConn() *ClusterConn {
+func (p *ConnPool) LeastBusyConn() *ClientConn {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	count := len(p.conns)
@@ -191,10 +205,10 @@ func (p *ConnPool) maybeConnected() {
 	p.mu.Unlock()
 }
 
-func (p *ConnPool) connect() (*ClusterConn, error) {
+func (p *ConnPool) connect() (*ClientConn, error) {
 	ctx, cancel := context.WithTimeout(p.ctx, ConnectTimeout)
 	defer cancel()
-	conn, err := ClusterConnect(ctx, p.config.Endpoint)
+	conn, err := ConnectClient(ctx, p.config.Endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +232,7 @@ func (p *ConnPool) connect() (*ClusterConn, error) {
 }
 
 func (p *ConnPool) stayConnected(index int) {
-	var conn *ClusterConn
+	var conn *ClientConn
 
 	connectTimer := time.NewTimer(0)
 	reconnectPolicy := p.config.ReconnectPolicy.Clone()

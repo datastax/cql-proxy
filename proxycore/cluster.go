@@ -59,7 +59,7 @@ type Cluster struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	config           ClusterConfig
-	controlConn      *ClusterConn
+	controlConn      *ClientConn
 	hosts            []*Host
 	currentHostIndex int
 	listeners        []ClusterListener
@@ -67,7 +67,7 @@ type Cluster struct {
 	events           chan *frame.Frame
 }
 
-func ConnectToCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
+func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
 	if len(config.Factory.ContactPoints()) == 0 {
 		return nil, errors.New("no endpoints resolved")
 	}
@@ -122,7 +122,7 @@ func (c *Cluster) OnEvent(frame *frame.Frame) {
 }
 
 func (c *Cluster) connect(ctx context.Context, endpoint Endpoint) error {
-	conn, err := ClusterConnectWithEvents(ctx, endpoint, c)
+	conn, err := ConnectClientWithEvents(ctx, endpoint, c)
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func (c *Cluster) sendEvent(event *ClusterEvent) {
 	}
 }
 
-func (c *Cluster) queryHosts(ctx context.Context, conn *ClusterConn) ([]*Host, error) {
+func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn) ([]*Host, error) {
 	var rs *ResultSet
 	var err error
 	hosts := make([]*Host, 0)

@@ -45,7 +45,7 @@ type EventHandler interface {
 	OnEvent(frame *frame.Frame)
 }
 
-type ClusterConn struct {
+type ClientConn struct {
 	conn         *Conn
 	inflight     int32
 	codec        frame.Codec
@@ -59,12 +59,12 @@ type Authenticator interface {
 	Success(token []byte) error
 }
 
-func ClusterConnect(ctx context.Context, endpoint Endpoint) (*ClusterConn, error) {
-	return ClusterConnectWithEvents(ctx, endpoint, nil)
+func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) {
+	return ConnectClientWithEvents(ctx, endpoint, nil)
 }
 
-func ClusterConnectWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClusterConn, error) {
-	c := &ClusterConn{
+func ConnectClientWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClientConn, error) {
+	c := &ClientConn{
 		conn:         nil,
 		codec:        frame.NewRawCodec(), // TODO
 		pending:      newPendingRequests(MaxStreams),
@@ -78,7 +78,7 @@ func ClusterConnectWithEvents(ctx context.Context, endpoint Endpoint, handler Ev
 	return c, nil
 }
 
-func (c *ClusterConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) (primitive.ProtocolVersion, error) {
+func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) (primitive.ProtocolVersion, error) {
 	for {
 		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup()))
 		if err != nil {
@@ -115,7 +115,7 @@ func (c *ClusterConn) Handshake(ctx context.Context, version primitive.ProtocolV
 	}
 }
 
-func (c *ClusterConn) authInitialResponse(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.Authenticate) error {
+func (c *ClientConn) authInitialResponse(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.Authenticate) error {
 	token, err := auth.InitialResponse(msg.Authenticator)
 	if err != nil {
 		return err
@@ -135,7 +135,7 @@ func (c *ClusterConn) authInitialResponse(ctx context.Context, version primitive
 	}
 }
 
-func (c *ClusterConn) authChallenge(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.AuthChallenge) error {
+func (c *ClientConn) authChallenge(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.AuthChallenge) error {
 	token, err := auth.EvaluateChallenge(msg.Token)
 	if err != nil {
 		return err
@@ -153,11 +153,11 @@ func (c *ClusterConn) authChallenge(ctx context.Context, version primitive.Proto
 	}
 }
 
-func (c *ClusterConn) Inflight() int32 {
+func (c *ClientConn) Inflight() int32 {
 	return atomic.LoadInt32(&c.inflight)
 }
 
-func (c *ClusterConn) Query(ctx context.Context, version primitive.ProtocolVersion, query *message.Query) (*ResultSet, error) {
+func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersion, query *message.Query) (*ResultSet, error) {
 	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, query))
 	if err != nil {
 		return nil, err
@@ -171,7 +171,7 @@ func (c *ClusterConn) Query(ctx context.Context, version primitive.ProtocolVersi
 	}
 }
 
-func (c *ClusterConn) Receive(reader io.Reader) error {
+func (c *ClientConn) Receive(reader io.Reader) error {
 	decoded, err := c.codec.DecodeFrame(reader)
 	if err != nil {
 		return err
@@ -193,11 +193,11 @@ func (c *ClusterConn) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *ClusterConn) Closing(err error) {
+func (c *ClientConn) Closing(err error) {
 	c.pending.sendError(err)
 }
 
-func (c *ClusterConn) Send(request Request) error {
+func (c *ClientConn) Send(request Request) error {
 	err := c.conn.Write(&requestSender{
 		request: request,
 		conn:    c,
@@ -208,7 +208,7 @@ func (c *ClusterConn) Send(request Request) error {
 	return err
 }
 
-func (c *ClusterConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame.Frame, error) {
+func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame.Frame, error) {
 	request := &internalRequest{
 		frame:  f,
 		err:    make(chan error),
@@ -230,21 +230,21 @@ func (c *ClusterConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*fram
 	}
 }
 
-func (c *ClusterConn) Close() error {
+func (c *ClientConn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *ClusterConn) IsClosed() chan struct{} {
+func (c *ClientConn) IsClosed() chan struct{} {
 	return c.conn.IsClosed()
 }
 
-func (c *ClusterConn) Err() error {
+func (c *ClientConn) Err() error {
 	return c.conn.Err()
 }
 
 type requestSender struct {
 	request Request
-	conn    *ClusterConn
+	conn    *ClientConn
 }
 
 func (r *requestSender) Send(writer io.Writer) error {

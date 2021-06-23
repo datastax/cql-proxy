@@ -213,7 +213,7 @@ func connWithBundleEx() {
 
 	ctx := context.Background()
 
-	conn, err := proxycore.ClusterConnect(ctx, factory.ContactPoints()[0])
+	conn, err := proxycore.ConnectClient(ctx, factory.ContactPoints()[0])
 	if err != nil {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
@@ -257,7 +257,7 @@ func connClusterWithBundleEx() {
 	ctx := context.Background()
 
 	auth := proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE")
-	cluster, err := proxycore.ConnectToCluster(ctx, proxycore.ClusterConfig{
+	cluster, err := proxycore.ConnectCluster(ctx, proxycore.ClusterConfig{
 		Version:         primitive.ProtocolVersion4,
 		Auth:            auth,
 		Factory:         factory,
@@ -267,7 +267,7 @@ func connClusterWithBundleEx() {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
 
-	session, err := proxycore.SessionConnect(ctx, cluster, proxycore.SessionConfig{
+	session, err := proxycore.ConnectSession(ctx, cluster, proxycore.SessionConfig{
 		ReconnectPolicy: proxycore.NewReconnectPolicy(),
 		NumConns:        1,
 		Version:         primitive.ProtocolVersion4,
