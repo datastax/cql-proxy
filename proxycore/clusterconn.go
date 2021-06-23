@@ -23,6 +23,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
 	"strings"
+	"sync/atomic"
 )
 
 var (
@@ -34,7 +35,7 @@ const (
 	MaxStreams = 2048
 )
 
-type ClusterRequest interface {
+type Request interface {
 	Frame() *frame.Frame
 	OnError(err error)
 	OnResult(frame *frame.Frame)
@@ -46,6 +47,7 @@ type EventHandler interface {
 
 type ClusterConn struct {
 	conn         *Conn
+	inflight     int32
 	codec        frame.Codec
 	pending      *pendingRequests
 	eventHandler EventHandler
@@ -151,6 +153,10 @@ func (c *ClusterConn) authChallenge(ctx context.Context, version primitive.Proto
 	}
 }
 
+func (c *ClusterConn) Inflight() int32 {
+	return atomic.LoadInt32(&c.inflight)
+}
+
 func (c *ClusterConn) Query(ctx context.Context, version primitive.ProtocolVersion, query *message.Query) (*ResultSet, error) {
 	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, query))
 	if err != nil {
@@ -180,6 +186,7 @@ func (c *ClusterConn) Receive(reader io.Reader) error {
 		if request == nil {
 			return InvalidStream
 		}
+		atomic.AddInt32(&c.inflight, -1)
 		request.OnResult(decoded)
 	}
 
@@ -190,11 +197,15 @@ func (c *ClusterConn) Closing(err error) {
 	c.pending.sendError(err)
 }
 
-func (c *ClusterConn) Send(request ClusterRequest) error {
-	return c.conn.Write(&requestSender{
+func (c *ClusterConn) Send(request Request) error {
+	err := c.conn.Write(&requestSender{
 		request: request,
 		conn:    c,
 	})
+	if err == nil {
+		atomic.AddInt32(&c.inflight, 1)
+	}
+	return err
 }
 
 func (c *ClusterConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame.Frame, error) {
@@ -232,7 +243,7 @@ func (c *ClusterConn) Err() error {
 }
 
 type requestSender struct {
-	request ClusterRequest
+	request Request
 	conn    *ClusterConn
 }
 

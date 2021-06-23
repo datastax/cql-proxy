@@ -242,20 +242,38 @@ func connWithBundleEx() {
 }
 
 func connClusterWithBundleEx() {
-	bundle, err := proxycore.LoadBundleZip("secure-connect-testdb1.zip")
-	if err != nil {
-		log.Fatalf("unable to open bundle: %v", err)
-	}
+	//bundle, err := proxycore.LoadBundleZip("secure-connect-testdb1.zip")
+	//if err != nil {
+	//	log.Fatalf("unable to open bundle: %v", err)
+	//}
 
-	factory, err := proxycore.ResolveAstra(bundle)
-	if err != nil {
-		log.Fatalf("unable to resolve astra: %v", err)
-	}
+	//factory, err := proxycore.ResolveAstra(bundle)
+	//if err != nil {
+	//	log.Fatalf("unable to resolve astra: %v", err)
+	//}
+
+	factory, err := proxycore.Resolve("127.0.0.1")
 
 	ctx := context.Background()
 
 	auth := proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE")
-	conn, err := proxycore.ConnectToCluster(ctx, primitive.ProtocolVersion4, auth, factory)
+	cluster, err := proxycore.ConnectToCluster(ctx, proxycore.ClusterConfig{
+		Version:         primitive.ProtocolVersion4,
+		Auth:            auth,
+		Factory:         factory,
+		ReconnectPolicy: proxycore.NewReconnectPolicy(),
+	})
+	if err != nil {
+		log.Fatalf("unable to connect to cluster: %v", err)
+	}
+
+	session, err := proxycore.SessionConnect(ctx, cluster, proxycore.SessionConfig{
+		ReconnectPolicy: proxycore.NewReconnectPolicy(),
+		NumConns:        1,
+		Version:         primitive.ProtocolVersion4,
+		Auth:            auth,
+	})
+
 	if err != nil {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
@@ -266,10 +284,12 @@ func connClusterWithBundleEx() {
 	closed := false
 	for !closed {
 		select {
-		case <-conn.IsClosed():
+		case <-cluster.Context().Done():
 			closed = true
+		case <-session.IsConnected():
+			fmt.Println("session is connected")
 		case <-timer.C:
-			conn.Close()
+			cluster.Cancel()
 		}
 	}
 

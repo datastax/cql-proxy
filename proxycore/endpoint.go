@@ -24,6 +24,8 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -64,30 +66,62 @@ type EndpointFactory interface {
 	Create(row Row) (Endpoint, error)
 }
 
+type defaultEndpointFactory struct {
+	contactPoints []Endpoint
+	defaultPort   int
+}
+
 func Resolve(contactPoints ...string) (EndpointFactory, error) {
+	return ResolveWithDefaultPort(contactPoints, 9042)
+}
+
+func ResolveWithDefaultPort(contactPoints []string, defaultPort int) (EndpointFactory, error) {
 	var endpoints []Endpoint
 	for _, cp := range contactPoints {
-		addrs, err := net.LookupHost(cp)
+		parts := strings.Split(cp, ":")
+		addrs, err := net.LookupHost(parts[0])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unable to resolve contact point %s: %v", cp, err)
+		}
+
+		port := defaultPort
+		if len(parts) > 1 {
+			port, err = strconv.Atoi(parts[1])
+			if err != nil {
+				return nil, fmt.Errorf("contact point %s has invalid port: %v", cp, err)
+			}
 		}
 		for _, addr := range addrs {
 			endpoints = append(endpoints, &defaultEndpoint{
-				addr,
+				fmt.Sprintf("%s:%d", addr, port),
 			})
 		}
 	}
 	return &defaultEndpointFactory{
 		contactPoints: endpoints,
+		defaultPort:   defaultPort,
 	}, nil
 }
 
-type defaultEndpointFactory struct {
-	contactPoints []Endpoint
-}
-
 func (d *defaultEndpointFactory) Create(row Row) (Endpoint, error) {
-	panic("implement me")
+	peer, err := row.ByName("peer")
+	if err != nil && !errors.Is(err, ColumnNameNotFound) {
+		return nil, err
+	}
+	rpcAddress, err := row.ByName("rpc_address")
+	if err != nil {
+		return nil, err
+	}
+
+	addr := rpcAddress.(net.IP)
+
+	if addr.Equal(net.IPv4zero) || addr.Equal(net.IPv6zero) {
+		addr = peer.(net.IP)
+	}
+
+	return &defaultEndpoint{
+		addr: fmt.Sprintf("%s:%d", addr, d.defaultPort),
+	}, nil
 }
 
 func (d *defaultEndpointFactory) ContactPoints() []Endpoint {
@@ -144,20 +178,40 @@ func ResolveAstra(bundle *Bundle) (EndpointFactory, error) {
 	}, nil
 }
 
-func (m *astraResolver) ContactPoints() []Endpoint {
-	return m.contactPoints
+func (a *astraResolver) ContactPoints() []Endpoint {
+	return a.contactPoints
 }
 
-func (m *astraResolver) Create(row Row) (Endpoint, error) {
+func (a *astraResolver) Create(row Row) (Endpoint, error) {
 	hostId, err := row.ByName("host_id")
 	if err != nil {
 		return nil, err
 	}
 	uuid := hostId.(primitive.UUID)
 	return &astraEndpoint{
-		addr:      m.host,
-		tlsConfig: copyTLSConfig(m.bundle, uuid.String()),
+		addr:      a.host,
+		tlsConfig: copyTLSConfig(a.bundle, uuid.String()),
 	}, nil
+}
+
+func (a *astraEndpoint) String() string {
+	return a.Key()
+}
+
+func (a *astraEndpoint) Key() string {
+	return fmt.Sprintf("%s:%s", a.addr, a.tlsConfig.ServerName) // TODO: cache!!!
+}
+
+func (a *astraEndpoint) Addr() string {
+	return a.addr
+}
+
+func (a *astraEndpoint) IsResolved() bool {
+	return false
+}
+
+func (a *astraEndpoint) TlsConfig() *tls.Config {
+	return a.tlsConfig
 }
 
 func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
@@ -188,26 +242,6 @@ func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
 		return err
 	}
 	return tlsConfig
-}
-
-func (a *astraEndpoint) String() string {
-	return a.Key()
-}
-
-func (a *astraEndpoint) Key() string {
-	return fmt.Sprintf("%s:%s", a.addr, a.tlsConfig.ServerName) // TODO: cache?
-}
-
-func (a *astraEndpoint) Addr() string {
-	return a.addr
-}
-
-func (a *astraEndpoint) IsResolved() bool {
-	return false
-}
-
-func (a *astraEndpoint) TlsConfig() *tls.Config {
-	return a.tlsConfig
 }
 
 type contactInfo struct {

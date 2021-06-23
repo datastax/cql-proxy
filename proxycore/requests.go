@@ -34,7 +34,7 @@ func newPendingRequests(maxStreams int16) *pendingRequests {
 	}
 }
 
-func (p *pendingRequests) store(request ClusterRequest) int16 {
+func (p *pendingRequests) store(request Request) int16 {
 	select {
 	case stream := <-p.streams:
 		p.pending.Store(stream, request)
@@ -44,17 +44,17 @@ func (p *pendingRequests) store(request ClusterRequest) int16 {
 	}
 }
 
-func (p *pendingRequests) loadAndDelete(stream int16) ClusterRequest {
+func (p *pendingRequests) loadAndDelete(stream int16) Request {
 	request, ok := p.pending.LoadAndDelete(stream)
 	if ok {
 		p.streams <- stream
 	}
-	return request.(ClusterRequest)
+	return request.(Request)
 }
 
 func (p *pendingRequests) sendError(err error) {
 	p.pending.Range(func(key, value interface{}) bool {
-		request := value.(ClusterRequest)
+		request := value.(Request)
 		request.OnError(err)
 		return true
 	})

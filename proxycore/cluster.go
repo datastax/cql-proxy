@@ -25,10 +25,9 @@ import (
 )
 
 const (
-	RefreshWindow    = 10 * time.Second
-	ConnectTimeout   = 10 * time.Second
-	RefreshTimeout   = 5 * time.Second
-	ReconnectTimeout = 20 * time.Second // TODO: Make exponential
+	RefreshWindow  = 10 * time.Second
+	ConnectTimeout = 10 * time.Second
+	RefreshTimeout = 5 * time.Second
 )
 
 type ClusterEventType int
@@ -49,39 +48,46 @@ type ClusterListener interface {
 	OnEvent(event *ClusterEvent)
 }
 
+type ClusterConfig struct {
+	Version         primitive.ProtocolVersion
+	Auth            Authenticator
+	Factory         EndpointFactory
+	ReconnectPolicy ReconnectPolicy
+}
+
 type Cluster struct {
-	factory          EndpointFactory
+	ctx              context.Context
+	cancel           context.CancelFunc
+	config           ClusterConfig
 	controlConn      *ClusterConn
-	version          primitive.ProtocolVersion
-	auth             Authenticator
 	hosts            []*Host
 	currentHostIndex int
 	listeners        []ClusterListener
 	addListener      chan ClusterListener
 	events           chan *frame.Frame
-	closed           chan struct{}
 }
 
-func ConnectToCluster(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, factory EndpointFactory) (*Cluster, error) {
-	if len(factory.ContactPoints()) == 0 {
+func ConnectToCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
+	if len(config.Factory.ContactPoints()) == 0 {
 		return nil, errors.New("no endpoints resolved")
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	cluster := &Cluster{
-		factory:          factory,
+		ctx:              ctx,
+		cancel:           cancel,
+		config:           config,
 		controlConn:      nil,
-		version:          version,
-		auth:             auth,
 		hosts:            nil,
 		currentHostIndex: 0,
 		events:           make(chan *frame.Frame),
-		closed:           make(chan struct{}),
 		addListener:      make(chan ClusterListener),
 		listeners:        make([]ClusterListener, 0),
 	}
 
 	var err error
-	for _, endpoint := range factory.ContactPoints() {
+	for _, endpoint := range config.Factory.ContactPoints() {
 		err = cluster.connect(ctx, endpoint)
 	}
 
@@ -94,16 +100,21 @@ func ConnectToCluster(ctx context.Context, version primitive.ProtocolVersion, au
 	return cluster, nil
 }
 
-func (c *Cluster) Listen(listener ClusterListener) {
-	c.addListener <- listener
+func (c *Cluster) Listen(listener ClusterListener) error {
+	select {
+	case c.addListener <- listener:
+		return nil
+	case <-c.ctx.Done():
+		return c.ctx.Err()
+	}
 }
 
-func (c *Cluster) IsClosed() chan struct{} {
-	return c.closed
+func (c *Cluster) Context() context.Context {
+	return c.ctx
 }
 
-func (c *Cluster) Close() {
-	close(c.closed)
+func (c *Cluster) Cancel() {
+	c.cancel()
 }
 
 func (c *Cluster) OnEvent(frame *frame.Frame) {
@@ -116,7 +127,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint) error {
 		return err
 	}
 
-	negotiated, err := conn.Handshake(ctx, c.version, c.auth)
+	negotiated, err := conn.Handshake(ctx, c.config.Version, c.config.Auth)
 	if err != nil {
 		return err
 	}
@@ -132,7 +143,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint) error {
 	} else {
 		c.mergeHosts(hosts)
 	}
-	c.version = negotiated
+	c.config.Version = negotiated
 
 	return nil
 }
@@ -184,7 +195,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClusterConn) ([]*Host, e
 	var err error
 	hosts := make([]*Host, 0)
 
-	rs, err = conn.Query(ctx, c.version, &message.Query{
+	rs, err = conn.Query(ctx, c.config.Version, &message.Query{
 		Query: "SELECT * FROM system.local",
 		Options: &message.QueryOptions{
 			Consistency: primitive.ConsistencyLevelOne,
@@ -195,7 +206,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClusterConn) ([]*Host, e
 	}
 	hosts = c.addHosts(hosts, rs)
 
-	rs, err = conn.Query(ctx, c.version, &message.Query{
+	rs, err = conn.Query(ctx, c.config.Version, &message.Query{
 		Query: "SELECT * FROM system.peers",
 		Options: &message.QueryOptions{
 			Consistency: primitive.ConsistencyLevelOne,
@@ -212,7 +223,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClusterConn) ([]*Host, e
 func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 	for i := 0; i < rs.RowCount(); i++ {
 		row := rs.Row(i)
-		if endpoint, err := c.factory.Create(row); err == nil {
+		if endpoint, err := c.config.Factory.Create(row); err == nil {
 			if host, err := NewHostFromRow(endpoint, row); err == nil {
 				hosts = append(hosts, host)
 			}
@@ -251,29 +262,31 @@ func (c *Cluster) stayConnected() {
 
 	connectTimer := time.NewTimer(0)
 	connectTimer.Stop()
+	reconnectPolicy := c.config.ReconnectPolicy.Clone()
 	pendingConnect := false
 
-	closed := false
+	done := false
 
-	for !closed {
+	for !done {
 		if c.controlConn == nil {
 			if !pendingConnect {
-				connectTimer = time.NewTimer(ReconnectTimeout)
+				connectTimer = time.NewTimer(reconnectPolicy.NextDelay())
 				pendingConnect = true
 			} else {
 				select {
-				case <-c.closed:
-					closed = true
+				case <-c.ctx.Done():
+					done = true
 					_ = c.controlConn.Close()
 				case <-connectTimer.C:
 					c.reconnect()
+					reconnectPolicy.Reset()
 					pendingConnect = false
 				}
 			}
 		} else {
 			select {
-			case <-c.closed:
-				closed = true
+			case <-c.ctx.Done():
+				done = true
 				_ = c.controlConn.Close()
 			case <-c.controlConn.IsClosed():
 				c.controlConn = nil
