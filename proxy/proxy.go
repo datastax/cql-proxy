@@ -5,6 +5,7 @@ import (
 	"cql-proxy/proxycore"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 	"io"
@@ -50,7 +51,7 @@ import (
 // * Handle mixed protocol versions e.g. client = V3, server = V4?
 
 const (
-	MaxPending = 1024
+	maxPending = 1024
 )
 
 type Config struct {
@@ -59,7 +60,6 @@ type Config struct {
 	Factory         proxycore.EndpointFactory
 	ReconnectPolicy proxycore.ReconnectPolicy
 	NumConns        int
-	Codec           frame.RawCodec
 }
 
 type Proxy struct {
@@ -160,34 +160,108 @@ type session struct {
 func newSession(s *proxycore.Session) *session {
 	return &session{
 		session: s,
-		pending: make(chan proxycore.Request, MaxPending),
+		pending: make(chan proxycore.Request, maxPending),
 	}
 }
 
 func (c *client) Receive(reader io.Reader) error {
-	decoded, err := c.proxy.config.Codec.DecodeRawFrame(reader)
+	frm, err := codec.DecodeFrame(reader)
 	if err != nil {
 		return err
 	}
 
-	_ = decoded
-
-	var r proxycore.Request
-
-	if s, ok := c.proxy.sessions.Load(c.keyspace); ok {
-		s := s.(session)
-		select {
-		case <-s.session.IsConnected(): // TODO: Is this fast?
-		default:
-			select {
-			case s.pending <- r:
-			default:
-				// TODO: Send back overwhelmed
-			}
-		}
+	switch msg := frm.Body.Message.(type) {
+	case *message.Options:
+		c.handleOptions(frm, map[string][]string{"CQL_VERSION": {"3.0.0"}, "COMPRESSION": {}})
+	case *message.Startup:
+		c.handleStartup(frm, msg)
+	case *message.Prepare:
+		c.handlePrepare(frm, msg)
+	case *partialExecute:
+		c.handleExecute(frm, msg)
+	case *partialQuery:
+		c.handleQuery(frm, msg)
+	default:
+		c.sendError(frm, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
 
+	//var r proxycore.Request
+
+	//if s, ok := c.proxy.sessions.Load(c.keyspace); ok {
+	//	s := s.(session)
+	//	select {
+	//	case <-s.session.IsConnected(): // TODO: Is this fast?
+	//	default:
+	//		select {
+	//		case s.pending <- r:
+	//		default:
+	//			// TODO: Send back overwhelmed
+	//		}
+	//	}
+	//}
+
 	return nil
+}
+
+func (c *client) handleOptions(frm *frame.Frame, options map[string][]string) {
+	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+		return codec.EncodeFrame(frame.NewFrame(frm.Header.Version, frm.Header.StreamId,
+			&message.Supported{Options: options}), writer)
+	}))
+}
+
+func (c *client) handleStartup(frm *frame.Frame, msg *message.Startup) {
+	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+		return codec.EncodeFrame(frame.NewFrame(frm.Header.Version, frm.Header.StreamId,
+			&message.Ready{}), writer)
+	}))
+}
+
+func (c *client) handlePrepare(frm *frame.Frame, msg *message.Prepare) {
+	stmt := parse(c.keyspace, msg.Query)
+
+	if stmt.isHandled() {
+		switch s := stmt.(type) {
+		case *selectStatement:
+			_ = s
+		case *useStatement:
+			_ = s
+		case *errorSelectStatement:
+			_ = s
+		default:
+			c.sendError(frm, &message.ServerError{ErrorMessage: "Proxy attempt to intercept an unhandled query"})
+		}
+	} else {
+
+	}
+}
+
+func (c *client) handleExecute(frm *frame.Frame, msg *partialExecute) {
+}
+
+func (c *client) handleQuery(frm *frame.Frame, msg *partialQuery) {
+	stmt := parse(c.keyspace, msg.query)
+
+	if stmt.isHandled() {
+		switch s := stmt.(type) {
+		case *selectStatement:
+			_ = s
+		case *useStatement:
+			_ = s
+		case *errorSelectStatement:
+			_ = s
+		default:
+			c.sendError(frm, &message.ServerError{ErrorMessage: "Proxy attempt to intercept an unhandled query"})
+		}
+	} else {
+
+	}
+}
+
+func (c *client) sendError(frm *frame.Frame, msg message.Error) {
+	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+		return codec.EncodeFrame(frame.NewFrame(frm.Header.Version, frm.Header.StreamId, msg), writer)
+	}))
 }
 
 func (c *client) Closing(err error) {

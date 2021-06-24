@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"cql-proxy/proxycore"
 	"fmt"
@@ -274,6 +275,8 @@ func contextTimeoutEx() {
 }
 
 func main() {
+	b := []byte("abc")
+	_ = bytes.Runes(b)
 
 	//connClusterWithBundleEx()
 }

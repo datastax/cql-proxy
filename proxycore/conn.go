@@ -56,6 +56,12 @@ type Sender interface {
 	Send(writer io.Writer) error
 }
 
+type SenderFunc func(writer io.Writer) error
+
+func (s SenderFunc) Send(writer io.Writer) error {
+	return s(writer)
+}
+
 func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, error) {
 	var addr string
 	if endpoint.IsResolved() {

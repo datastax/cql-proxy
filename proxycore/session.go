@@ -63,8 +63,8 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 func (s *Session) Send(host *Host, request Request) error {
 	var conn *ClientConn
 	if p, ok := s.pools.Load(host.Endpoint().Key()); ok {
-		pool := p.(ConnPool)
-		conn = pool.LeastBusyConn()
+		pool := p.(connPool)
+		conn = pool.leastBusyConn()
 	}
 	if conn == nil {
 		return NoConnForHost
@@ -80,9 +80,9 @@ func (s *Session) OnEvent(event *ClusterEvent) {
 	switch event.typ {
 	case ClusterEventBootstrap:
 		go func() {
-			pools := make([]*ConnPool, 0, len(event.hosts))
+			pools := make([]*connPool, 0, len(event.hosts))
 			for _, host := range event.hosts {
-				pool := ConnectPool(s.ctx, ConnPoolConfig{
+				pool := connectPool(s.ctx, connPoolConfig{
 					Endpoint:      host.Endpoint(),
 					SessionConfig: s.config,
 				})
@@ -92,7 +92,7 @@ func (s *Session) OnEvent(event *ClusterEvent) {
 
 			for _, pool := range pools {
 				select {
-				case <-pool.IsConnected():
+				case <-pool.isConnected():
 				case <-s.ctx.Done():
 				}
 			}
@@ -100,40 +100,40 @@ func (s *Session) OnEvent(event *ClusterEvent) {
 		}()
 	case ClusterEventAdded:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
-		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), ConnectPool(s.ctx, ConnPoolConfig{
+		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), connectPool(s.ctx, connPoolConfig{
 			Endpoint:      event.host.Endpoint(),
 			SessionConfig: s.config,
 		})); loaded {
-			p := pool.(ConnPool)
-			p.Cancel()
+			p := pool.(connPool)
+			p.cancel()
 		}
 	case ClusterEventRemoved:
 		if pool, ok := s.pools.LoadAndDelete(event.host.Endpoint().Key()); ok {
-			p := pool.(ConnPool)
-			p.Cancel()
+			p := pool.(connPool)
+			p.cancel()
 		}
 	}
 }
 
-type ConnPoolConfig struct {
+type connPoolConfig struct {
 	Endpoint
 	SessionConfig
 }
 
-type ConnPool struct {
+type connPool struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	connected chan struct{}
 	remaining int32
-	config    ConnPoolConfig
+	config    connPoolConfig
 	conns     []*ClientConn
 	mu        *sync.RWMutex
 }
 
-func ConnectPool(ctx context.Context, config ConnPoolConfig) *ConnPool {
+func connectPool(ctx context.Context, config connPoolConfig) *connPool {
 	ctx, cancel := context.WithCancel(ctx)
 
-	pool := &ConnPool{
+	pool := &connPool{
 		ctx:       ctx,
 		cancel:    cancel,
 		connected: make(chan struct{}),
@@ -150,7 +150,7 @@ func ConnectPool(ctx context.Context, config ConnPoolConfig) *ConnPool {
 	return pool
 }
 
-func (p *ConnPool) LeastBusyConn() *ClientConn {
+func (p *connPool) leastBusyConn() *ClientConn {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	count := len(p.conns)
@@ -170,27 +170,15 @@ func (p *ConnPool) LeastBusyConn() *ClientConn {
 				}
 			}
 		}
-		if index >= 0 {
-			return p.conns[index]
-		} else {
-			return nil
-		}
+		return p.conns[index]
 	}
 }
 
-func (p *ConnPool) Context() context.Context {
-	return p.ctx
-}
-
-func (p *ConnPool) Cancel() {
-	p.cancel()
-}
-
-func (p *ConnPool) IsConnected() chan struct{} {
+func (p *connPool) isConnected() chan struct{} {
 	return p.connected
 }
 
-func (p *ConnPool) maybeConnected() {
+func (p *connPool) maybeConnected() {
 	p.mu.Lock()
 	if p.remaining > 0 {
 		p.remaining--
@@ -201,7 +189,7 @@ func (p *ConnPool) maybeConnected() {
 	p.mu.Unlock()
 }
 
-func (p *ConnPool) connect() (*ClientConn, error) {
+func (p *connPool) connect() (*ClientConn, error) {
 	ctx, cancel := context.WithTimeout(p.ctx, ConnectTimeout)
 	defer cancel()
 	conn, err := ConnectClient(ctx, p.config.Endpoint)
@@ -227,7 +215,7 @@ func (p *ConnPool) connect() (*ClientConn, error) {
 	return conn, nil
 }
 
-func (p *ConnPool) stayConnected(index int) {
+func (p *connPool) stayConnected(index int) {
 	var conn *ClientConn
 
 	connectTimer := time.NewTimer(0)
