@@ -10,7 +10,7 @@ import (
 	"io"
 )
 
-var codec = frame.NewCodec(&partialQueryCodec{}, &partialExecuteCodec{})
+var codec = frame.NewRawCodec(&partialQueryCodec{}, &partialExecuteCodec{})
 
 type partialQueryCodec struct{}
 

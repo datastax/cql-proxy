@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"cql-proxy/proxy"
 	"cql-proxy/proxycore"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -275,8 +275,18 @@ func contextTimeoutEx() {
 }
 
 func main() {
-	b := []byte("abc")
-	_ = bytes.Runes(b)
+	ctx := context.Background()
+
+	factory, _ := proxycore.Resolve("127.0.0.1")
+
+	p := proxy.NewProxy(ctx, proxy.Config{
+		Version:         primitive.ProtocolVersion4,
+		Factory:         factory,
+		ReconnectPolicy: proxycore.NewReconnectPolicy(),
+		NumConns:        1,
+	})
+
+	p.ListenAndServe("127.0.0.1:8000")
 
 	//connClusterWithBundleEx()
 }

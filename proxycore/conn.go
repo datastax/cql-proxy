@@ -44,7 +44,7 @@ type Conn struct {
 	messages chan Sender
 	err      error
 	recv     Receiver
-	mu       sync.Mutex
+	mu       *sync.Mutex
 }
 
 type Receiver interface {
@@ -100,8 +100,10 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, erro
 func NewConn(conn net.Conn, recv Receiver) *Conn {
 	return &Conn{
 		conn:     conn,
+		recv:     recv,
 		closed:   make(chan struct{}),
 		messages: make(chan Sender, MaxMessages),
+		mu:       &sync.Mutex{},
 	}
 }
 
@@ -175,6 +177,7 @@ func (c *Conn) checkErr(err error) bool {
 		c.mu.Lock()
 		if c.err == nil {
 			c.err = err
+			c.conn.Close()
 			close(c.closed)
 		}
 		c.mu.Unlock()
@@ -203,4 +206,8 @@ func (c *Conn) Err() error {
 
 func (c *Conn) IsClosed() chan struct{} {
 	return c.closed
+}
+
+func (c *Conn) LocalAddr() net.Addr {
+	return c.conn.LocalAddr()
 }

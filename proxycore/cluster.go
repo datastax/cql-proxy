@@ -17,6 +17,7 @@ package proxycore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -55,6 +56,12 @@ type ClusterConfig struct {
 	ReconnectPolicy ReconnectPolicy
 }
 
+type ClusterInfo struct {
+	Partitioner    string
+	ReleaseVersion string
+	CQLVersion     string
+}
+
 type Cluster struct {
 	ctx              context.Context
 	config           ClusterConfig
@@ -64,6 +71,9 @@ type Cluster struct {
 	listeners        []ClusterListener
 	addListener      chan ClusterListener
 	events           chan *frame.Frame
+	// the following are immutable after start up
+	NegotiatedVersion primitive.ProtocolVersion
+	Info              ClusterInfo
 }
 
 func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
@@ -84,7 +94,7 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 
 	var err error
 	for _, endpoint := range config.Factory.ContactPoints() {
-		err = cluster.connect(ctx, endpoint)
+		err = cluster.connect(ctx, endpoint, true)
 	}
 
 	if err != nil {
@@ -109,29 +119,40 @@ func (c *Cluster) OnEvent(frame *frame.Frame) {
 	c.events <- frame
 }
 
-func (c *Cluster) connect(ctx context.Context, endpoint Endpoint) error {
+func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) error {
 	conn, err := ConnectClientWithEvents(ctx, endpoint, c)
 	if err != nil {
 		return err
 	}
 
-	negotiated, err := conn.Handshake(ctx, c.config.Version, c.config.Auth)
+	var version primitive.ProtocolVersion
+	if initial {
+		version = c.config.Version
+	} else {
+		version = c.NegotiatedVersion
+	}
+
+	negotiated, err := conn.Handshake(ctx, version, c.config.Auth)
 	if err != nil {
 		return err
 	}
+	if !initial && negotiated != version {
+		return fmt.Errorf("unable to use required protocol version %v, got %v", version, negotiated)
+	}
 
-	hosts, err := c.queryHosts(ctx, conn)
+	hosts, info, err := c.queryHosts(ctx, conn, negotiated)
 	if err != nil {
 		return err
 	}
 
 	c.controlConn = conn
-	if c.hosts == nil {
+	if initial {
+		c.NegotiatedVersion = negotiated
+		c.Info = info
 		c.hosts = hosts
 	} else {
 		c.mergeHosts(hosts)
 	}
-	c.config.Version = negotiated
 
 	return nil
 }
@@ -178,34 +199,55 @@ func (c *Cluster) sendEvent(event *ClusterEvent) {
 	}
 }
 
-func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn) ([]*Host, error) {
+func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version primitive.ProtocolVersion) (hosts []*Host, info ClusterInfo, err error) {
 	var rs *ResultSet
-	var err error
-	hosts := make([]*Host, 0)
+	var val interface{}
 
-	rs, err = conn.Query(ctx, c.config.Version, &message.Query{
+	rs, err = conn.Query(ctx, version, &message.Query{
 		Query: "SELECT * FROM system.local",
 		Options: &message.QueryOptions{
 			Consistency: primitive.ConsistencyLevelOne,
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, ClusterInfo{}, err
+	}
+	if rs.RowCount() == 0 {
+		return nil, ClusterInfo{}, errors.New("empty result set returned for system.local")
 	}
 	hosts = c.addHosts(hosts, rs)
+	row := rs.Row(0)
 
-	rs, err = conn.Query(ctx, c.config.Version, &message.Query{
+	val, err = row.ByName("partitioner")
+	if err != nil {
+		return nil, ClusterInfo{}, err
+	}
+	partitioner := val.(string)
+
+	val, err = row.ByName("release_version")
+	if err != nil {
+		return nil, ClusterInfo{}, err
+	}
+	releaseVersion := val.(string)
+
+	val, err = row.ByName("cql_version")
+	if err != nil {
+		return nil, ClusterInfo{}, err
+	}
+	cqlVersion := val.(string)
+
+	rs, err = conn.Query(ctx, version, &message.Query{
 		Query: "SELECT * FROM system.peers",
 		Options: &message.QueryOptions{
 			Consistency: primitive.ConsistencyLevelOne,
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, ClusterInfo{}, err
 	}
 	hosts = c.addHosts(hosts, rs)
 
-	return hosts, nil
+	return hosts, ClusterInfo{Partitioner: partitioner, ReleaseVersion: releaseVersion, CQLVersion: cqlVersion}, nil
 }
 
 func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
@@ -225,7 +267,7 @@ func (c *Cluster) reconnect() {
 	host := c.hosts[c.currentHostIndex]
 	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
 	defer cancel()
-	err := c.connect(ctx, host.Endpoint())
+	err := c.connect(ctx, host.Endpoint(), false)
 	if err != nil {
 		log.Printf("error reconnecting to host %v: %v", host, err)
 	}
@@ -234,7 +276,7 @@ func (c *Cluster) reconnect() {
 func (c *Cluster) refreshHosts() {
 	ctx, cancel := context.WithTimeout(context.Background(), RefreshTimeout)
 	defer cancel()
-	hosts, err := c.queryHosts(ctx, c.controlConn)
+	hosts, _, err := c.queryHosts(ctx, c.controlConn, c.NegotiatedVersion)
 	if err != nil {
 		log.Printf("unable to refresh hosts: %v", err)
 		_ = c.controlConn.Close()
