@@ -74,7 +74,8 @@ type Proxy struct {
 	cluster  *proxycore.Cluster
 	sessions sync.Map
 	mu       *sync.Mutex
-	log      *zap.Logger
+	logger   *zap.Logger
+	wp       *workerPool
 	localRow map[string]message.Column
 }
 
@@ -97,7 +98,7 @@ func (p *Proxy) ListenAndServe(address string) error {
 
 func (p *Proxy) Listen(address string) error {
 	var err error
-	p.log, err = zap.NewProduction()
+	p.logger, err = zap.NewProduction()
 	if err != nil {
 		return fmt.Errorf("unable to create logger %w", err)
 	}
@@ -132,6 +133,14 @@ func (p *Proxy) Listen(address string) error {
 	if err != nil {
 		return err
 	}
+
+	p.wp = &workerPool{
+		WorkerFunc:      serveRequest,
+		MaxWorkersCount: 2, // TODO: Max count?
+		Logger:          p.logger,
+	}
+
+	p.wp.Start()
 
 	return nil
 }
@@ -198,7 +207,7 @@ func (p *Proxy) buildLocalRow() {
 func (p *Proxy) encodeTypeFatal(dt datatype.DataType, val interface{}) []byte {
 	bytes, err := proxycore.EncodeType(dt, p.cluster.NegotiatedVersion, val)
 	if err != nil {
-		p.log.Fatal("unable to encode type", zap.Error(err))
+		p.logger.Fatal("unable to encode type", zap.Error(err))
 	}
 	return bytes
 }
@@ -225,13 +234,13 @@ func newSession(s *proxycore.Session) *session {
 func (c *client) Receive(reader io.Reader) error {
 	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {
-		c.proxy.log.Error("unable to decode frame", zap.Error(err))
+		c.proxy.logger.Error("unable to decode frame", zap.Error(err))
 		return err
 	}
 
 	body, err := codec.DecodeBody(raw.Header, bytes.NewReader(raw.Body))
 	if err != nil {
-		c.proxy.log.Error("unable to decode body", zap.Error(err))
+		c.proxy.logger.Error("unable to decode body", zap.Error(err))
 		return err
 	}
 
@@ -295,7 +304,7 @@ func (c *client) handleExecute(hdr *frame.Header, msg *partialExecute) {
 func (c *client) handleQuery(hdr *frame.Header, msg *partialQuery) {
 	handled, idempotent, stmt := parse(c.keyspace, msg.query)
 
-	c.proxy.log.Info("handling query", zap.String("query", msg.query))
+	c.proxy.logger.Info("handling query", zap.String("query", msg.query))
 
 	if handled {
 		switch s := stmt.(type) {

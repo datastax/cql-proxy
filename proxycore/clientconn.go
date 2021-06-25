@@ -36,7 +36,7 @@ const (
 )
 
 type Request interface {
-	Frame() *frame.Frame
+	Frame() interface{}
 	OnError(err error)
 	OnResult(frame *frame.Frame)
 }
@@ -48,7 +48,7 @@ type EventHandler interface {
 type ClientConn struct {
 	conn         *Conn
 	inflight     int32
-	codec        frame.Codec
+	codec        frame.RawCodec
 	pending      *pendingRequests
 	eventHandler EventHandler
 }
@@ -252,8 +252,16 @@ func (r *requestSender) Send(writer io.Writer) error {
 	if stream < 0 {
 		return StreamsExhausted
 	}
-	r.request.Frame().Header.StreamId = stream
-	return r.conn.codec.EncodeFrame(r.request.Frame(), writer)
+	switch frm := r.request.Frame().(type) {
+	case *frame.Frame:
+		frm.Header.StreamId = stream
+		return r.conn.codec.EncodeFrame(frm, writer)
+	case *frame.RawFrame:
+		frm.Header.StreamId = stream
+		return r.conn.codec.EncodeRawFrame(frm, writer)
+	default:
+		return errors.New("unhandled frame type")
+	}
 }
 
 type internalRequest struct {
@@ -262,7 +270,7 @@ type internalRequest struct {
 	result chan *frame.Frame
 }
 
-func (i *internalRequest) Frame() *frame.Frame {
+func (i *internalRequest) Frame() interface{} {
 	return i.frame
 }
 
