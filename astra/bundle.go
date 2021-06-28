@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package proxycore
+package astra
 
 import (
 	"archive/zip"
@@ -70,7 +70,7 @@ func LoadBundleZip(path string) (*Bundle, error) {
 		tlsConfig: &tls.Config{
 			RootCAs:      ca,
 			Certificates: []tls.Certificate{cert},
-			ServerName: config.Host,
+			ServerName:   config.Host,
 		},
 		host: config.Host,
 		port: config.Port,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"cql-proxy/astra"
 	"cql-proxy/proxy"
 	"cql-proxy/proxycore"
 	"fmt"
@@ -168,19 +169,21 @@ func (f SenderFunc) Closing(err error) {
 }
 
 func connWithBundleEx() {
-	bundle, err := proxycore.LoadBundleZip("secure-connect-testdb1.zip")
+	bundle, err := astra.LoadBundleZip("secure-connect-testdb1.zip")
 	if err != nil {
 		log.Fatalf("unable to open bundle: %v", err)
 	}
 
-	factory, err := proxycore.ResolveAstra(bundle)
-	if err != nil {
+	resolver := astra.NewResolver(bundle)
+
+	endpoints, err := resolver.Resolve()
+	if err != nil || len(endpoints) == 0 {
 		log.Fatalf("unable to resolve endpoints: %v", err)
 	}
 
 	ctx := context.Background()
 
-	conn, err := proxycore.ConnectClient(ctx, factory.ContactPoints()[0])
+	conn, err := proxycore.ConnectClient(ctx, endpoints[0])
 	if err != nil {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
@@ -209,17 +212,14 @@ func connWithBundleEx() {
 }
 
 func connClusterWithBundleEx() {
-	//bundle, err := proxycore.LoadBundleZip("secure-connect-testdb1.zip")
+	//bundle, err := astra.LoadBundleZip("secure-connect-testdb1.zip")
 	//if err != nil {
 	//	log.Fatalf("unable to open bundle: %v", err)
 	//}
 
-	//factory, err := proxycore.ResolveAstra(bundle)
-	//if err != nil {
-	//	log.Fatalf("unable to resolve astra: %v", err)
-	//}
+	//resolver := astra.NewResolver(bundle)
 
-	factory, err := proxycore.Resolve("127.0.0.1")
+	resolver := proxycore.NewResolver("127.0.0.1")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -228,7 +228,7 @@ func connClusterWithBundleEx() {
 	cluster, err := proxycore.ConnectCluster(ctx, proxycore.ClusterConfig{
 		Version:         primitive.ProtocolVersion4,
 		Auth:            auth,
-		Factory:         factory,
+		Resolver:        resolver,
 		ReconnectPolicy: proxycore.NewReconnectPolicy(),
 	})
 	if err != nil {
@@ -277,16 +277,27 @@ func contextTimeoutEx() {
 func main() {
 	ctx := context.Background()
 
-	factory, _ := proxycore.Resolve("127.0.0.1")
+	//resolver := proxycore.NewResolver("127.0.0.1")
+
+	bundle, err := astra.LoadBundleZip("secure-connect-testdb1.zip")
+	if err != nil {
+		log.Fatalf("unable to open bundle: %v", err)
+	}
+
+	resolver := astra.NewResolver(bundle)
 
 	p := proxy.NewProxy(ctx, proxy.Config{
 		Version:         primitive.ProtocolVersion4,
-		Factory:         factory,
+		Resolver:        resolver,
 		ReconnectPolicy: proxycore.NewReconnectPolicy(),
 		NumConns:        1,
+		Auth:            proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE"),
 	})
 
-	p.ListenAndServe("127.0.0.1:8000")
+	err = p.ListenAndServe("127.0.0.1:9042")
+	if err != nil {
+		log.Fatalf("unable to listen and server proxy: %v", err)
+	}
 
 	//connClusterWithBundleEx()
 }

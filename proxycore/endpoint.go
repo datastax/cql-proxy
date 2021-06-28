@@ -16,17 +16,11 @@ package proxycore
 
 import (
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"io/ioutil"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Endpoint interface {
@@ -61,30 +55,37 @@ func (e *defaultEndpoint) TlsConfig() *tls.Config {
 	return nil
 }
 
-type EndpointFactory interface {
-	ContactPoints() []Endpoint
+type EndpointResolver interface {
+	Resolve() ([]Endpoint, error)
 	Create(row Row) (Endpoint, error)
 }
 
-type defaultEndpointFactory struct {
-	contactPoints []Endpoint
+type defaultEndpointResolver struct {
+	contactPoints []string
 	defaultPort   int
 }
 
-func Resolve(contactPoints ...string) (EndpointFactory, error) {
-	return ResolveWithDefaultPort(contactPoints, 9042)
+func NewResolver(contactPoints ...string) EndpointResolver {
+	return NewResolverWithDefaultPort(contactPoints, 9042)
 }
 
-func ResolveWithDefaultPort(contactPoints []string, defaultPort int) (EndpointFactory, error) {
+func NewResolverWithDefaultPort(contactPoints []string, defaultPort int) EndpointResolver {
+	return &defaultEndpointResolver{
+		contactPoints: contactPoints,
+		defaultPort:   defaultPort,
+	}
+}
+
+func (d *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
 	var endpoints []Endpoint
-	for _, cp := range contactPoints {
+	for _, cp := range d.contactPoints {
 		parts := strings.Split(cp, ":")
 		addrs, err := net.LookupHost(parts[0])
 		if err != nil {
 			return nil, fmt.Errorf("unable to resolve contact point %s: %v", cp, err)
 		}
 
-		port := defaultPort
+		port := d.defaultPort
 		if len(parts) > 1 {
 			port, err = strconv.Atoi(parts[1])
 			if err != nil {
@@ -97,13 +98,10 @@ func ResolveWithDefaultPort(contactPoints []string, defaultPort int) (EndpointFa
 			})
 		}
 	}
-	return &defaultEndpointFactory{
-		contactPoints: endpoints,
-		defaultPort:   defaultPort,
-	}, nil
+	return endpoints, nil
 }
 
-func (d *defaultEndpointFactory) Create(row Row) (Endpoint, error) {
+func (d *defaultEndpointResolver) Create(row Row) (Endpoint, error) {
 	peer, err := row.ByName("peer")
 	if err != nil && !errors.Is(err, ColumnNameNotFound) {
 		return nil, err
@@ -122,137 +120,4 @@ func (d *defaultEndpointFactory) Create(row Row) (Endpoint, error) {
 	return &defaultEndpoint{
 		addr: fmt.Sprintf("%s:%d", addr, d.defaultPort),
 	}, nil
-}
-
-func (d *defaultEndpointFactory) ContactPoints() []Endpoint {
-	return d.contactPoints
-}
-
-type astraResolver struct {
-	contactPoints []Endpoint
-	host          string
-	bundle        *Bundle
-}
-
-type astraEndpoint struct {
-	addr      string
-	tlsConfig *tls.Config
-}
-
-func ResolveAstra(bundle *Bundle) (EndpointFactory, error) {
-	var metadata *astraMetadata
-
-	url := fmt.Sprintf("https://%s:%d/metadata", bundle.Host(), bundle.Port())
-	httpsClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: bundle.TLSConfig(),
-		},
-	}
-	response, err := httpsClient.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get metadata from %s: %v", url, err)
-	}
-
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(body, &metadata)
-	if err != nil {
-		return nil, err
-	}
-
-	var endpoints []Endpoint
-	for _, cp := range metadata.ContactInfo.ContactPoints {
-		endpoints = append(endpoints, &astraEndpoint{
-			addr:      metadata.ContactInfo.SniProxyAddress,
-			tlsConfig: copyTLSConfig(bundle, cp),
-		})
-	}
-
-	return &astraResolver{
-		contactPoints: endpoints,
-		host:          metadata.ContactInfo.SniProxyAddress,
-		bundle:        bundle,
-	}, nil
-}
-
-func (a *astraResolver) ContactPoints() []Endpoint {
-	return a.contactPoints
-}
-
-func (a *astraResolver) Create(row Row) (Endpoint, error) {
-	hostId, err := row.ByName("host_id")
-	if err != nil {
-		return nil, err
-	}
-	uuid := hostId.(primitive.UUID)
-	return &astraEndpoint{
-		addr:      a.host,
-		tlsConfig: copyTLSConfig(a.bundle, uuid.String()),
-	}, nil
-}
-
-func (a *astraEndpoint) String() string {
-	return a.Key()
-}
-
-func (a *astraEndpoint) Key() string {
-	return fmt.Sprintf("%s:%s", a.addr, a.tlsConfig.ServerName) // TODO: cache!!!
-}
-
-func (a *astraEndpoint) Addr() string {
-	return a.addr
-}
-
-func (a *astraEndpoint) IsResolved() bool {
-	return false
-}
-
-func (a *astraEndpoint) TlsConfig() *tls.Config {
-	return a.tlsConfig
-}
-
-func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
-	tlsConfig := bundle.TLSConfig()
-	tlsConfig.ServerName = serverName
-	tlsConfig.InsecureSkipVerify = true
-	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-		certs := make([]*x509.Certificate, len(rawCerts))
-		for i, asn1Data := range rawCerts {
-			cert, err := x509.ParseCertificate(asn1Data)
-			if err != nil {
-				return errors.New("tls: failed to parse certificate from server: " + err.Error())
-			}
-			certs[i] = cert
-		}
-
-		opts := x509.VerifyOptions{
-			Roots:         tlsConfig.RootCAs,
-			CurrentTime:   time.Now(),
-			DNSName:       bundle.Host(),
-			Intermediates: x509.NewCertPool(),
-		}
-		for _, cert := range certs[1:] {
-			opts.Intermediates.AddCert(cert)
-		}
-		var err error
-		verifiedChains, err = certs[0].Verify(opts)
-		return err
-	}
-	return tlsConfig
-}
-
-type contactInfo struct {
-	TypeName        string   `json:"type"`
-	LocalDc         string   `json:"local_dc"`
-	SniProxyAddress string   `json:"sni_proxy_address"`
-	ContactPoints   []string `json:"contact_points"`
-}
-
-type astraMetadata struct {
-	Version     int         `json:"version"`
-	Region      string      `json:"region"`
-	ContactInfo contactInfo `json:"contact_info"`
 }

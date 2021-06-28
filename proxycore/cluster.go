@@ -52,7 +52,7 @@ type ClusterListener interface {
 type ClusterConfig struct {
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
-	Factory         EndpointFactory
+	Resolver        EndpointResolver
 	ReconnectPolicy ReconnectPolicy
 }
 
@@ -77,10 +77,6 @@ type Cluster struct {
 }
 
 func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
-	if len(config.Factory.ContactPoints()) == 0 {
-		return nil, errors.New("no endpoints resolved")
-	}
-
 	cluster := &Cluster{
 		ctx:              ctx,
 		config:           config,
@@ -92,8 +88,16 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 		listeners:        make([]ClusterListener, 0),
 	}
 
-	var err error
-	for _, endpoint := range config.Factory.ContactPoints() {
+	endpoints, err := config.Resolver.Resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(endpoints) == 0 {
+		return nil, errors.New("no endpoints resolved")
+	}
+
+	for _, endpoint := range endpoints {
 		err = cluster.connect(ctx, endpoint, true)
 	}
 
@@ -253,7 +257,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 	for i := 0; i < rs.RowCount(); i++ {
 		row := rs.Row(i)
-		if endpoint, err := c.config.Factory.Create(row); err == nil {
+		if endpoint, err := c.config.Resolver.Create(row); err == nil {
 			if host, err := NewHostFromRow(endpoint, row); err == nil {
 				hosts = append(hosts, host)
 			}

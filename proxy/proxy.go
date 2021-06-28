@@ -54,7 +54,7 @@ import (
 // * Share connect pool DOWN events with Cluster (control connection)?
 // * Handle mixed protocol versions e.g. client = V3, server = V4?
 // * Handle schema version and schema events. Need to pause for schema changes.
-// * Handle endpoint factory refresh during total outage
+// * Handle endpoint resolver refresh during total outage
 // * Handle critical errors when connecting a new session/connection pool
 // * Automatic retries when a query is idempotent
 
@@ -65,7 +65,7 @@ const (
 type Config struct {
 	Version         primitive.ProtocolVersion
 	Auth            proxycore.Authenticator
-	Factory         proxycore.EndpointFactory
+	Resolver        proxycore.EndpointResolver
 	ReconnectPolicy proxycore.ReconnectPolicy
 	NumConns        int
 }
@@ -110,7 +110,7 @@ func (p *Proxy) Listen(address string) error {
 	p.cluster, err = proxycore.ConnectCluster(p.ctx, proxycore.ClusterConfig{
 		Version:         p.config.Version,
 		Auth:            p.config.Auth,
-		Factory:         p.config.Factory,
+		Resolver:        p.config.Resolver,
 		ReconnectPolicy: p.config.ReconnectPolicy,
 	})
 
@@ -121,7 +121,10 @@ func (p *Proxy) Listen(address string) error {
 	p.buildLocalRow()
 
 	p.lb = proxycore.NewRoundRobinLoadBalancer()
-	p.cluster.Listen(p.lb)
+	err = p.cluster.Listen(p.lb)
+	if err != nil {
+		return err
+	}
 
 	sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
 		ReconnectPolicy: p.config.ReconnectPolicy,
@@ -218,11 +221,11 @@ func (p *Proxy) buildLocalRow() {
 }
 
 func (p *Proxy) encodeTypeFatal(dt datatype.DataType, val interface{}) []byte {
-	bytes, err := proxycore.EncodeType(dt, p.cluster.NegotiatedVersion, val)
+	encoded, err := proxycore.EncodeType(dt, p.cluster.NegotiatedVersion, val)
 	if err != nil {
 		p.logger.Fatal("unable to encode type", zap.Error(err))
 	}
-	return bytes
+	return encoded
 }
 
 type client struct {
@@ -330,7 +333,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		switch s := stmt.(type) {
 		case *selectStatement:
 			if s.table == "local" {
-				if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+				if _, columns, err := c.handleSystemLocalOrPeersQuery(s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -345,7 +348,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 				}
 				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
 			} else if s.table == "peers" {
-				if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
+				if _, columns, err := c.handleSystemLocalOrPeersQuery(s, nil, systemPeersColumns, 0); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -419,7 +422,7 @@ func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
 	switch s := stmt.(type) {
 	case *selectStatement:
 		if s.table == "local" {
-			if row, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+			if row, columns, err := c.handleSystemLocalOrPeersQuery(s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				c.send(hdr, &message.RowsResult{
@@ -431,7 +434,7 @@ func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
 				})
 			}
 		} else if s.table == "peers" {
-			if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
+			if _, columns, err := c.handleSystemLocalOrPeersQuery(s, nil, systemPeersColumns, 0); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				c.send(hdr, &message.RowsResult{
@@ -458,7 +461,7 @@ func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
 	}
 }
 
-func (c *client) handleSystemLocalOrPeersQuery(hdr *frame.Header, stmt *selectStatement, values map[string]message.Column,
+func (c *client) handleSystemLocalOrPeersQuery(stmt *selectStatement, values map[string]message.Column,
 	systemColumns []*message.ColumnMetadata, count int) (row message.Row, columns []*message.ColumnMetadata, err error) {
 	if _, ok := stmt.selectors[0].(*starSelector); ok {
 		for _, column := range systemColumns {
@@ -512,10 +515,11 @@ func (c *client) handleSelector(selector interface{}, values map[string]message.
 }
 
 func (c *client) send(hdr *frame.Header, msg message.Message) {
-	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+	_ = c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
 		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
 	}))
 }
 
 func (c *client) Closing(err error) {
+	_ = err
 }

@@ -176,7 +176,7 @@ func (c *Conn) checkErr(err error) bool {
 		c.mu.Lock()
 		if c.err == nil {
 			c.err = err
-			c.conn.Close()
+			_ = c.conn.Close()
 			close(c.closed)
 		}
 		c.mu.Unlock()
