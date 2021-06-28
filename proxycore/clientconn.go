@@ -168,6 +168,22 @@ func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersio
 	}
 }
 
+func (c *ClientConn) SetKeyspace(ctx context.Context, version primitive.ProtocolVersion, keyspace string) error {
+	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Query{
+		Query: fmt.Sprintf("USE %s", keyspace),
+	}))
+	if err != nil {
+		return err
+	}
+
+	switch response.Body.Message.(type) {
+	case *message.SetKeyspaceResult:
+		return nil
+	default:
+		return fmt.Errorf("expected set keyspace response type, got: %v", response.Body.Message)
+	}
+}
+
 func (c *ClientConn) Receive(reader io.Reader) error {
 	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {

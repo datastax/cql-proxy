@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
+	"io"
 )
 
 func serveRequest(r *request) error {
-	stream := r.raw.Header.StreamId
-
 	done := false
 	var err error
 	for !done {
@@ -25,8 +24,7 @@ func serveRequest(r *request) error {
 				case err = <-r.err:
 					// TODO: Handle specific errors
 				case res := <-r.res:
-					res.Header.StreamId = stream
-					r.client.sendRaw(res)
+					r.sendRaw(res)
 				}
 				done = true
 			}
@@ -44,6 +42,7 @@ type request struct {
 	client     *client
 	session    *proxycore.Session
 	idempotent bool
+	stream     int16
 	qp         proxycore.QueryPlan
 	raw        *frame.RawFrame
 	ctx        context.Context
@@ -52,7 +51,16 @@ type request struct {
 }
 
 func (r *request) send(msg message.Message) {
-	r.client.send(r.raw.Header, msg)
+	r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+		return codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
+	}))
+}
+
+func (r *request) sendRaw(raw *frame.RawFrame) {
+	raw.Header.StreamId = r.stream
+	r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+		return codec.EncodeRawFrame(raw, writer)
+	}))
 }
 
 func (r *request) Frame() interface{} {

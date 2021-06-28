@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"math"
 	"sync"
@@ -127,7 +126,7 @@ type connPool struct {
 	remaining int32
 	config    connPoolConfig
 	conns     []*ClientConn
-	mu        *sync.RWMutex
+	connsMu   *sync.RWMutex
 }
 
 func connectPool(ctx context.Context, config connPoolConfig) *connPool {
@@ -140,7 +139,7 @@ func connectPool(ctx context.Context, config connPoolConfig) *connPool {
 		remaining: int32(config.NumConns),
 		config:    config,
 		conns:     make([]*ClientConn, config.NumConns),
-		mu:        &sync.RWMutex{},
+		connsMu:   &sync.RWMutex{},
 	}
 
 	for i := 0; i < config.NumConns; i++ {
@@ -151,8 +150,8 @@ func connectPool(ctx context.Context, config connPoolConfig) *connPool {
 }
 
 func (p *connPool) leastBusyConn() *ClientConn {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.connsMu.RLock()
+	defer p.connsMu.RUnlock()
 	count := len(p.conns)
 	if count == 0 {
 		return nil
@@ -179,14 +178,14 @@ func (p *connPool) isConnected() chan struct{} {
 }
 
 func (p *connPool) maybeConnected() {
-	p.mu.Lock()
+	p.connsMu.Lock()
 	if p.remaining > 0 {
 		p.remaining--
 		if p.remaining == 0 {
 			close(p.connected)
 		}
 	}
-	p.mu.Unlock()
+	p.connsMu.Unlock()
 }
 
 func (p *connPool) connect() (*ClientConn, error) {
@@ -205,9 +204,7 @@ func (p *connPool) connect() (*ClientConn, error) {
 		return nil, fmt.Errorf("protocol version %v not support, got %v", p.config.Version, version)
 	}
 	if len(p.config.Keyspace) != 0 {
-		_, err = conn.Query(ctx, p.config.Version, &message.Query{
-			Query: fmt.Sprintf("USE %s", p.config.Keyspace),
-		})
+		err = conn.SetKeyspace(ctx, p.config.Version, p.config.Keyspace)
 		if err != nil {
 			return nil, err
 		}
@@ -235,9 +232,9 @@ func (p *connPool) stayConnected(index int) {
 				case <-connectTimer.C:
 					c, err := p.connect()
 					if err == nil {
-						p.mu.Lock()
+						p.connsMu.Lock()
 						conn, p.conns[index] = c, c
-						p.mu.Unlock()
+						p.connsMu.Unlock()
 						reconnectPolicy.Reset()
 						pendingConnect = false
 					} else {
@@ -252,9 +249,9 @@ func (p *connPool) stayConnected(index int) {
 				done = true
 				_ = conn.Close()
 			case <-conn.IsClosed():
-				p.mu.Lock()
+				p.connsMu.Lock()
 				conn, p.conns[index] = nil, nil
-				p.mu.Unlock()
+				p.connsMu.Unlock()
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"cql-proxy/proxycore"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
@@ -172,7 +173,7 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, ok := p.sessions.Load(keyspace); !ok {
-		sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
+		s, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
 			ReconnectPolicy: p.config.ReconnectPolicy,
 			NumConns:        p.config.NumConns,
 			Version:         p.cluster.NegotiatedVersion,
@@ -180,9 +181,9 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 			Keyspace:        keyspace,
 		})
 		if err != nil {
-			return nil
+			return err
 		}
-		p.sessions.Store(keyspace, sess)
+		p.sessions.Store(keyspace, newSession(s))
 	}
 	return nil
 }
@@ -221,10 +222,12 @@ func (p *Proxy) encodeTypeFatal(dt datatype.DataType, val interface{}) []byte {
 }
 
 type client struct {
-	ctx      context.Context
-	proxy    *Proxy
-	conn     *proxycore.Conn
-	keyspace string
+	ctx                 context.Context
+	proxy               *Proxy
+	conn                *proxycore.Conn
+	keyspace            string
+	preparedSystemQuery map[[16]byte]interface{}
+	preparedIdempotence map[[16]byte]bool
 }
 
 type session struct {
@@ -267,9 +270,9 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Register:
 		c.send(raw.Header, &message.Ready{}) // TODO: Handle schema events
 	case *message.Prepare:
-		c.handlePrepare(raw.Header, msg)
+		c.handlePrepare(raw, msg)
 	case *partialExecute:
-		c.handleExecute(raw.Header, msg)
+		c.handleExecute(raw, msg)
 	case *partialQuery:
 		c.handleQuery(raw, msg)
 	default:
@@ -287,6 +290,7 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 			client:     c,
 			session:    sess.session,
 			idempotent: idempotent,
+			stream:     raw.Header.StreamId,
 			qp:         c.proxy.newQueryPlan(),
 			raw:        raw,
 			err:        make(chan error),
@@ -309,26 +313,67 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 	}
 }
 
-func (c *client) handlePrepare(hdr *frame.Header, msg *message.Prepare) {
-	handled, idempotent, stmt := parse(c.keyspace, msg.Query)
+func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
+	keyspace := c.keyspace
+	if len(msg.Keyspace) != 0 {
+		keyspace = msg.Keyspace
+	}
+	handled, idempotent, stmt := parse(keyspace, msg.Query)
 
 	if handled {
+		hdr := raw.Header
+
 		switch s := stmt.(type) {
 		case *selectStatement:
-			_ = s
+			if s.table == "local" {
+				if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+				} else {
+					c.send(hdr, &message.PreparedResult{
+						ResultMetadata: &message.RowsMetadata{
+							ColumnCount: int32(len(columns)),
+							Columns:     columns,
+						},
+					})
+				}
+				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
+			} else if s.table == "peers" {
+				if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
+					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+				} else {
+					c.send(hdr, &message.PreparedResult{
+						ResultMetadata: &message.RowsMetadata{
+							ColumnCount: int32(len(columns)),
+							Columns:     columns,
+						},
+					})
+				}
+				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
+			} else {
+				c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
+			}
 		case *useStatement:
-			_ = s
+			c.preparedSystemQuery[md5.Sum([]byte(msg.Query))] = stmt
 		case *errorSelectStatement:
-			_ = s
+			c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
 		default:
-			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempt to intercept an unhandled query"})
+			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 		}
 	} else {
-		_ = idempotent
+		c.preparedIdempotence[md5.Sum([]byte(msg.Query))] = idempotent
+		c.execute(raw, true) // Prepared statements can be retried themselves
 	}
 }
 
-func (c *client) handleExecute(hdr *frame.Header, msg *partialExecute) {
+func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
+	var hash [16]byte
+	copy(hash[:], msg.queryId)
+
+	if stmt, ok := c.preparedSystemQuery[hash]; ok {
+		c.handleSystemQuery(raw.Header, stmt)
+	} else {
+		c.execute(raw, c.preparedIdempotence[hash])
+	}
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
@@ -336,49 +381,8 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 
 	c.proxy.logger.Info("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 
-	hdr := raw.Header
-
 	if handled {
-		switch s := stmt.(type) {
-		case *selectStatement:
-			if s.table == "local" {
-				if row, columns, err := c.handleSystemQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
-					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
-				} else {
-					c.send(hdr, &message.RowsResult{
-						Metadata: &message.RowsMetadata{
-							ColumnCount: int32(len(columns)),
-							Columns:     columns,
-						},
-						Data: []message.Row{row},
-					})
-				}
-			} else if s.table == "peers" {
-				if _, columns, err := c.handleSystemQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
-					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
-				} else {
-					c.send(hdr, &message.RowsResult{
-						Metadata: &message.RowsMetadata{
-							ColumnCount: int32(len(columns)),
-							Columns:     columns,
-						},
-					})
-				}
-			} else {
-				c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
-			}
-		case *useStatement:
-			if err := c.proxy.maybeCreateSession(s.keyspace); err != nil {
-				c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
-			} else {
-				c.keyspace = s.keyspace
-				c.send(hdr, &message.VoidResult{})
-			}
-		case *errorSelectStatement:
-			c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
-		default:
-			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
-		}
+		c.handleSystemQuery(raw.Header, stmt)
 	} else {
 		c.execute(raw, idempotent)
 	}
@@ -398,7 +402,50 @@ func (c *client) columnValue(values map[string]message.Column, name string, tabl
 	return val
 }
 
-func (c *client) handleSystemQuery(hdr *frame.Header, stmt *selectStatement, values map[string]message.Column,
+func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
+	switch s := stmt.(type) {
+	case *selectStatement:
+		if s.table == "local" {
+			if row, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+			} else {
+				c.send(hdr, &message.RowsResult{
+					Metadata: &message.RowsMetadata{
+						ColumnCount: int32(len(columns)),
+						Columns:     columns,
+					},
+					Data: []message.Row{row},
+				})
+			}
+		} else if s.table == "peers" {
+			if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
+				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+			} else {
+				c.send(hdr, &message.RowsResult{
+					Metadata: &message.RowsMetadata{
+						ColumnCount: int32(len(columns)),
+						Columns:     columns,
+					},
+				})
+			}
+		} else {
+			c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
+		}
+	case *useStatement:
+		if err := c.proxy.maybeCreateSession(s.keyspace); err != nil {
+			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
+		} else {
+			c.keyspace = s.keyspace
+			c.send(hdr, &message.VoidResult{})
+		}
+	case *errorSelectStatement:
+		c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
+	default:
+		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
+	}
+}
+
+func (c *client) handleSystemLocalOrPeersQuery(hdr *frame.Header, stmt *selectStatement, values map[string]message.Column,
 	systemColumns []*message.ColumnMetadata, count int) (row message.Row, columns []*message.ColumnMetadata, err error) {
 	if _, ok := stmt.selectors[0].(*starSelector); ok {
 		for _, column := range systemColumns {
@@ -454,12 +501,6 @@ func (c *client) handleSelector(selector interface{}, values map[string]message.
 func (c *client) send(hdr *frame.Header, msg message.Message) {
 	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
 		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
-	}))
-}
-
-func (c *client) sendRaw(raw *frame.RawFrame) {
-	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeRawFrame(raw, writer)
 	}))
 }
 
