@@ -17,8 +17,11 @@ package proxycore
 import (
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
+
+var codec = frame.NewRawCodec()
 
 var primitiveCodecs = map[datatype.DataType]datatype.Codec{
 	datatype.Ascii:    &datatype.AsciiCodec{},

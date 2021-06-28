@@ -95,7 +95,7 @@ func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext)
 					return // invalid selector
 				}
 				if selectorCtx.K_AS() != nil { // alias
-					selectStmt.selectors = append(selectStmt.selectors, aliasSelector{
+					selectStmt.selectors = append(selectStmt.selectors, &aliasSelector{
 						selector: unaliasedSelector,
 						alias:    extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
 					})
@@ -104,7 +104,7 @@ func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext)
 				}
 			}
 		} else { // 'SELECT * ...'
-			selectStmt.selectors = append(selectStmt.selectors, starSelector{})
+			selectStmt.selectors = append(selectStmt.selectors, &starSelector{})
 		}
 
 		l.stmt = selectStmt
@@ -130,9 +130,9 @@ func (l *queryListener) EnterDeleteStatement(ctx *parser.DeleteStatementContext)
 
 func extractUnaliasedSelector(selectorCtx *parser.UnaliasedSelectorContext) (interface{}, error) {
 	if selectorCtx.K_COUNT() != nil {
-		return countStarSelector{name: selectorCtx.GetText()}, nil
+		return &countStarSelector{name: selectorCtx.GetText()}, nil
 	} else if selectorCtx.Identifier() != nil {
-		return idSelector{
+		return &idSelector{
 			name: extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
 		}, nil
 	} else {

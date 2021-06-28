@@ -63,7 +63,7 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 func (s *Session) Send(host *Host, request Request) error {
 	var conn *ClientConn
 	if p, ok := s.pools.Load(host.Endpoint().Key()); ok {
-		pool := p.(connPool)
+		pool := p.(*connPool)
 		conn = pool.leastBusyConn()
 	}
 	if conn == nil {

@@ -76,6 +76,7 @@ type Proxy struct {
 	mu       *sync.Mutex
 	logger   *zap.Logger
 	wp       *workerPool
+	lb       proxycore.LoadBalancer
 	localRow map[string]message.Column
 }
 
@@ -116,6 +117,9 @@ func (p *Proxy) Listen(address string) error {
 
 	p.buildLocalRow()
 
+	p.lb = proxycore.NewRoundRobinLoadBalancer()
+	p.cluster.Listen(p.lb)
+
 	sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
 		ReconnectPolicy: p.config.ReconnectPolicy,
 		NumConns:        p.config.NumConns,
@@ -136,7 +140,7 @@ func (p *Proxy) Listen(address string) error {
 
 	p.wp = &workerPool{
 		WorkerFunc:      serveRequest,
-		MaxWorkersCount: 2, // TODO: Max count?
+		MaxWorkersCount: 2048, // TODO: Max count?
 		Logger:          p.logger,
 	}
 
@@ -181,6 +185,10 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 		p.sessions.Store(keyspace, sess)
 	}
 	return nil
+}
+
+func (p *Proxy) newQueryPlan() proxycore.QueryPlan {
+	return p.lb.NewQueryPlan()
 }
 
 var (
@@ -234,8 +242,15 @@ func newSession(s *proxycore.Session) *session {
 func (c *client) Receive(reader io.Reader) error {
 	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {
-		c.proxy.logger.Error("unable to decode frame", zap.Error(err))
+		if !errors.Is(err, io.EOF) {
+			c.proxy.logger.Error("unable to decode frame", zap.Error(err))
+		}
 		return err
+	}
+
+	if raw.Header.Version > primitive.ProtocolVersion4 {
+		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Invalid or unsupported protocol version"})
+		return nil
 	}
 
 	body, err := codec.DecodeBody(raw.Header, bytes.NewReader(raw.Body))
@@ -256,27 +271,42 @@ func (c *client) Receive(reader io.Reader) error {
 	case *partialExecute:
 		c.handleExecute(raw.Header, msg)
 	case *partialQuery:
-		c.handleQuery(raw.Header, msg)
+		c.handleQuery(raw, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
 
-	//var r proxycore.Request
-
-	//if s, ok := c.proxy.sessions.Load(c.keyspace); ok {
-	//	s := s.(session)
-	//	select {
-	//	case <-s.session.IsConnected(): // TODO: Is this fast?
-	//	default:
-	//		select {
-	//		case s.pending <- r:
-	//		default:
-	//			// TODO: Send back overwhelmed
-	//		}
-	//	}
-	//}
-
 	return nil
+}
+
+func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
+	if s, ok := c.proxy.sessions.Load(c.keyspace); ok {
+		sess := s.(*session)
+
+		req := &request{
+			client:     c,
+			session:    sess.session,
+			idempotent: idempotent,
+			qp:         c.proxy.newQueryPlan(),
+			raw:        raw,
+			err:        make(chan error),
+			res:        make(chan *frame.RawFrame),
+		}
+		select {
+		case <-sess.session.IsConnected(): // TODO: Is this fast?
+			if !c.proxy.wp.Serve(req) {
+				c.send(raw.Header, &message.Overloaded{ErrorMessage: "Proxy: Too many requests"})
+			}
+		default:
+			select {
+			case sess.pending <- req:
+			default:
+				c.send(raw.Header, &message.Overloaded{ErrorMessage: "Proxy: Too many requests during keyspace change"})
+			}
+		}
+	} else {
+		c.send(raw.Header, &message.ServerError{ErrorMessage: "Proxy: Attempt to use invalid keyspace"})
+	}
 }
 
 func (c *client) handlePrepare(hdr *frame.Header, msg *message.Prepare) {
@@ -301,77 +331,94 @@ func (c *client) handlePrepare(hdr *frame.Header, msg *message.Prepare) {
 func (c *client) handleExecute(hdr *frame.Header, msg *partialExecute) {
 }
 
-func (c *client) handleQuery(hdr *frame.Header, msg *partialQuery) {
+func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 	handled, idempotent, stmt := parse(c.keyspace, msg.query)
 
-	c.proxy.logger.Info("handling query", zap.String("query", msg.query))
+	c.proxy.logger.Info("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
+
+	hdr := raw.Header
 
 	if handled {
 		switch s := stmt.(type) {
 		case *selectStatement:
 			if s.table == "local" {
-				c.handleSystemQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1)
+				if row, columns, err := c.handleSystemQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+				} else {
+					c.send(hdr, &message.RowsResult{
+						Metadata: &message.RowsMetadata{
+							ColumnCount: int32(len(columns)),
+							Columns:     columns,
+						},
+						Data: []message.Row{row},
+					})
+				}
 			} else if s.table == "peers" {
-				c.handleSystemQuery(hdr, s, nil, systemPeersColumns, 0)
+				if _, columns, err := c.handleSystemQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
+					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+				} else {
+					c.send(hdr, &message.RowsResult{
+						Metadata: &message.RowsMetadata{
+							ColumnCount: int32(len(columns)),
+							Columns:     columns,
+						},
+					})
+				}
 			} else {
 				c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 			}
 		case *useStatement:
-			// TODO: Fix and put on worker pool
-			go func() {
-				c.proxy.maybeCreateSession(s.keyspace)
-			}()
-			c.keyspace = s.keyspace
-			c.send(hdr, &message.VoidResult{})
+			if err := c.proxy.maybeCreateSession(s.keyspace); err != nil {
+				c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
+			} else {
+				c.keyspace = s.keyspace
+				c.send(hdr, &message.VoidResult{})
+			}
 		case *errorSelectStatement:
 			c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
 		default:
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 		}
 	} else {
-		_ = idempotent
-		c.send(hdr, &message.VoidResult{})
+		c.execute(raw, idempotent)
 	}
 }
 
-func (c *client) columnValue(values map[string]message.Column, name string) message.Column {
+func (c *client) columnValue(values map[string]message.Column, name string, table string) message.Column {
 	var val message.Column
 	var ok bool
 	if val, ok = values[name]; !ok {
-		if name == "rpc_address" {
-			val, _ = proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, c.conn.LocalAddr())
+		if name == "rpc_address" && table == "local" {
+			switch addr := c.conn.LocalAddr().(type) {
+			case *net.TCPAddr:
+				val, _ = proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, addr.IP)
+			}
 		}
 	}
 	return val
 }
 
 func (c *client) handleSystemQuery(hdr *frame.Header, stmt *selectStatement, values map[string]message.Column,
-	systemColumns []*message.ColumnMetadata, count int) {
-	var row message.Row
-	var columns []*message.ColumnMetadata
-	if _, ok := stmt.selectors[0].(starSelector); ok {
+	systemColumns []*message.ColumnMetadata, count int) (row message.Row, columns []*message.ColumnMetadata, err error) {
+	if _, ok := stmt.selectors[0].(*starSelector); ok {
 		for _, column := range systemColumns {
-			row = append(row, c.columnValue(values, column.Name))
+			val := c.columnValue(values, column.Name, stmt.table)
+			row = append(row, val)
 		}
 		columns = systemColumns
 	} else {
 		for _, selector := range stmt.selectors {
 			val, column, err := c.handleSelector(selector, values, systemColumns, count, stmt.table)
 			if err != nil {
-				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
-				return
+				return nil, nil, err
 			}
 			row = append(row, val)
 			columns = append(columns, column)
 		}
 	}
-	c.send(hdr, &message.RowsResult{
-		Metadata: &message.RowsMetadata{
-			ColumnCount: int32(len(columns)),
-			Columns:     columns,
-		},
-		Data: []message.Row{row},
-	})
+
+	return row, columns, err
+
 }
 
 func (c *client) handleSelector(selector interface{}, values map[string]message.Column,
@@ -387,7 +434,7 @@ func (c *client) handleSelector(selector interface{}, values map[string]message.
 		}, nil
 	case *idSelector:
 		if column = findColumnMetadata(columns, s.name); column != nil {
-			return c.columnValue(c.proxy.localRow, column.Name), column, nil
+			return c.columnValue(c.proxy.localRow, column.Name, table), column, nil
 		} else {
 			return nil, nil, fmt.Errorf("invalid column %s", s.name)
 		}
@@ -407,6 +454,12 @@ func (c *client) handleSelector(selector interface{}, values map[string]message.
 func (c *client) send(hdr *frame.Header, msg message.Message) {
 	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
 		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
+	}))
+}
+
+func (c *client) sendRaw(raw *frame.RawFrame) {
+	c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+		return codec.EncodeRawFrame(raw, writer)
 	}))
 }
 

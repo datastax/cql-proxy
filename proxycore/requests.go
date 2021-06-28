@@ -48,8 +48,9 @@ func (p *pendingRequests) loadAndDelete(stream int16) Request {
 	request, ok := p.pending.LoadAndDelete(stream)
 	if ok {
 		p.streams <- stream
+		return request.(Request)
 	}
-	return request.(Request)
+	return nil
 }
 
 func (p *pendingRequests) sendError(err error) {

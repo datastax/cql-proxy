@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -118,7 +117,7 @@ func (c *Conn) read() {
 		done = c.checkErr(c.recv.Receive(c.conn))
 	}
 	c.recv.Closing(c.Err())
-	log.Println("reader closed")
+	//log.Println("reader closed")
 }
 
 func (c *Conn) write() {
@@ -151,16 +150,16 @@ func (c *Conn) write() {
 			done = true
 		}
 
-		n, err := c.conn.Write(writer.Bytes())
+		_, err := c.conn.Write(writer.Bytes())
 		done = c.checkErr(err)
 		if done {
 			break
 		}
-		log.Printf("wrote %d bytes, %d senders", n, len(senders))
+		//log.Printf("wrote %d bytes, %d senders", n, len(senders))
 		senders = senders[:0]
 		writer.Reset()
 	}
-	log.Println("writer closed")
+	//log.Println("writer closed")
 }
 
 func (c *Conn) Write(sender Sender) error {

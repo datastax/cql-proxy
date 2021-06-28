@@ -27,7 +27,6 @@ import (
 )
 
 var (
-	InvalidStream    = errors.New("invalid stream")
 	StreamsExhausted = errors.New("streams exhausted")
 )
 
@@ -38,17 +37,16 @@ const (
 type Request interface {
 	Frame() interface{}
 	OnError(err error)
-	OnResult(frame *frame.Frame)
+	OnResult(raw *frame.RawFrame)
 }
 
 type EventHandler interface {
-	OnEvent(frame *frame.Frame)
+	OnEvent(frm *frame.Frame)
 }
 
 type ClientConn struct {
 	conn         *Conn
 	inflight     int32
-	codec        frame.RawCodec
 	pending      *pendingRequests
 	eventHandler EventHandler
 }
@@ -66,7 +64,6 @@ func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) 
 func ConnectClientWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClientConn, error) {
 	c := &ClientConn{
 		conn:         nil,
-		codec:        frame.NewRawCodec(), // TODO
 		pending:      newPendingRequests(MaxStreams),
 		eventHandler: handler,
 	}
@@ -172,22 +169,26 @@ func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersio
 }
 
 func (c *ClientConn) Receive(reader io.Reader) error {
-	decoded, err := c.codec.DecodeFrame(reader)
+	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to decode frame: %w", err)
 	}
 
-	if decoded.Header.OpCode == primitive.OpCodeEvent {
+	if raw.Header.OpCode == primitive.OpCodeEvent {
 		if c.eventHandler != nil {
-			c.eventHandler.OnEvent(decoded)
+			frm, err := codec.ConvertFromRawFrame(raw)
+			if err != nil {
+				return fmt.Errorf("unable to convert raw event frame: %w", err)
+			}
+			c.eventHandler.OnEvent(frm)
 		}
 	} else {
-		request := c.pending.loadAndDelete(decoded.Header.StreamId)
+		request := c.pending.loadAndDelete(raw.Header.StreamId)
 		if request == nil {
-			return InvalidStream
+			return errors.New("invalid stream")
 		}
 		atomic.AddInt32(&c.inflight, -1)
-		request.OnResult(decoded)
+		request.OnResult(raw)
 	}
 
 	return nil
@@ -210,9 +211,9 @@ func (c *ClientConn) Send(request Request) error {
 
 func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame.Frame, error) {
 	request := &internalRequest{
-		frame:  f,
-		err:    make(chan error),
-		result: make(chan *frame.Frame),
+		frame: f,
+		err:   make(chan error),
+		res:   make(chan *frame.RawFrame),
 	}
 
 	err := c.Send(request)
@@ -221,8 +222,8 @@ func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame
 	}
 
 	select {
-	case r := <-request.result:
-		return r, nil
+	case r := <-request.res:
+		return codec.ConvertFromRawFrame(r)
 	case e := <-request.err:
 		return nil, e
 	case <-ctx.Done():
@@ -255,19 +256,19 @@ func (r *requestSender) Send(writer io.Writer) error {
 	switch frm := r.request.Frame().(type) {
 	case *frame.Frame:
 		frm.Header.StreamId = stream
-		return r.conn.codec.EncodeFrame(frm, writer)
+		return codec.EncodeFrame(frm, writer)
 	case *frame.RawFrame:
 		frm.Header.StreamId = stream
-		return r.conn.codec.EncodeRawFrame(frm, writer)
+		return codec.EncodeRawFrame(frm, writer)
 	default:
 		return errors.New("unhandled frame type")
 	}
 }
 
 type internalRequest struct {
-	frame  *frame.Frame
-	err    chan error
-	result chan *frame.Frame
+	frame *frame.Frame
+	err   chan error
+	res   chan *frame.RawFrame
 }
 
 func (i *internalRequest) Frame() interface{} {
@@ -278,6 +279,6 @@ func (i *internalRequest) OnError(err error) {
 	i.err <- err
 }
 
-func (i *internalRequest) OnResult(frame *frame.Frame) {
-	i.result <- frame
+func (i *internalRequest) OnResult(raw *frame.RawFrame) {
+	i.res <- raw
 }
