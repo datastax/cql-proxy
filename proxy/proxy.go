@@ -55,6 +55,8 @@ import (
 // * Handle mixed protocol versions e.g. client = V3, server = V4?
 // * Handle schema version and schema events. Need to pause for schema changes.
 // * Handle endpoint factory refresh during total outage
+// * Handle critical errors when connecting a new session/connection pool
+// * Automatic retries when a query is idempotent
 
 const (
 	maxPending = 1024
@@ -162,8 +164,10 @@ func (p *Proxy) Serve() error {
 
 func (p *Proxy) handle(conn net.Conn) {
 	cl := &client{
-		ctx:   p.ctx,
-		proxy: p,
+		ctx:                 p.ctx,
+		proxy:               p,
+		preparedSystemQuery: make(map[[16]byte]interface{}),
+		preparedIdempotence: make(map[[16]byte]bool),
 	}
 	cl.conn = proxycore.NewConn(conn, cl)
 	cl.conn.Start()
@@ -329,31 +333,40 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 				if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
+					hash := md5.Sum([]byte(msg.Query + keyspace))
 					c.send(hdr, &message.PreparedResult{
+						PreparedQueryId: hash[:],
 						ResultMetadata: &message.RowsMetadata{
 							ColumnCount: int32(len(columns)),
 							Columns:     columns,
 						},
 					})
+					c.preparedSystemQuery[hash] = stmt
 				}
 				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
 			} else if s.table == "peers" {
 				if _, columns, err := c.handleSystemLocalOrPeersQuery(hdr, s, nil, systemPeersColumns, 0); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
+					hash := md5.Sum([]byte(msg.Query + keyspace))
 					c.send(hdr, &message.PreparedResult{
+						PreparedQueryId: hash[:],
 						ResultMetadata: &message.RowsMetadata{
 							ColumnCount: int32(len(columns)),
 							Columns:     columns,
 						},
 					})
+					c.preparedSystemQuery[hash] = stmt
 				}
-				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
 			} else {
 				c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 			}
 		case *useStatement:
-			c.preparedSystemQuery[md5.Sum([]byte(msg.Query))] = stmt
+			hash := md5.Sum([]byte(msg.Query))
+			c.preparedSystemQuery[hash] = stmt
+			c.send(hdr, &message.PreparedResult{
+				PreparedQueryId: hash[:],
+			})
 		case *errorSelectStatement:
 			c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
 		default:
