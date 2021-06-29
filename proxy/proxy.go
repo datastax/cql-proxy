@@ -404,7 +404,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 	handled, idempotent, stmt := parse(c.keyspace, msg.query)
 
-	c.proxy.logger.Info("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
+	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 
 	if handled {
 		c.handleSystemQuery(raw.Header, stmt)

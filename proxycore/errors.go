@@ -45,6 +45,7 @@ func (e *CqlError) Error() string {
 }
 
 func isCriticalErr(err error) bool {
+	// TODO: This is not correct, make an allow list
 	switch err.(type) {
 	case *UnexpectedResponse:
 		return true

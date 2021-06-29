@@ -35,7 +35,7 @@ var (
 			Keyspace: "system",
 			Table:    "local",
 			Name:     "tokens",
-			Type:     datatype.NewListType(datatype.Varchar),
+			Type:     datatype.NewSetType(datatype.Varchar),
 		},
 		{
 			Keyspace: "system",
@@ -110,7 +110,7 @@ var (
 			Keyspace: "system",
 			Table:    "peers",
 			Name:     "tokens",
-			Type:     datatype.NewListType(datatype.Varchar),
+			Type:     datatype.NewSetType(datatype.Varchar),
 		},
 		{
 			Keyspace: "system",

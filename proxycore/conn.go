@@ -23,7 +23,6 @@ import (
 	"io"
 	"math/rand"
 	"net"
-	"strings"
 	"sync"
 )
 
@@ -66,16 +65,18 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, erro
 	if endpoint.IsResolved() {
 		addr = endpoint.Addr()
 	} else {
-		parts := strings.Split(endpoint.Addr(), ":")
-		addrs, err := net.LookupHost(parts[0])
+		host, port, err := net.SplitHostPort(endpoint.Addr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid address %v: %w", endpoint.Addr(), err)
+		}
+		addrs, err := net.LookupHost(host)
 		if err != nil {
 			return nil, err
 		}
 		addr = addrs[rand.Intn(len(addrs))]
-		if len(parts) > 1 {
-			addr = fmt.Sprintf("%s:%s", addr, parts[1])
+		if len(port) > 0 {
+			addr = net.JoinHostPort(addr, port)
 		}
-
 	}
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "tcp", addr)

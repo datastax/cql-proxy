@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 )
 
 type Endpoint interface {
@@ -62,7 +61,7 @@ type EndpointResolver interface {
 
 type defaultEndpointResolver struct {
 	contactPoints []string
-	defaultPort   int
+	defaultPort   string
 }
 
 func NewResolver(contactPoints ...string) EndpointResolver {
@@ -72,29 +71,27 @@ func NewResolver(contactPoints ...string) EndpointResolver {
 func NewResolverWithDefaultPort(contactPoints []string, defaultPort int) EndpointResolver {
 	return &defaultEndpointResolver{
 		contactPoints: contactPoints,
-		defaultPort:   defaultPort,
+		defaultPort:   strconv.Itoa(defaultPort),
 	}
 }
 
 func (r *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
 	var endpoints []Endpoint
 	for _, cp := range r.contactPoints {
-		parts := strings.Split(cp, ":")
-		addrs, err := net.LookupHost(parts[0])
+		host, port, err := net.SplitHostPort(cp)
+		if err != nil {
+			host = cp
+		}
+		addrs, err := net.LookupHost(host)
 		if err != nil {
 			return nil, fmt.Errorf("unable to resolve contact point %s: %v", cp, err)
 		}
-
-		port := r.defaultPort
-		if len(parts) > 1 {
-			port, err = strconv.Atoi(parts[1])
-			if err != nil {
-				return nil, fmt.Errorf("contact point %s has invalid port: %v", cp, err)
-			}
+		if len(port) == 0 {
+			port = r.defaultPort
 		}
 		for _, addr := range addrs {
 			endpoints = append(endpoints, &defaultEndpoint{
-				fmt.Sprintf("%s:%d", addr, port),
+				net.JoinHostPort(addr, port),
 			})
 		}
 	}
