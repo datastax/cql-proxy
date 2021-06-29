@@ -17,7 +17,6 @@ package proxycore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 	"math"
@@ -42,8 +41,9 @@ type Session struct {
 	ctx       context.Context
 	config    SessionConfig
 	logger    *zap.Logger
-	connected chan struct{}
 	pools     sync.Map
+	connected chan struct{}
+	failed    chan error
 }
 
 func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
@@ -51,8 +51,9 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 		ctx:       ctx,
 		config:    config,
 		logger:    GetOrCreateNopLogger(config.Logger),
-		connected: make(chan struct{}),
 		pools:     sync.Map{},
+		connected: make(chan struct{}),
+		failed:    make(chan error, 1),
 	}
 
 	err := cluster.Listen(session)
@@ -60,7 +61,14 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 		return nil, err
 	}
 
-	return session, nil
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-session.connected:
+		return session, nil
+	case err = <-session.failed:
+		return nil, err
+	}
 }
 
 func (s *Session) Send(host *Host, request Request) error {
@@ -75,35 +83,40 @@ func (s *Session) Send(host *Host, request Request) error {
 	return conn.Send(request)
 }
 
-func (s *Session) IsConnected() chan struct{} {
-	return s.connected
-}
-
 func (s *Session) OnEvent(event *ClusterEvent) {
 	switch event.typ {
 	case ClusterEventBootstrap:
 		go func() {
-			pools := make([]*connPool, 0, len(event.hosts))
+			var wg sync.WaitGroup
+
+			count := len(event.hosts)
+			wg.Add(count)
+
 			for _, host := range event.hosts {
-				pool := connectPool(s.ctx, connPoolConfig{
-					Endpoint:      host.Endpoint(),
-					SessionConfig: s.config,
-				})
-				pools = append(pools, pool)
-				s.pools.Store(host.Endpoint().Key(), pool)
+				go func(host *Host) {
+					pool, err := connectPool(s.ctx, connPoolConfig{
+						Endpoint:      host.Endpoint(),
+						SessionConfig: s.config,
+					})
+					if err != nil {
+						select {
+						case s.failed <- err:
+						default:
+						}
+					}
+					s.pools.Store(host.Endpoint().Key(), pool)
+					wg.Done()
+				}(host)
 			}
 
-			for _, pool := range pools {
-				select {
-				case <-pool.isConnected():
-				case <-s.ctx.Done():
-				}
-			}
+			wg.Wait()
+
 			close(s.connected)
+			close(s.failed)
 		}()
 	case ClusterEventAdded:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
-		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), connectPool(s.ctx, connPoolConfig{
+		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), connectPoolNoFail(s.ctx, connPoolConfig{
 			Endpoint:      event.host.Endpoint(),
 			SessionConfig: s.config,
 		})); loaded {
@@ -125,23 +138,63 @@ type connPoolConfig struct {
 
 type connPool struct {
 	ctx       context.Context
-	cancel    context.CancelFunc
-	connected chan struct{}
-	remaining int32
 	config    connPoolConfig
+	logger    *zap.Logger
+	cancel    context.CancelFunc
+	remaining int32
 	conns     []*ClientConn
 	connsMu   *sync.RWMutex
 }
 
-func connectPool(ctx context.Context, config connPoolConfig) *connPool {
+func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	pool := &connPool{
 		ctx:       ctx,
-		cancel:    cancel,
-		connected: make(chan struct{}),
-		remaining: int32(config.NumConns),
 		config:    config,
+		logger:    GetOrCreateNopLogger(config.Logger),
+		cancel:    cancel,
+		remaining: int32(config.NumConns),
+		conns:     make([]*ClientConn, config.NumConns),
+		connsMu:   &sync.RWMutex{},
+	}
+
+	errs := make([]error, config.NumConns)
+	wg := sync.WaitGroup{}
+	wg.Add(config.NumConns)
+
+	for i := 0; i < config.NumConns; i++ {
+		go func(idx int) {
+			pool.conns[idx], errs[idx] = pool.connect()
+			wg.Done()
+		}(i)
+	}
+
+	wg.Wait()
+
+	for _, err := range errs {
+		pool.logger.Error("unable to connect pool", zap.Stringer("host", config.Endpoint), zap.Error(err))
+		if err != nil && isCriticalErr(err) {
+			return nil, err
+		}
+	}
+
+	for i := 0; i < config.NumConns; i++ {
+		go pool.stayConnected(i)
+	}
+
+	return pool, nil
+}
+
+func connectPoolNoFail(ctx context.Context, config connPoolConfig) *connPool {
+	ctx, cancel := context.WithCancel(ctx)
+
+	pool := &connPool{
+		ctx:       ctx,
+		config:    config,
+		logger:    GetOrCreateNopLogger(config.Logger),
+		cancel:    cancel,
+		remaining: int32(config.NumConns),
 		conns:     make([]*ClientConn, config.NumConns),
 		connsMu:   &sync.RWMutex{},
 	}
@@ -162,34 +215,19 @@ func (p *connPool) leastBusyConn() *ClientConn {
 	} else if count == 1 {
 		return p.conns[0]
 	} else {
-		index := -1
+		idx := -1
 		min := int32(math.MaxInt32)
 		for i, conn := range p.conns {
 			if conn != nil {
 				inflight := conn.Inflight()
 				if inflight < min {
-					index = i
+					idx = i
 					min = inflight
 				}
 			}
 		}
-		return p.conns[index]
+		return p.conns[idx]
 	}
-}
-
-func (p *connPool) isConnected() chan struct{} {
-	return p.connected
-}
-
-func (p *connPool) maybeConnected() {
-	p.connsMu.Lock()
-	if p.remaining > 0 {
-		p.remaining--
-		if p.remaining == 0 {
-			close(p.connected)
-		}
-	}
-	p.connsMu.Unlock()
 }
 
 func (p *connPool) connect() (*ClientConn, error) {
@@ -205,7 +243,8 @@ func (p *connPool) connect() (*ClientConn, error) {
 		return nil, err
 	}
 	if version != p.config.Version {
-		return nil, fmt.Errorf("protocol version %v not support, got %v", p.config.Version, version)
+		p.logger.Error("protocol version not support", zap.Stringer("wanted", p.config.Version), zap.Stringer("got", version))
+		return nil, ProtocolNotSupported
 	}
 	if len(p.config.Keyspace) != 0 {
 		err = conn.SetKeyspace(ctx, p.config.Version, p.config.Keyspace)
@@ -216,8 +255,8 @@ func (p *connPool) connect() (*ClientConn, error) {
 	return conn, nil
 }
 
-func (p *connPool) stayConnected(index int) {
-	var conn *ClientConn
+func (p *connPool) stayConnected(idx int) {
+	conn := p.conns[idx]
 
 	connectTimer := time.NewTimer(0)
 	reconnectPolicy := p.config.ReconnectPolicy.Clone()
@@ -235,16 +274,15 @@ func (p *connPool) stayConnected(index int) {
 					done = true
 				case <-connectTimer.C:
 					c, err := p.connect()
-					if err == nil {
+					if err != nil {
+						p.logger.Error("pool failed to connect", zap.Stringer("host", p.config.Endpoint), zap.Error(err))
+					} else {
 						p.connsMu.Lock()
-						conn, p.conns[index] = c, c
+						conn, p.conns[idx] = c, c
 						p.connsMu.Unlock()
 						reconnectPolicy.Reset()
 						pendingConnect = false
-					} else {
-						// TODO: Fatal errors: protocol version, keyspace, auth
 					}
-					p.maybeConnected()
 				}
 			}
 		} else {
@@ -254,7 +292,7 @@ func (p *connPool) stayConnected(index int) {
 				_ = conn.Close()
 			case <-conn.IsClosed():
 				p.connsMu.Lock()
-				conn, p.conns[index] = nil, nil
+				conn, p.conns[idx] = nil, nil
 				p.connsMu.Unlock()
 			}
 		}

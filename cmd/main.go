@@ -243,16 +243,13 @@ func connClusterWithBundleEx() {
 		Auth:            auth,
 	})
 
+	_ = session
+
 	if err != nil {
 		log.Fatalf("unable to connect to cluster: %v", err)
 	}
 
 	timer := time.NewTimer(time.Second)
-
-	select {
-	case <-session.IsConnected():
-		fmt.Println("session is connected")
-	}
 
 	closed := false
 	for !closed {

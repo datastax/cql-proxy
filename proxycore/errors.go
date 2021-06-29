@@ -15,29 +15,41 @@
 package proxycore
 
 import (
+	"errors"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/message"
+	"strings"
 )
 
-type CqlError interface {
-	error
-	Message() *message.Error
+var (
+	StreamsExhausted     = errors.New("streams exhausted")
+	AuthExpected         = errors.New("authentication required, but no authenticator provided")
+	ProtocolNotSupported = errors.New("required protocol version is not supported")
+)
+
+type UnexpectedResponse struct {
+	Expected []string
+	Received string
 }
 
-func NewCqlError(msg *message.Error) CqlError {
-	return &defaultCqlError{
-		msg,
+func (e *UnexpectedResponse) Error() string {
+	return fmt.Sprintf("expected %s response(s), got %s", strings.Join(e.Expected, ", "), e.Received)
+}
+
+type CqlError struct {
+	message.Message
+}
+
+func (e *CqlError) Error() string {
+	return fmt.Sprintf("cql error: %v", e.Message)
+}
+
+func isCriticalErr(err error) bool {
+	switch err.(type) {
+	case *UnexpectedResponse:
+		return true
+	case *CqlError:
+		return true
 	}
-}
-
-type defaultCqlError struct {
-	msg *message.Error
-}
-
-func (d *defaultCqlError) Error() string {
-	return fmt.Sprintf("cql error: %v", d.msg)
-}
-
-func (d *defaultCqlError) Message() *message.Error {
-	return d.msg
+	return errors.Is(err, AuthExpected) || errors.Is(err, ProtocolNotSupported)
 }

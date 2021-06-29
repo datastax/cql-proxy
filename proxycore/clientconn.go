@@ -26,10 +26,6 @@ import (
 	"sync/atomic"
 )
 
-var (
-	StreamsExhausted = errors.New("streams exhausted")
-)
-
 const (
 	MaxStreams = 2048
 )
@@ -87,10 +83,10 @@ func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVe
 			return version, nil
 		case *message.Authenticate:
 			if auth == nil {
-				return version, errors.New("authentication required, but no authenticator provided")
+				return version, AuthExpected
 			}
 			return version, c.authInitialResponse(ctx, version, auth, msg)
-		default:
+		case message.Error:
 			if pe, ok := msg.(*message.ProtocolError); ok {
 				if strings.Contains(pe.ErrorMessage, "Invalid or unsupported protocol version") {
 					switch version {
@@ -107,13 +103,18 @@ func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVe
 					}
 				}
 			}
-			return version, fmt.Errorf("expected READY or AUTHENTICATE response types, got: %v", response.Body.Message)
+			return version, &CqlError{Message: msg}
+		default:
+			return version, &UnexpectedResponse{
+				Expected: []string{"READY", "AUTHENTICATE"},
+				Received: response.Body.String(),
+			}
 		}
 	}
 }
 
-func (c *ClientConn) authInitialResponse(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.Authenticate) error {
-	token, err := auth.InitialResponse(msg.Authenticator)
+func (c *ClientConn) authInitialResponse(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, authenticate *message.Authenticate) error {
+	token, err := auth.InitialResponse(authenticate.Authenticator)
 	if err != nil {
 		return err
 	}
@@ -127,13 +128,18 @@ func (c *ClientConn) authInitialResponse(ctx context.Context, version primitive.
 		return c.authChallenge(ctx, version, auth, msg)
 	case *message.AuthSuccess:
 		return auth.Success(msg.Token)
+	case message.Error:
+		return &CqlError{Message: msg}
 	default:
-		return fmt.Errorf("expected AUTH_CHALLENGE or AUTH_SUCCESS response types, got: %v", response.Body.Message)
+		return &UnexpectedResponse{
+			Expected: []string{"AUTH_CHALLENGE", "AUTH_SUCCESS"},
+			Received: response.Body.String(),
+		}
 	}
 }
 
-func (c *ClientConn) authChallenge(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, msg *message.AuthChallenge) error {
-	token, err := auth.EvaluateChallenge(msg.Token)
+func (c *ClientConn) authChallenge(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, challenge *message.AuthChallenge) error {
+	token, err := auth.EvaluateChallenge(challenge.Token)
 	if err != nil {
 		return err
 	}
@@ -145,8 +151,13 @@ func (c *ClientConn) authChallenge(ctx context.Context, version primitive.Protoc
 	switch msg := response.Body.Message.(type) {
 	case *message.AuthSuccess:
 		return auth.Success(msg.Token)
+	case message.Error:
+		return &CqlError{Message: msg}
 	default:
-		return fmt.Errorf("expected AUTH_SUCCESS response type, got: %v", response.Body.Message)
+		return &UnexpectedResponse{
+			Expected: []string{"AUTH_SUCCESS"},
+			Received: response.Body.String(),
+		}
 	}
 }
 
@@ -163,8 +174,15 @@ func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersio
 	switch msg := response.Body.Message.(type) {
 	case *message.RowsResult:
 		return NewResultSet(msg, version), nil
+	case *message.VoidResult:
+		return nil, nil // TODO: Make empty result set
+	case message.Error:
+		return nil, &CqlError{Message: msg}
 	default:
-		return nil, fmt.Errorf("expected rows response type, got: %v", response.Body.Message)
+		return nil, &UnexpectedResponse{
+			Expected: []string{"RESULT(Rows)", "RESULT(Void)"},
+			Received: response.Body.String(),
+		}
 	}
 }
 
@@ -176,11 +194,16 @@ func (c *ClientConn) SetKeyspace(ctx context.Context, version primitive.Protocol
 		return err
 	}
 
-	switch response.Body.Message.(type) {
+	switch msg := response.Body.Message.(type) {
 	case *message.SetKeyspaceResult:
 		return nil
+	case message.Error:
+		return &CqlError{Message: msg}
 	default:
-		return fmt.Errorf("expected set keyspace response type, got: %v", response.Body.Message)
+		return &UnexpectedResponse{
+			Expected: []string{"RESULT(Set_Keyspace)"},
+			Received: response.Body.String(),
+		}
 	}
 }
 

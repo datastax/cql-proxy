@@ -279,7 +279,7 @@ func (c *Cluster) reconnect() {
 	defer cancel()
 	err := c.connect(ctx, host.Endpoint(), false)
 	if err != nil {
-		c.logger.Error("error reconnecting to host", zap.String("host", host.String()), zap.Error(err))
+		c.logger.Error("error reconnecting to host", zap.Stringer("host", host), zap.Error(err))
 	}
 }
 

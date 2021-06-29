@@ -78,7 +78,7 @@ type Proxy struct {
 	listener net.Listener
 	cluster  *proxycore.Cluster
 	sessions sync.Map
-	mu       *sync.Mutex
+	sessMu   *sync.Mutex
 	wp       *workerPool
 	lb       proxycore.LoadBalancer
 	localRow map[string]message.Column
@@ -90,7 +90,7 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 		config:   config,
 		logger:   proxycore.GetOrCreateNopLogger(config.Logger),
 		sessions: sync.Map{},
-		mu:       &sync.Mutex{},
+		sessMu:   &sync.Mutex{},
 	}
 }
 
@@ -135,7 +135,7 @@ func (p *Proxy) Listen(address string) error {
 		return fmt.Errorf("unable to connect to cluster %w", err)
 	}
 
-	p.sessions.Store("", newSession(sess)) // No keyspace
+	p.sessions.Store("", sess) // No keyspace
 
 	p.listener, err = net.Listen("tcp", address)
 	if err != nil {
@@ -175,10 +175,10 @@ func (p *Proxy) handle(conn net.Conn) {
 }
 
 func (p *Proxy) maybeCreateSession(keyspace string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.sessMu.Lock()
+	defer p.sessMu.Unlock()
 	if _, ok := p.sessions.Load(keyspace); !ok {
-		s, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
+		sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
 			ReconnectPolicy: p.config.ReconnectPolicy,
 			NumConns:        p.config.NumConns,
 			Version:         p.cluster.NegotiatedVersion,
@@ -188,7 +188,7 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 		if err != nil {
 			return err
 		}
-		p.sessions.Store(keyspace, newSession(s))
+		p.sessions.Store(keyspace, sess)
 	}
 	return nil
 }
@@ -235,18 +235,6 @@ type client struct {
 	preparedIdempotence map[[16]byte]bool
 }
 
-type session struct {
-	session *proxycore.Session
-	pending chan proxycore.Request
-}
-
-func newSession(s *proxycore.Session) *session {
-	return &session{
-		session: s,
-		pending: make(chan proxycore.Request, maxPending),
-	}
-}
-
 func (c *client) Receive(reader io.Reader) error {
 	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {
@@ -288,12 +276,10 @@ func (c *client) Receive(reader io.Reader) error {
 }
 
 func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
-	if s, ok := c.proxy.sessions.Load(c.keyspace); ok {
-		sess := s.(*session)
-
+	if sess, ok := c.proxy.sessions.Load(c.keyspace); ok {
 		req := &request{
 			client:     c,
-			session:    sess.session,
+			session:    sess.(*proxycore.Session),
 			idempotent: idempotent,
 			stream:     raw.Header.StreamId,
 			qp:         c.proxy.newQueryPlan(),
@@ -301,20 +287,12 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 			err:        make(chan error),
 			res:        make(chan *frame.RawFrame),
 		}
-		select {
-		case <-sess.session.IsConnected(): // TODO: Is this fast?
-			if !c.proxy.wp.Serve(req) {
-				c.send(raw.Header, &message.Overloaded{ErrorMessage: "Proxy: Too many requests"})
-			}
-		default:
-			select {
-			case sess.pending <- req:
-			default:
-				c.send(raw.Header, &message.Overloaded{ErrorMessage: "Proxy: Too many requests during keyspace change"})
-			}
+
+		if !c.proxy.wp.Serve(req) {
+			c.send(raw.Header, &message.Overloaded{ErrorMessage: "Proxy is overloaded"})
 		}
 	} else {
-		c.send(raw.Header, &message.ServerError{ErrorMessage: "Proxy: Attempt to use invalid keyspace"})
+		c.send(raw.Header, &message.ServerError{ErrorMessage: "Attempted to use invalid keyspace"})
 	}
 }
 
