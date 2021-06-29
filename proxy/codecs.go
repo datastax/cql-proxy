@@ -28,15 +28,15 @@ var codec = frame.NewRawCodec(&partialQueryCodec{}, &partialExecuteCodec{})
 
 type partialQueryCodec struct{}
 
-func (c *partialQueryCodec) Encode(msg message.Message, dest io.Writer, version primitive.ProtocolVersion) error {
+func (c *partialQueryCodec) Encode(_ message.Message, _ io.Writer, _ primitive.ProtocolVersion) error {
 	panic("not implemented")
 }
 
-func (c *partialQueryCodec) EncodedLength(msg message.Message, version primitive.ProtocolVersion) (int, error) {
+func (c *partialQueryCodec) EncodedLength(_ message.Message, _ primitive.ProtocolVersion) (int, error) {
 	panic("not implemented")
 }
 
-func (c *partialQueryCodec) Decode(source io.Reader, version primitive.ProtocolVersion) (message.Message, error) {
+func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (message.Message, error) {
 	if query, err := primitive.ReadLongString(source); err != nil {
 		return nil, err
 	} else if query == "" {
@@ -90,15 +90,15 @@ func (m *partialExecute) String() string {
 
 type partialExecuteCodec struct{}
 
-func (c *partialExecuteCodec) Encode(msg message.Message, dest io.Writer, version primitive.ProtocolVersion) error {
+func (c *partialExecuteCodec) Encode(_ message.Message, _ io.Writer, _ primitive.ProtocolVersion) error {
 	panic("not implemented")
 }
 
-func (c *partialExecuteCodec) EncodedLength(msg message.Message, version primitive.ProtocolVersion) (size int, err error) {
+func (c *partialExecuteCodec) EncodedLength(_ message.Message, _ primitive.ProtocolVersion) (size int, err error) {
 	panic("not implemented")
 }
 
-func (c *partialExecuteCodec) Decode(source io.Reader, version primitive.ProtocolVersion) (msg message.Message, err error) {
+func (c *partialExecuteCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (msg message.Message, err error) {
 	var execute = &partialExecute{}
 	if execute.queryId, err = primitive.ReadShortBytes(source); err != nil {
 		return nil, fmt.Errorf("cannot read EXECUTE query id: %w", err)

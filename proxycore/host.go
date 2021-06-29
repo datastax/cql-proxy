@@ -18,11 +18,7 @@ type Host struct {
 	endpoint Endpoint
 }
 
-func NewHost(endpoint Endpoint) *Host {
-	return &Host{endpoint}
-}
-
-func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
+func NewHostFromRow(endpoint Endpoint, _ Row) (*Host, error) {
 	return &Host{endpoint}, nil
 }
 

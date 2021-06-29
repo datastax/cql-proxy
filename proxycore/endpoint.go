@@ -115,6 +115,6 @@ func (r *defaultEndpointResolver) NewEndpoint(row Row) (Endpoint, error) {
 	}
 
 	return &defaultEndpoint{
-		addr: fmt.Sprintf("%s:%d", addr, r.defaultPort),
+		addr: net.JoinHostPort(addr.String(), r.defaultPort),
 	}, nil
 }

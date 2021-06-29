@@ -58,7 +58,7 @@ func (d *defaultAuth) makeToken() []byte {
 	return token.Bytes()
 }
 
-func (d *defaultAuth) Success(token []byte) error {
+func (d *defaultAuth) Success(_ []byte) error {
 	return nil
 }
 

@@ -65,14 +65,14 @@ type request struct {
 }
 
 func (r *request) send(msg message.Message) {
-	r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
 		return codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
 	}))
 }
 
 func (r *request) sendRaw(raw *frame.RawFrame) {
 	raw.Header.StreamId = r.stream
-	r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
 		return codec.EncodeRawFrame(raw, writer)
 	}))
 }

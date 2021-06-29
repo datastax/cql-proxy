@@ -130,15 +130,15 @@ func (l *queryListener) EnterUseStatement(ctx *parser.UseStatementContext) {
 	l.stmt = &useStatement{keyspace: extractIdentifier(ctx.KeyspaceName().(*parser.KeyspaceNameContext).Identifier().(*parser.IdentifierContext))}
 }
 
-func (l *queryListener) EnterInsertStatement(ctx *parser.InsertStatementContext) {
+func (l *queryListener) EnterInsertStatement(_ *parser.InsertStatementContext) {
 	// TODO: Check is idempotent
 }
 
-func (l *queryListener) EnterUpdateStatement(ctx *parser.UpdateStatementContext) {
+func (l *queryListener) EnterUpdateStatement(_ *parser.UpdateStatementContext) {
 	// TODO: Check is idempotent
 }
 
-func (l *queryListener) EnterDeleteStatement(ctx *parser.DeleteStatementContext) {
+func (l *queryListener) EnterDeleteStatement(_ *parser.DeleteStatementContext) {
 	// TODO: Check is idempotent
 }
 

@@ -522,7 +522,7 @@ func (c *client) handleSelector(selector interface{}, values map[string]message.
 		}, nil
 	case *idSelector:
 		if column = findColumnMetadata(columns, s.name); column != nil {
-			return c.columnValue(c.proxy.localRow, column.Name, table), column, nil
+			return c.columnValue(values, column.Name, table), column, nil
 		} else {
 			return nil, nil, fmt.Errorf("invalid column %s", s.name)
 		}
@@ -545,7 +545,6 @@ func (c *client) send(hdr *frame.Header, msg message.Message) {
 	}))
 }
 
-func (c *client) Closing(err error) {
-	_ = err
+func (c *client) Closing(_ error) {
 	c.proxy.schemaEventClients.Delete(c.id)
 }

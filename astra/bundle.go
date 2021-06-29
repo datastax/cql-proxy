@@ -20,6 +20,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"runtime"
 )
@@ -95,7 +96,9 @@ func extract(path string) (map[string][]byte, error) {
 		return nil, err
 	}
 
-	defer reader.Close()
+	defer func(reader *zip.ReadCloser) {
+		_ = reader.Close()
+	}(reader)
 
 	contents := make(map[string][]byte)
 
@@ -124,6 +127,8 @@ func loadBytes(file *zip.File) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func(r io.ReadCloser) {
+		_ = r.Close()
+	}(r)
 	return ioutil.ReadAll(r)
 }
