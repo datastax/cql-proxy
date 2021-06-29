@@ -1,3 +1,5 @@
+// Originally from fasthttp (w/ modifications): https://github.com/valyala/fasthttp/blob/v1.27.0/workerpool.go
+
 // The MIT License (MIT)
 //
 // Copyright (c) 2015-present Aliaksandr Valialkin, VertaMedia, Kirill Danshin, Erik Dubbelboer, FastHTTP Authors
