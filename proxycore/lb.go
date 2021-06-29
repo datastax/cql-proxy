@@ -26,19 +26,19 @@ type roundRobinLoadBalancer struct {
 	mu    *sync.Mutex
 }
 
-func (l *roundRobinLoadBalancer) OnEvent(event *ClusterEvent) {
+func (l *roundRobinLoadBalancer) OnEvent(event interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	switch event.typ {
-	case ClusterEventBootstrap:
-		l.hosts.Store(event.hosts)
-	case ClusterEventAdded:
-		l.hosts.Store(append(l.copy(), event.host))
-	case ClusterEventRemoved:
+	switch evt := event.(type) {
+	case *BootstrapEvent:
+		l.hosts.Store(evt.Hosts)
+	case *AddEvent:
+		l.hosts.Store(append(l.copy(), evt.Host))
+	case *RemoveEvent:
 		cpy := l.copy()
 		for i, h := range cpy {
-			if h.Endpoint().Key() == event.host.Endpoint().Key() {
+			if h.Endpoint().Key() == evt.Host.Key() {
 				l.hosts.Store(append(cpy[:i], cpy[i+1:]...))
 				break
 			}

@@ -30,6 +30,10 @@ func (h *Host) Endpoint() Endpoint {
 	return h.endpoint
 }
 
+func (h *Host) Key() string {
+	return h.endpoint.Key()
+}
+
 func (h *Host) String() string {
 	return h.endpoint.String()
 }

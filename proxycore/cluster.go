@@ -31,22 +31,30 @@ const (
 	RefreshTimeout = 5 * time.Second
 )
 
-type ClusterEventType int
+type AddEvent struct {
+	Host *Host
+}
 
-const (
-	ClusterEventBootstrap = iota
-	ClusterEventAdded
-	ClusterEventRemoved
-)
+type RemoveEvent struct {
+	Host *Host
+}
 
-type ClusterEvent struct {
-	typ   ClusterEventType
-	host  *Host
-	hosts []*Host
+type BootstrapEvent struct {
+	Hosts []*Host
+}
+
+type SchemaChangeEvent struct {
+	Message *message.SchemaChangeEvent
 }
 
 type ClusterListener interface {
-	OnEvent(event *ClusterEvent)
+	OnEvent(event interface{})
+}
+
+type ClusterListenerFunc func(event interface{})
+
+func (f ClusterListenerFunc) OnEvent(event interface{}) {
+	f(event)
 }
 
 type ClusterConfig struct {
@@ -184,26 +192,18 @@ func (c *Cluster) mergeHosts(hosts []*Host) {
 		if _, ok := existing[key]; ok {
 			delete(existing, key)
 		} else {
-			c.sendEvent(&ClusterEvent{
-				typ:   ClusterEventAdded,
-				host:  host,
-				hosts: nil,
-			})
+			c.sendEvent(&AddEvent{Host: host})
 		}
 	}
 
 	for _, host := range existing {
-		c.sendEvent(&ClusterEvent{
-			typ:   ClusterEventRemoved,
-			host:  host,
-			hosts: nil,
-		})
+		c.sendEvent(&RemoveEvent{Host: host})
 	}
 
 	c.hosts = hosts
 }
 
-func (c *Cluster) sendEvent(event *ClusterEvent) {
+func (c *Cluster) sendEvent(event interface{}) {
 	for _, listener := range c.listeners {
 		listener.OnEvent(event)
 	}
@@ -336,11 +336,7 @@ func (c *Cluster) stayConnected() {
 						continue
 					}
 				}
-				newListener.OnEvent(&ClusterEvent{
-					typ:   ClusterEventBootstrap,
-					host:  nil,
-					hosts: c.hosts,
-				})
+				newListener.OnEvent(&BootstrapEvent{Hosts: c.hosts})
 				c.listeners = append(c.listeners, newListener)
 			case <-refreshTimer.C:
 				c.refreshHosts()
@@ -356,6 +352,10 @@ func (c *Cluster) stayConnected() {
 					if !pendingRefresh && msg.ChangeType == primitive.StatusChangeTypeUp {
 						refreshTimer = time.NewTimer(RefreshWindow)
 						pendingRefresh = true
+					}
+				case *message.SchemaChangeEvent:
+					for _, listener := range c.listeners {
+						listener.OnEvent(&SchemaChangeEvent{Message: msg})
 					}
 				}
 			}

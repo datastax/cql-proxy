@@ -83,16 +83,16 @@ func (s *Session) Send(host *Host, request Request) error {
 	return conn.Send(request)
 }
 
-func (s *Session) OnEvent(event *ClusterEvent) {
-	switch event.typ {
-	case ClusterEventBootstrap:
+func (s *Session) OnEvent(event interface{}) {
+	switch evt := event.(type) {
+	case *BootstrapEvent:
 		go func() {
 			var wg sync.WaitGroup
 
-			count := len(event.hosts)
+			count := len(evt.Hosts)
 			wg.Add(count)
 
-			for _, host := range event.hosts {
+			for _, host := range evt.Hosts {
 				go func(host *Host) {
 					pool, err := connectPool(s.ctx, connPoolConfig{
 						Endpoint:      host.Endpoint(),
@@ -114,17 +114,17 @@ func (s *Session) OnEvent(event *ClusterEvent) {
 			close(s.connected)
 			close(s.failed)
 		}()
-	case ClusterEventAdded:
+	case *AddEvent:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
-		if pool, loaded := s.pools.LoadOrStore(event.host.Endpoint().Key(), connectPoolNoFail(s.ctx, connPoolConfig{
-			Endpoint:      event.host.Endpoint(),
+		if pool, loaded := s.pools.LoadOrStore(evt.Host.Key(), connectPoolNoFail(s.ctx, connPoolConfig{
+			Endpoint:      evt.Host.Endpoint(),
 			SessionConfig: s.config,
 		})); loaded {
 			p := pool.(connPool)
 			p.cancel()
 		}
-	case ClusterEventRemoved:
-		if pool, ok := s.pools.LoadAndDelete(event.host.Endpoint().Key()); ok {
+	case *RemoveEvent:
+		if pool, ok := s.pools.LoadAndDelete(evt.Host.Key()); ok {
 			p := pool.(connPool)
 			p.cancel()
 		}

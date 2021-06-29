@@ -30,6 +30,8 @@ const (
 	MaxStreams = 2048
 )
 
+var allEvents = []primitive.EventType{primitive.EventTypeSchemaChange, primitive.EventTypeTopologyChange, primitive.EventTypeStatusChange}
+
 type Request interface {
 	Frame() interface{}
 	OnError(err error)
@@ -80,12 +82,19 @@ func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVe
 
 		switch msg := response.Body.Message.(type) {
 		case *message.Ready:
+			if c.eventHandler != nil {
+				return version, c.registerForEvents(ctx, version)
+			}
 			return version, nil
 		case *message.Authenticate:
 			if auth == nil {
 				return version, AuthExpected
 			}
-			return version, c.authInitialResponse(ctx, version, auth, msg)
+			err = c.authInitialResponse(ctx, version, auth, msg)
+			if err == nil && c.eventHandler != nil {
+				return version, c.registerForEvents(ctx, version)
+			}
+			return version, err
 		case message.Error:
 			if pe, ok := msg.(*message.ProtocolError); ok {
 				if strings.Contains(pe.ErrorMessage, "Invalid or unsupported protocol version") {
@@ -109,6 +118,25 @@ func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVe
 				Expected: []string{"READY", "AUTHENTICATE"},
 				Received: response.Body.String(),
 			}
+		}
+	}
+}
+
+func (c *ClientConn) registerForEvents(ctx context.Context, version primitive.ProtocolVersion) error {
+	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Register{EventTypes: allEvents}))
+	if err != nil {
+		return err
+	}
+
+	switch msg := response.Body.Message.(type) {
+	case *message.Ready:
+		return nil
+	case message.Error:
+		return &CqlError{Message: msg}
+	default:
+		return &UnexpectedResponse{
+			Expected: []string{"READY"},
+			Received: response.Body.String(),
 		}
 	}
 }

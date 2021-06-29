@@ -210,3 +210,7 @@ func (c *Conn) IsClosed() chan struct{} {
 func (c *Conn) LocalAddr() net.Addr {
 	return c.conn.LocalAddr()
 }
+
+func (c *Conn) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}

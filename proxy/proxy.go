@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 )
 
 // TODO:
@@ -49,7 +50,6 @@ import (
 //   - Example: https://github.com/mpenick/cql-proxy/blob/main/src/parse.h
 // * Pass through other query types, raw
 
-// * Handle lazy USE keyspace
 // * Retry connect pool on UP events?
 // * Share connect pool DOWN events with Cluster (control connection)?
 // * Handle mixed protocol versions e.g. client = V3, server = V4?
@@ -57,10 +57,6 @@ import (
 // * Handle endpoint resolver refresh during total outage
 // * Handle critical errors when connecting a new session/connection pool
 // * Automatic retries when a query is idempotent
-
-const (
-	maxPending = 1024
-)
 
 type Config struct {
 	Version         primitive.ProtocolVersion
@@ -72,25 +68,50 @@ type Config struct {
 }
 
 type Proxy struct {
-	ctx      context.Context
-	config   Config
-	logger   *zap.Logger
-	listener net.Listener
-	cluster  *proxycore.Cluster
-	sessions sync.Map
-	sessMu   *sync.Mutex
-	wp       *workerPool
-	lb       proxycore.LoadBalancer
-	localRow map[string]message.Column
+	ctx                context.Context
+	config             Config
+	logger             *zap.Logger
+	listener           net.Listener
+	cluster            *proxycore.Cluster
+	sessions           sync.Map
+	sessMu             *sync.Mutex
+	schemaEventClients sync.Map
+	clientIdGen        uint64
+	wp                 *workerPool
+	lb                 proxycore.LoadBalancer
+	localRow           map[string]message.Column
+}
+
+func (p *Proxy) OnEvent(event interface{}) {
+	switch evt := event.(type) {
+	case *proxycore.SchemaChangeEvent:
+		frm := frame.NewFrame(p.cluster.NegotiatedVersion, -1, evt.Message)
+		p.schemaEventClients.Range(func(key, value interface{}) bool {
+			cl := value.(*client)
+			err := cl.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
+				return codec.EncodeFrame(frm, writer)
+			}))
+			cl.conn.LocalAddr()
+			if err != nil {
+				p.logger.Error("unable to send schema change event",
+					zap.Stringer("client", cl.conn.RemoteAddr()),
+					zap.Uint64("id", cl.id),
+					zap.Error(err))
+				_ = cl.conn.Close()
+			}
+			return true
+		})
+	}
 }
 
 func NewProxy(ctx context.Context, config Config) *Proxy {
 	return &Proxy{
-		ctx:      ctx,
-		config:   config,
-		logger:   proxycore.GetOrCreateNopLogger(config.Logger),
-		sessions: sync.Map{},
-		sessMu:   &sync.Mutex{},
+		ctx:                ctx,
+		config:             config,
+		logger:             proxycore.GetOrCreateNopLogger(config.Logger),
+		sessions:           sync.Map{},
+		sessMu:             &sync.Mutex{},
+		schemaEventClients: sync.Map{},
 	}
 }
 
@@ -114,6 +135,11 @@ func (p *Proxy) Listen(address string) error {
 
 	if err != nil {
 		return fmt.Errorf("unable to connect to cluster %w", err)
+	}
+
+	err = p.cluster.Listen(p)
+	if err != nil {
+		return fmt.Errorf("unable to register to listen for schema events %w", err)
 	}
 
 	p.buildLocalRow()
@@ -167,6 +193,7 @@ func (p *Proxy) handle(conn net.Conn) {
 	cl := &client{
 		ctx:                 p.ctx,
 		proxy:               p,
+		id:                  atomic.AddUint64(&p.clientIdGen, 1),
 		preparedSystemQuery: make(map[[16]byte]interface{}),
 		preparedIdempotence: make(map[[16]byte]bool),
 	}
@@ -231,6 +258,7 @@ type client struct {
 	proxy               *Proxy
 	conn                *proxycore.Conn
 	keyspace            string
+	id                  uint64
 	preparedSystemQuery map[[16]byte]interface{}
 	preparedIdempotence map[[16]byte]bool
 }
@@ -261,6 +289,11 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Startup:
 		c.send(raw.Header, &message.Ready{})
 	case *message.Register:
+		for _, t := range msg.EventTypes {
+			if t == primitive.EventTypeSchemaChange {
+				c.proxy.schemaEventClients.Store(c.id, c)
+			}
+		}
 		c.send(raw.Header, &message.Ready{}) // TODO: Handle schema events
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
@@ -498,4 +531,5 @@ func (c *client) send(hdr *frame.Header, msg message.Message) {
 
 func (c *client) Closing(err error) {
 	_ = err
+	c.proxy.schemaEventClients.Delete(c.id)
 }
