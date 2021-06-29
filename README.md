@@ -2,7 +2,7 @@
 
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
-## Getting Started:
+## Getting Started
 
 ```
 go build
