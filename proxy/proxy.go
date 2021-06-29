@@ -32,46 +32,6 @@ import (
 	"sync/atomic"
 )
 
-// TODO:
-
-// # Frame parsing
-// * Learn: github.com/datastax/go-cassandra-native-protocol
-// # Result set construction and parsing
-
-// # Backend
-// * Proxy-to-server CQL connection
-//   - Read/Write requests
-//   - Retry when down until removed (exponential backoff)
-//   - Heartbeat
-//   - Stream management
-// * Control connection
-//   - Query system.local/system.peers
-//   - ADD/REMOVE/UP and schema events (channels)
-//   - Contact point resolver
-// * Sessions
-//   - Pool connections and connection lifecycle
-//   - Simple load-balancing (round-robin to start), concurrency!
-//   - Keyspace state (USE <keyspace> problem, intercept and create new sessions)
-// * Cloud
-//   - Metadata service contact point resolver
-//   - Endpoint type (with cluster DNS and SNI name, TLS config?)
-//   - Make sure DNS round-robins A-records
-
-// # Frontend
-// * Client-to-proxy CQL connection, worker pool, httpfast
-// * Fast CQL parser (limited recursive descent parser?)
-//   - Intercept `system.local` and `system.peers` queries and USE <keyspace>
-//   - Example: https://github.com/mpenick/cql-proxy/blob/main/src/parse.h
-// * Pass through other query types, raw
-
-// * Retry connect pool on UP events?
-// * Share connect pool DOWN events with Cluster (control connection)?
-// * Handle mixed protocol versions e.g. client = V3, server = V4?
-// * Handle schema version and schema events. Need to pause for schema changes.
-// * Handle endpoint resolver refresh during total outage
-// * Handle critical errors when connecting a new session/connection pool
-// * Automatic retries when a query is idempotent
-
 type Config struct {
 	Version         primitive.ProtocolVersion
 	Auth            proxycore.Authenticator
