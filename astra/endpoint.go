@@ -10,32 +10,36 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type astraResolver struct {
-	host   string
-	bundle *Bundle
+	sniProxyAddress string
+	bundle          *Bundle
+	mu              *sync.Mutex
 }
 
 type astraEndpoint struct {
 	addr      string
+	key       string
 	tlsConfig *tls.Config
 }
 
 func NewResolver(bundle *Bundle) proxycore.EndpointResolver {
 	return &astraResolver{
 		bundle: bundle,
+		mu:     &sync.Mutex{},
 	}
 }
 
-func (a *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
+func (r *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
 	var metadata *astraMetadata
 
-	url := fmt.Sprintf("https://%s:%d/metadata", a.bundle.Host(), a.bundle.Port())
+	url := fmt.Sprintf("https://%s:%d/metadata", r.bundle.Host(), r.bundle.Port())
 	httpsClient := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: a.bundle.TLSConfig(),
+			TLSClientConfig: r.bundle.TLSConfig(),
 		},
 	}
 	response, err := httpsClient.Get(url)
@@ -53,22 +57,34 @@ func (a *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
 		return nil, err
 	}
 
-	a.host = metadata.ContactInfo.SniProxyAddress
+	r.mu.Lock()
+	r.sniProxyAddress = metadata.ContactInfo.SniProxyAddress
+	r.mu.Unlock()
 
 	var endpoints []proxycore.Endpoint
 	for _, cp := range metadata.ContactInfo.ContactPoints {
 		endpoints = append(endpoints, &astraEndpoint{
 			addr:      metadata.ContactInfo.SniProxyAddress,
-			tlsConfig: copyTLSConfig(a.bundle, cp),
+			tlsConfig: copyTLSConfig(r.bundle, cp),
 		})
 	}
 
 	return endpoints, nil
 }
 
-func (a *astraResolver) Create(row proxycore.Row) (proxycore.Endpoint, error) {
-	if len(a.host) != 0 {
-		return nil, errors.New("host never resolved")
+func (r *astraResolver) getSNIProxyAddress() (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.sniProxyAddress) == 0 {
+		return "", errors.New("SNI proxy address never resolved")
+	}
+	return r.sniProxyAddress, nil
+}
+
+func (r *astraResolver) NewEndpoint(row proxycore.Row) (proxycore.Endpoint, error) {
+	sniProxyAddress, err := r.getSNIProxyAddress()
+	if err != nil {
+		return nil, err
 	}
 	hostId, err := row.ByName("host_id")
 	if err != nil {
@@ -76,8 +92,9 @@ func (a *astraResolver) Create(row proxycore.Row) (proxycore.Endpoint, error) {
 	}
 	uuid := hostId.(primitive.UUID)
 	return &astraEndpoint{
-		addr:      a.host,
-		tlsConfig: copyTLSConfig(a.bundle, uuid.String()),
+		addr:      sniProxyAddress,
+		key:       fmt.Sprintf("%s:%v", sniProxyAddress, uuid),
+		tlsConfig: copyTLSConfig(r.bundle, uuid.String()),
 	}, nil
 }
 
@@ -86,7 +103,7 @@ func (a *astraEndpoint) String() string {
 }
 
 func (a *astraEndpoint) Key() string {
-	return fmt.Sprintf("%s:%s", a.addr, a.tlsConfig.ServerName) // TODO: cache!!!
+	return a.key
 }
 
 func (a *astraEndpoint) Addr() string {

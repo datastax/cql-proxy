@@ -68,16 +68,17 @@ type Config struct {
 	Resolver        proxycore.EndpointResolver
 	ReconnectPolicy proxycore.ReconnectPolicy
 	NumConns        int
+	Logger          *zap.Logger
 }
 
 type Proxy struct {
 	ctx      context.Context
 	config   Config
+	logger   *zap.Logger
 	listener net.Listener
 	cluster  *proxycore.Cluster
 	sessions sync.Map
 	mu       *sync.Mutex
-	logger   *zap.Logger
 	wp       *workerPool
 	lb       proxycore.LoadBalancer
 	localRow map[string]message.Column
@@ -87,6 +88,7 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 	return &Proxy{
 		ctx:      ctx,
 		config:   config,
+		logger:   proxycore.GetOrCreateNopLogger(config.Logger),
 		sessions: sync.Map{},
 		mu:       &sync.Mutex{},
 	}
@@ -102,10 +104,6 @@ func (p *Proxy) ListenAndServe(address string) error {
 
 func (p *Proxy) Listen(address string) error {
 	var err error
-	p.logger, err = zap.NewProduction()
-	if err != nil {
-		return fmt.Errorf("unable to create logger %w", err)
-	}
 
 	p.cluster, err = proxycore.ConnectCluster(p.ctx, proxycore.ClusterConfig{
 		Version:         p.config.Version,

@@ -7,6 +7,7 @@ import (
 	"cql-proxy/proxycore"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 	"io"
 	"log"
 	"net"
@@ -286,12 +287,18 @@ func main() {
 
 	resolver := astra.NewResolver(bundle)
 
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatalf("unable to create logger")
+	}
+
 	p := proxy.NewProxy(ctx, proxy.Config{
 		Version:         primitive.ProtocolVersion4,
 		Resolver:        resolver,
 		ReconnectPolicy: proxycore.NewReconnectPolicy(),
 		NumConns:        1,
 		Auth:            proxycore.NewDefaultAuth("HYhtHNEYMKOFpFGyOsAYyHSK", "rEPtSneDWH3Of8HCMQD1d8uANl5.T5NavwIvJLLUivOJsA7fyl9z_4uTNCmHMkgiWcPTz2nCI5,p+3X41hEpdj5fDz,tOa,vjEMmd0K,2wllbPn_dqRZPox5TbP1H,QE"),
+		Logger:          logger,
 	})
 
 	err = p.ListenAndServe("127.0.0.1:9042")

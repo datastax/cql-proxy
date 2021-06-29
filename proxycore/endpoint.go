@@ -57,7 +57,7 @@ func (e *defaultEndpoint) TlsConfig() *tls.Config {
 
 type EndpointResolver interface {
 	Resolve() ([]Endpoint, error)
-	Create(row Row) (Endpoint, error)
+	NewEndpoint(row Row) (Endpoint, error)
 }
 
 type defaultEndpointResolver struct {
@@ -76,16 +76,16 @@ func NewResolverWithDefaultPort(contactPoints []string, defaultPort int) Endpoin
 	}
 }
 
-func (d *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
+func (r *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
 	var endpoints []Endpoint
-	for _, cp := range d.contactPoints {
+	for _, cp := range r.contactPoints {
 		parts := strings.Split(cp, ":")
 		addrs, err := net.LookupHost(parts[0])
 		if err != nil {
 			return nil, fmt.Errorf("unable to resolve contact point %s: %v", cp, err)
 		}
 
-		port := d.defaultPort
+		port := r.defaultPort
 		if len(parts) > 1 {
 			port, err = strconv.Atoi(parts[1])
 			if err != nil {
@@ -101,7 +101,7 @@ func (d *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
 	return endpoints, nil
 }
 
-func (d *defaultEndpointResolver) Create(row Row) (Endpoint, error) {
+func (r *defaultEndpointResolver) NewEndpoint(row Row) (Endpoint, error) {
 	peer, err := row.ByName("peer")
 	if err != nil && !errors.Is(err, ColumnNameNotFound) {
 		return nil, err
@@ -118,6 +118,6 @@ func (d *defaultEndpointResolver) Create(row Row) (Endpoint, error) {
 	}
 
 	return &defaultEndpoint{
-		addr: fmt.Sprintf("%s:%d", addr, d.defaultPort),
+		addr: fmt.Sprintf("%s:%d", addr, r.defaultPort),
 	}, nil
 }

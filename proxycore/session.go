@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 	"math"
 	"sync"
 	"time"
@@ -34,20 +35,23 @@ type SessionConfig struct {
 	Keyspace        string
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
+	Logger          *zap.Logger
 }
 
 type Session struct {
 	ctx       context.Context
-	connected chan struct{}
 	config    SessionConfig
+	logger    *zap.Logger
+	connected chan struct{}
 	pools     sync.Map
 }
 
 func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
 	session := &Session{
 		ctx:       ctx,
-		connected: make(chan struct{}),
 		config:    config,
+		logger:    GetOrCreateNopLogger(config.Logger),
+		connected: make(chan struct{}),
 		pools:     sync.Map{},
 	}
 

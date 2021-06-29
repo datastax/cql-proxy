@@ -21,7 +21,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"log"
+	"go.uber.org/zap"
 	"time"
 )
 
@@ -54,6 +54,7 @@ type ClusterConfig struct {
 	Auth            Authenticator
 	Resolver        EndpointResolver
 	ReconnectPolicy ReconnectPolicy
+	Logger          *zap.Logger
 }
 
 type ClusterInfo struct {
@@ -65,6 +66,7 @@ type ClusterInfo struct {
 type Cluster struct {
 	ctx              context.Context
 	config           ClusterConfig
+	logger           *zap.Logger
 	controlConn      *ClientConn
 	hosts            []*Host
 	currentHostIndex int
@@ -80,6 +82,7 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 	cluster := &Cluster{
 		ctx:              ctx,
 		config:           config,
+		logger:           GetOrCreateNopLogger(config.Logger),
 		controlConn:      nil,
 		hosts:            nil,
 		currentHostIndex: 0,
@@ -99,6 +102,9 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 
 	for _, endpoint := range endpoints {
 		err = cluster.connect(ctx, endpoint, true)
+		if err == nil {
+			break
+		}
 	}
 
 	if err != nil {
@@ -257,7 +263,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 	for i := 0; i < rs.RowCount(); i++ {
 		row := rs.Row(i)
-		if endpoint, err := c.config.Resolver.Create(row); err == nil {
+		if endpoint, err := c.config.Resolver.NewEndpoint(row); err == nil {
 			if host, err := NewHostFromRow(endpoint, row); err == nil {
 				hosts = append(hosts, host)
 			}
@@ -273,7 +279,7 @@ func (c *Cluster) reconnect() {
 	defer cancel()
 	err := c.connect(ctx, host.Endpoint(), false)
 	if err != nil {
-		log.Printf("error reconnecting to host %v: %v", host, err)
+		c.logger.Error("error reconnecting to host", zap.String("host", host.String()), zap.Error(err))
 	}
 }
 
@@ -282,7 +288,7 @@ func (c *Cluster) refreshHosts() {
 	defer cancel()
 	hosts, _, err := c.queryHosts(ctx, c.controlConn, c.NegotiatedVersion)
 	if err != nil {
-		log.Printf("unable to refresh hosts: %v", err)
+		c.logger.Error("unable to refresh hosts", zap.Error(err))
 		_ = c.controlConn.Close()
 	} else {
 		c.mergeHosts(hosts)
