@@ -182,6 +182,8 @@ func (p *Proxy) Listen(address string) error {
 		return err
 	}
 
+	p.logger.Info("proxy is listening", zap.Stringer("address", p.listener.Addr()))
+
 	p.wp = &workerPool{
 		WorkerFunc:      serveRequest,
 		MaxWorkersCount: 2048, // TODO: Max count?
