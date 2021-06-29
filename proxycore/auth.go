@@ -19,6 +19,12 @@ import (
 	"fmt"
 )
 
+type Authenticator interface {
+	InitialResponse(authenticator string) ([]byte, error)
+	EvaluateChallenge(token []byte) ([]byte, error)
+	Success(token []byte) error
+}
+
 type defaultAuth struct {
 	authId   string
 	username string

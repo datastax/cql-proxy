@@ -49,12 +49,6 @@ type ClientConn struct {
 	eventHandler EventHandler
 }
 
-type Authenticator interface {
-	InitialResponse(authenticator string) ([]byte, error)
-	EvaluateChallenge(token []byte) ([]byte, error)
-	Success(token []byte) error
-}
-
 func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) {
 	return ConnectClientWithEvents(ctx, endpoint, nil)
 }
