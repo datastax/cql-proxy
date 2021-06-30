@@ -17,8 +17,15 @@ package proxy
 import (
 	parser "cql-proxy/proxycore/antlr"
 	"errors"
+	"fmt"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
+	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/message"
 	"strings"
+)
+
+const (
+	countValueName = "count(*)"
 )
 
 var systemTables = []string{"local", "peers", "peers_v2"}
@@ -51,6 +58,8 @@ type useStatement struct {
 	keyspace string
 }
 
+type valueLookupFunc func(name string) (value message.Column, err error)
+
 func parse(keyspace string, query string) (handled bool, idempotent bool, stmt interface{}) {
 	is := antlr.NewInputStream(query)
 	lexer := parser.NewSimplifiedCqlLexer(is)
@@ -59,6 +68,102 @@ func parse(keyspace string, query string) (handled bool, idempotent bool, stmt i
 	listener := &queryListener{keyspace: keyspace}
 	antlr.ParseTreeWalkerDefault.Walk(listener, cqlParser.CqlStatement())
 	return listener.handled, listener.idempotent, listener.stmt
+}
+
+func filterValues(stmt *selectStatement, columns []*message.ColumnMetadata, valueFunc valueLookupFunc) (filtered []message.Column, err error) {
+	if _, ok := stmt.selectors[0].(*starSelector); ok {
+		for _, column := range columns {
+			var val message.Column
+			val, err = valueFunc(column.Name)
+			if err != nil {
+				return nil, err
+			}
+			filtered = append(filtered, val)
+		}
+	} else {
+		for _, selector := range stmt.selectors {
+			var val message.Column
+			val, err = valueFromSelector(selector, valueFunc)
+			if err != nil {
+				return nil, err
+			}
+			filtered = append(filtered, val)
+		}
+	}
+	return filtered, nil
+}
+
+func valueFromSelector(selector interface{}, valueFunc valueLookupFunc) (val message.Column, err error) {
+	switch s := selector.(type) {
+	case *countStarSelector:
+		return valueFunc(countValueName)
+	case *idSelector:
+		return valueFunc(s.name)
+	case *aliasSelector:
+		return valueFromSelector(s.selector, valueFunc)
+	default:
+		return nil, errors.New("unhandled selector type")
+	}
+}
+
+func filterColumns(stmt *selectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
+	if _, ok := stmt.selectors[0].(*starSelector); ok {
+		filtered = columns
+	} else {
+		for _, selector := range stmt.selectors {
+			var column *message.ColumnMetadata
+			column, err = columnFromSelector(selector, columns, stmt.table)
+			if err != nil {
+				return nil, err
+			}
+			filtered = append(filtered, column)
+		}
+	}
+	return filtered, nil
+}
+
+func isCountSelector(selector interface{}) bool {
+	_, ok := selector.(*countStarSelector)
+	return ok
+}
+
+func isCountStarQuery(stmt *selectStatement) bool {
+	if len(stmt.selectors) == 1 {
+		if isCountSelector(stmt.selectors[0]) {
+			return true
+		} else if alias, ok := stmt.selectors[0].(*aliasSelector); ok {
+			return isCountSelector(alias.selector)
+		}
+	}
+	return false
+}
+
+func columnFromSelector(selector interface{}, columns []*message.ColumnMetadata, table string) (column *message.ColumnMetadata, err error) {
+	switch s := selector.(type) {
+	case *countStarSelector:
+		return &message.ColumnMetadata{
+			Keyspace: "system",
+			Table:    table,
+			Name:     s.name,
+			Type:     datatype.Int,
+		}, nil
+	case *idSelector:
+		if column = findColumnMetadata(columns, s.name); column != nil {
+			return column, nil
+		} else {
+			return nil, fmt.Errorf("invalid column %s", s.name)
+		}
+	case *aliasSelector:
+		column, err = columnFromSelector(s.selector, columns, table)
+		if err != nil {
+			return nil, err
+		}
+		alias := *column // Make a copy so we can modify the name
+		alias.Name = s.alias
+		return &alias, nil
+	default:
+		return nil, errors.New("unhandled selector type")
+	}
 }
 
 type queryListener struct {

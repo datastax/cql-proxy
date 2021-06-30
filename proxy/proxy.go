@@ -32,6 +32,11 @@ import (
 	"sync/atomic"
 )
 
+var (
+	encodedOneValue, _  = proxycore.EncodeType(datatype.Int, primitive.ProtocolVersion4, 1)
+	encodedZeroValue, _ = proxycore.EncodeType(datatype.Int, primitive.ProtocolVersion4, 0)
+)
+
 type Config struct {
 	Version         primitive.ProtocolVersion
 	Auth            proxycore.Authenticator
@@ -53,7 +58,7 @@ type Proxy struct {
 	clientIdGen        uint64
 	wp                 *workerPool
 	lb                 proxycore.LoadBalancer
-	localRow           map[string]message.Column
+	systemLocalValues  map[string]message.Column
 }
 
 func (p *Proxy) OnEvent(event interface{}) {
@@ -206,7 +211,7 @@ var (
 )
 
 func (p *Proxy) buildLocalRow() {
-	p.localRow = map[string]message.Column{
+	p.systemLocalValues = map[string]message.Column{
 		"key":                     p.encodeTypeFatal(datatype.Varchar, "local"),
 		"data_center":             p.encodeTypeFatal(datatype.Varchar, "dc1"),
 		"rack":                    p.encodeTypeFatal(datatype.Varchar, "rack1"),
@@ -318,7 +323,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		switch s := stmt.(type) {
 		case *selectStatement:
 			if s.table == "local" {
-				if _, columns, err := c.handleSystemLocalOrPeersQuery(s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+				if columns, err := filterColumns(s, systemLocalColumns); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -333,7 +338,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 				}
 				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
 			} else if s.table == "peers" {
-				if _, columns, err := c.handleSystemLocalOrPeersQuery(s, nil, systemPeersColumns, 0); err != nil {
+				if columns, err := filterColumns(s, systemPeersColumns); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -371,7 +376,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
 	copy(hash[:], msg.queryId)
 
 	if stmt, ok := c.preparedSystemQuery[hash]; ok {
-		c.handleSystemQuery(raw.Header, stmt)
+		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
 		c.execute(raw, c.preparedIdempotence[hash])
 	}
@@ -383,7 +388,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 
 	if handled {
-		c.handleSystemQuery(raw.Header, stmt)
+		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
 		c.execute(raw, idempotent)
 	}
@@ -403,11 +408,32 @@ func (c *client) columnValue(values map[string]message.Column, name string, tabl
 	return val
 }
 
-func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
+func (c *client) filterSystemLocalValues(stmt *selectStatement) (row []message.Column, err error) {
+	return filterValues(stmt, systemLocalColumns, func(name string) (value message.Column, err error) {
+		if val, ok := c.proxy.systemLocalValues[name]; ok {
+			return val, nil
+		} else if name == "rpc_address" {
+			switch addr := c.conn.LocalAddr().(type) {
+			case *net.TCPAddr:
+				return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, addr.IP)
+			default:
+				return nil, errors.New("unhandled local address type")
+			}
+		} else if name == countValueName {
+			return encodedOneValue, nil
+		} else {
+			return nil, fmt.Errorf("no column value for %s", name)
+		}
+	})
+}
+
+func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 	switch s := stmt.(type) {
 	case *selectStatement:
 		if s.table == "local" {
-			if row, columns, err := c.handleSystemLocalOrPeersQuery(s, c.proxy.localRow, systemLocalColumns, 1); err != nil {
+			if columns, err := filterColumns(s, systemLocalColumns); err != nil {
+				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+			} else if row, err := c.filterSystemLocalValues(s); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				c.send(hdr, &message.RowsResult{
@@ -419,14 +445,19 @@ func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
 				})
 			}
 		} else if s.table == "peers" {
-			if _, columns, err := c.handleSystemLocalOrPeersQuery(s, nil, systemPeersColumns, 0); err != nil {
+			if columns, err := filterColumns(s, systemPeersColumns); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
+				var data []message.Row
+				if isCountStarQuery(s) { // COUNT(*) always returns a value, even when there are no rows
+					data = []message.Row{{encodedZeroValue}}
+				}
 				c.send(hdr, &message.RowsResult{
 					Metadata: &message.RowsMetadata{
 						ColumnCount: int32(len(columns)),
 						Columns:     columns,
 					},
+					Data: data,
 				})
 			}
 		} else {
@@ -443,59 +474,6 @@ func (c *client) handleSystemQuery(hdr *frame.Header, stmt interface{}) {
 		c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
 	default:
 		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
-	}
-}
-
-func (c *client) handleSystemLocalOrPeersQuery(stmt *selectStatement, values map[string]message.Column,
-	systemColumns []*message.ColumnMetadata, count int) (row message.Row, columns []*message.ColumnMetadata, err error) {
-	if _, ok := stmt.selectors[0].(*starSelector); ok {
-		for _, column := range systemColumns {
-			val := c.columnValue(values, column.Name, stmt.table)
-			row = append(row, val)
-		}
-		columns = systemColumns
-	} else {
-		for _, selector := range stmt.selectors {
-			val, column, err := c.handleSelector(selector, values, systemColumns, count, stmt.table)
-			if err != nil {
-				return nil, nil, err
-			}
-			row = append(row, val)
-			columns = append(columns, column)
-		}
-	}
-
-	return row, columns, err
-
-}
-
-func (c *client) handleSelector(selector interface{}, values map[string]message.Column,
-	columns []*message.ColumnMetadata, count int, table string) (val message.Column, column *message.ColumnMetadata, err error) {
-	switch s := selector.(type) {
-	case *countStarSelector:
-		val, _ = proxycore.EncodeType(datatype.Int, c.proxy.cluster.NegotiatedVersion, count)
-		return val, &message.ColumnMetadata{
-			Keyspace: "system",
-			Table:    table,
-			Name:     s.name,
-			Type:     datatype.Int,
-		}, nil
-	case *idSelector:
-		if column = findColumnMetadata(columns, s.name); column != nil {
-			return c.columnValue(values, column.Name, table), column, nil
-		} else {
-			return nil, nil, fmt.Errorf("invalid column %s", s.name)
-		}
-	case *aliasSelector:
-		val, column, err = c.handleSelector(s, values, columns, count, table)
-		if err != nil {
-			return nil, nil, err
-		}
-		alias := *column
-		alias.Name = s.alias
-		return val, &alias, nil
-	default:
-		return nil, nil, errors.New("unhandled selector type")
 	}
 }
 
