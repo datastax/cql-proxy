@@ -67,7 +67,7 @@ func main() {
 	var auth proxycore.Authenticator
 
 	if len(cli.Username) > 0 || len(cli.Password) > 0 {
-		auth = proxycore.NewDefaultAuth(cli.Username, cli.Password)
+		auth = proxycore.NewPasswordAuth(cli.Username, cli.Password)
 	}
 
 	p := proxy.NewProxy(ctx, proxy.Config{

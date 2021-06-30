@@ -25,13 +25,13 @@ type Authenticator interface {
 	Success(token []byte) error
 }
 
-type defaultAuth struct {
+type passwordAuth struct {
 	authId   string
 	username string
 	password string
 }
 
-func (d *defaultAuth) InitialResponse(authenticator string) ([]byte, error) {
+func (d *passwordAuth) InitialResponse(authenticator string) ([]byte, error) {
 	switch authenticator {
 	case "com.datastax.bdp.cassandra.auth.DseAuthenticator":
 		return []byte("PLAIN"), nil
@@ -41,14 +41,14 @@ func (d *defaultAuth) InitialResponse(authenticator string) ([]byte, error) {
 	return nil, fmt.Errorf("unknown authenticator: %v", authenticator)
 }
 
-func (d *defaultAuth) EvaluateChallenge(token []byte) ([]byte, error) {
+func (d *passwordAuth) EvaluateChallenge(token []byte) ([]byte, error) {
 	if token == nil || bytes.Compare(token, []byte("PLAIN-START")) != 0 {
 		return nil, fmt.Errorf("incorrect SASL challenge from server, expecting PLAIN-START, got: %v", string(token))
 	}
 	return d.makeToken(), nil
 }
 
-func (d *defaultAuth) makeToken() []byte {
+func (d *passwordAuth) makeToken() []byte {
 	token := bytes.NewBuffer(make([]byte, 0, len(d.authId)+len(d.username)+len(d.password)+2))
 	token.WriteString(d.authId)
 	token.WriteByte(0)
@@ -58,12 +58,12 @@ func (d *defaultAuth) makeToken() []byte {
 	return token.Bytes()
 }
 
-func (d *defaultAuth) Success(_ []byte) error {
+func (d *passwordAuth) Success(_ []byte) error {
 	return nil
 }
 
-func NewDefaultAuth(username string, password string) Authenticator {
-	return &defaultAuth{
+func NewPasswordAuth(username string, password string) Authenticator {
+	return &passwordAuth{
 		authId:   "",
 		username: username,
 		password: password,

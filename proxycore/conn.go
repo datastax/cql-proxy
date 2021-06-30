@@ -19,9 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"sync"
 )
@@ -62,24 +60,11 @@ func (s SenderFunc) Send(writer io.Writer) error {
 }
 
 func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, error) {
-	var addr string
-	if endpoint.IsResolved() {
-		addr = endpoint.Addr()
-	} else {
-		host, port, err := net.SplitHostPort(endpoint.Addr())
-		if err != nil {
-			return nil, fmt.Errorf("invalid address %v: %w", endpoint.Addr(), err)
-		}
-		addrs, err := net.LookupHost(host)
-		if err != nil {
-			return nil, err
-		}
-		addr = addrs[rand.Intn(len(addrs))]
-		if len(port) > 0 {
-			addr = net.JoinHostPort(addr, port)
-		}
-	}
 	var dialer net.Dialer
+	addr, err := LookupEndpoint(endpoint)
+	if err != nil {
+		return nil, err
+	}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
@@ -149,6 +134,13 @@ func (c *Conn) write() {
 			done = c.checkErr(err)
 		}
 	}
+}
+
+func (c *Conn) WriteBytes(b []byte) error {
+	return c.Write(SenderFunc(func(writer io.Writer) error {
+		_, err := writer.Write(b)
+		return err
+	}))
 }
 
 func (c *Conn) Write(sender Sender) error {

@@ -18,6 +18,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"strconv"
 )
@@ -117,4 +118,24 @@ func (r *defaultEndpointResolver) NewEndpoint(row Row) (Endpoint, error) {
 	return &defaultEndpoint{
 		addr: net.JoinHostPort(addr.String(), r.defaultPort),
 	}, nil
+}
+
+func LookupEndpoint(endpoint Endpoint) (string, error) {
+	if endpoint.IsResolved() {
+		return endpoint.Addr(), nil
+	} else {
+		host, port, err := net.SplitHostPort(endpoint.Addr())
+		if err != nil {
+			return "'", err
+		}
+		addrs, err := net.LookupHost(host)
+		if err != nil {
+			return "", err
+		}
+		addr := addrs[rand.Intn(len(addrs))]
+		if len(port) > 0 {
+			addr = net.JoinHostPort(addr, port)
+		}
+		return addr, nil
+	}
 }
