@@ -15,7 +15,7 @@
 package proxycore
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -33,7 +33,7 @@ var (
 
 const (
 	MaxMessages     = 1024
-	MaxCoalesceSize = 16 * 1024
+	MaxCoalesceSize = 16 * 1024 // TODO: What's a good value for this?
 )
 
 type Conn struct {
@@ -42,6 +42,7 @@ type Conn struct {
 	messages chan Sender
 	err      error
 	recv     Receiver
+	writer   *bufio.Writer
 	mu       *sync.Mutex
 }
 
@@ -101,6 +102,7 @@ func NewConn(conn net.Conn, recv Receiver) *Conn {
 	return &Conn{
 		conn:     conn,
 		recv:     recv,
+		writer:   bufio.NewWriterSize(conn, MaxCoalesceSize),
 		closed:   make(chan struct{}),
 		messages: make(chan Sender, MaxMessages),
 		mu:       &sync.Mutex{},
@@ -118,29 +120,20 @@ func (c *Conn) read() {
 		done = c.checkErr(c.recv.Receive(c.conn))
 	}
 	c.recv.Closing(c.Err())
-	//log.Println("reader closed")
 }
 
 func (c *Conn) write() {
 	done := false
-	writer := bytes.NewBuffer(make([]byte, 0))
-	senders := make([]Sender, 0)
 
-	for {
+	for !done {
 		select {
 		case sender := <-c.messages:
-			done = c.checkErr(sender.Send(writer))
-			if !done {
-				senders = append(senders, sender)
-			}
+			done = c.checkErr(sender.Send(c.writer))
 			coalescing := true
-			for coalescing && !done && writer.Len() < MaxCoalesceSize {
+			for coalescing && !done {
 				select {
 				case sender, coalescing = <-c.messages:
-					done = c.checkErr(sender.Send(writer))
-					if !done {
-						senders = append(senders, sender)
-					}
+					done = c.checkErr(sender.Send(c.writer))
 				case <-c.closed:
 					done = true
 				default:
@@ -151,16 +144,11 @@ func (c *Conn) write() {
 			done = true
 		}
 
-		_, err := c.conn.Write(writer.Bytes())
-		done = c.checkErr(err)
-		if done {
-			break
+		if !done { // Check to avoid resetting `done` to false
+			err := c.writer.Flush()
+			done = c.checkErr(err)
 		}
-		//log.Printf("wrote %d bytes, %d senders", n, len(senders))
-		senders = senders[:0]
-		writer.Reset()
 	}
-	//log.Println("writer closed")
 }
 
 func (c *Conn) Write(sender Sender) error {

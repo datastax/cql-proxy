@@ -275,7 +275,7 @@ func (c *client) Receive(reader io.Reader) error {
 				c.proxy.schemaEventClients.Store(c.id, c)
 			}
 		}
-		c.send(raw.Header, &message.Ready{}) // TODO: Handle schema events
+		c.send(raw.Header, &message.Ready{})
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
