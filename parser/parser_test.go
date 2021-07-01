@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package proxy
+package parser
 
 import (
 	"errors"
@@ -28,49 +28,49 @@ func TestParser(t *testing.T) {
 		idempotent bool
 		stmt       interface{}
 	}{
-		{"", "SELECT key, rpc_address AS address, count(*) FROM system.local", true, true, &selectStatement{
-			table: "local",
-			selectors: []interface{}{
-				&idSelector{name: "key"},
-				&aliasSelector{alias: "address", selector: &idSelector{name: "rpc_address"}},
-				&countStarSelector{name: "count(*)"},
+		{"", "SELECT key, rpc_address AS address, count(*) FROM system.local", true, true, &SelectStatement{
+			Table: "local",
+			Selectors: []interface{}{
+				&IDSelector{Name: "key"},
+				&AliasSelector{Alias: "address", Selector: &IDSelector{Name: "rpc_address"}},
+				&CountStarSelector{Name: "count(*)"},
 			},
 		}},
-		{"system", "SELECT count(*) FROM local", true, true, &selectStatement{
-			table: "local",
-			selectors: []interface{}{
-				&countStarSelector{name: "count(*)"},
+		{"system", "SELECT count(*) FROM local", true, true, &SelectStatement{
+			Table: "local",
+			Selectors: []interface{}{
+				&CountStarSelector{Name: "count(*)"},
 			},
 		}},
-		{"", "SELECT count(*) FROM system.peers", true, true, &selectStatement{
-			table: "peers",
-			selectors: []interface{}{
-				&countStarSelector{name: "count(*)"},
+		{"", "SELECT count(*) FROM system.peers", true, true, &SelectStatement{
+			Table: "peers",
+			Selectors: []interface{}{
+				&CountStarSelector{Name: "count(*)"},
 			},
 		}},
-		{"system", "SELECT count(*) FROM peers", true, true, &selectStatement{
-			table: "peers",
-			selectors: []interface{}{
-				&countStarSelector{name: "count(*)"},
+		{"system", "SELECT count(*) FROM peers", true, true, &SelectStatement{
+			Table: "peers",
+			Selectors: []interface{}{
+				&CountStarSelector{Name: "count(*)"},
 			},
 		}},
-		{"", "SELECT count(*) FROM system.peers_v2", true, true, &selectStatement{
-			table: "peers_v2",
-			selectors: []interface{}{
-				&countStarSelector{name: "count(*)"},
+		{"", "SELECT count(*) FROM system.peers_v2", true, true, &SelectStatement{
+			Table: "peers_v2",
+			Selectors: []interface{}{
+				&CountStarSelector{Name: "count(*)"},
 			},
 		}},
-		{"system", "SELECT count(*) FROM peers_v2", true, true, &selectStatement{
-			table: "peers_v2",
-			selectors: []interface{}{
-				&countStarSelector{name: "count(*)"},
+		{"system", "SELECT count(*) FROM peers_v2", true, true, &SelectStatement{
+			Table: "peers_v2",
+			Selectors: []interface{}{
+				&CountStarSelector{Name: "count(*)"},
 			},
 		}},
-		{"", "SELECT func(key) FROM system.local", true, true, &errorSelectStatement{
-			err: errors.New("unsupported select clause for system table"),
+		{"", "SELECT func(key) FROM system.local", true, true, &ErrorSelectStatement{
+			Err: errors.New("unsupported select clause for system table"),
 		}},
-		{"", "USE system", true, false, &useStatement{
-			keyspace: "system",
+		{"", "USE system", true, false, &UseStatement{
+			Keyspace: "system",
 		}},
 		{"", "SELECT count(*) FROM local", false, true, nil},
 		{"", "SELECT count(*) FROM peers", false, true, nil},
@@ -81,7 +81,7 @@ func TestParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		handled, idempotent, stmt := parse(tt.keyspace, tt.query)
+		handled, idempotent, stmt := Parse(tt.keyspace, tt.query)
 		assert.Equal(t, tt.handled, handled, "invalid handled")
 		assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency")
 		assert.Equal(t, tt.stmt, stmt, "invalid parsed statement")
