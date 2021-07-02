@@ -59,7 +59,7 @@ func (s SenderFunc) Send(writer io.Writer) error {
 	return s(writer)
 }
 
-func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, error) {
+func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (c *Conn, err error) {
 	var dialer net.Dialer
 	addr, err := LookupEndpoint(endpoint)
 	if err != nil {
@@ -70,6 +70,12 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, erro
 		return nil, err
 	}
 
+	defer func() {
+		if err != nil {
+			_ = conn.Close()
+		}
+	}()
+
 	if endpoint.TlsConfig() != nil {
 		tlsConn := tls.Client(conn, endpoint.TlsConfig())
 		if err = tlsConn.Handshake(); err != nil {
@@ -78,7 +84,7 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (*Conn, erro
 		conn = tlsConn
 	}
 
-	c := NewConn(conn, recv)
+	c = NewConn(conn, recv)
 	c.Start()
 	return c, nil
 }

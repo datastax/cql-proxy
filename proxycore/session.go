@@ -230,13 +230,20 @@ func (p *connPool) leastBusyConn() *ClientConn {
 	}
 }
 
-func (p *connPool) connect() (*ClientConn, error) {
+func (p *connPool) connect() (conn *ClientConn, err error) {
 	ctx, cancel := context.WithTimeout(p.ctx, ConnectTimeout)
 	defer cancel()
-	conn, err := ConnectClient(ctx, p.config.Endpoint)
+	conn, err = ConnectClient(ctx, p.config.Endpoint)
 	if err != nil {
 		return nil, err
 	}
+
+	defer func() {
+		if err != nil {
+			_ = conn.Close()
+		}
+	}()
+
 	var version primitive.ProtocolVersion
 	version, err = conn.Handshake(ctx, p.config.Version, p.config.Auth)
 	if err != nil {
@@ -246,12 +253,14 @@ func (p *connPool) connect() (*ClientConn, error) {
 		p.logger.Error("protocol version not support", zap.Stringer("wanted", p.config.Version), zap.Stringer("got", version))
 		return nil, ProtocolNotSupported
 	}
+
 	if len(p.config.Keyspace) != 0 {
 		err = conn.SetKeyspace(ctx, p.config.Version, p.config.Keyspace)
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	return conn, nil
 }
 

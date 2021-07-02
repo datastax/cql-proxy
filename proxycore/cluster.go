@@ -138,11 +138,17 @@ func (c *Cluster) OnEvent(frame *frame.Frame) {
 	c.events <- frame
 }
 
-func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) error {
+func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) (err error) {
 	conn, err := ConnectClientWithEvents(ctx, endpoint, c)
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		if err != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	var version primitive.ProtocolVersion
 	if initial {
