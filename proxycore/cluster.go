@@ -76,6 +76,7 @@ type Cluster struct {
 	config           ClusterConfig
 	logger           *zap.Logger
 	controlConn      *ClientConn
+	currentEndpoint  Endpoint
 	hosts            []*Host
 	currentHostIndex int
 	listeners        []ClusterListener
@@ -163,6 +164,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 		return err
 	}
 
+	c.currentEndpoint = endpoint
 	c.controlConn = conn
 	if initial {
 		c.NegotiatedVersion = negotiated
@@ -182,11 +184,13 @@ func (c *Cluster) mergeHosts(hosts []*Host) {
 		existing[host.Endpoint().Key()] = host
 	}
 
-	currentHostKey := c.hosts[c.currentHostIndex].Endpoint().Key()
+	currentKey := c.currentEndpoint.Key()
+
+	// TODO: Handle situation where current host is not in system tables
 
 	for i, host := range hosts {
 		key := host.Endpoint().Key()
-		if key == currentHostKey {
+		if key == currentKey {
 			c.currentHostIndex = i
 		}
 		if _, ok := existing[key]; ok {
@@ -272,7 +276,7 @@ func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 	return hosts
 }
 
-func (c *Cluster) reconnect() {
+func (c *Cluster) reconnect() bool {
 	c.currentHostIndex = (c.currentHostIndex + 1) % len(c.hosts)
 	host := c.hosts[c.currentHostIndex]
 	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
@@ -280,6 +284,10 @@ func (c *Cluster) reconnect() {
 	err := c.connect(ctx, host.Endpoint(), false)
 	if err != nil {
 		c.logger.Error("error reconnecting to host", zap.Stringer("host", host), zap.Error(err))
+		return false
+	} else {
+		c.logger.Info("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
+		return true
 	}
 }
 
@@ -310,7 +318,9 @@ func (c *Cluster) stayConnected() {
 	for !done {
 		if c.controlConn == nil {
 			if !pendingConnect {
-				connectTimer = time.NewTimer(reconnectPolicy.NextDelay())
+				delay := reconnectPolicy.NextDelay()
+				c.logger.Info("control connection attempting to reconnect after delay", zap.Duration("delay", delay))
+				connectTimer = time.NewTimer(delay)
 				pendingConnect = true
 			} else {
 				select {
@@ -318,8 +328,9 @@ func (c *Cluster) stayConnected() {
 					done = true
 					_ = c.controlConn.Close()
 				case <-connectTimer.C:
-					c.reconnect()
-					reconnectPolicy.Reset()
+					if c.reconnect() {
+						reconnectPolicy.Reset()
+					}
 					pendingConnect = false
 				}
 			}
@@ -329,6 +340,7 @@ func (c *Cluster) stayConnected() {
 				done = true
 				_ = c.controlConn.Close()
 			case <-c.controlConn.IsClosed():
+				c.logger.Info("control connection closed", zap.Stringer("endpoint", c.currentEndpoint))
 				c.controlConn = nil
 			case newListener := <-c.addListener:
 				for _, listener := range c.listeners {
