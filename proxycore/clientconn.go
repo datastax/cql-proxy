@@ -34,7 +34,7 @@ var allEvents = []primitive.EventType{primitive.EventTypeSchemaChange, primitive
 
 type Request interface {
 	Frame() interface{}
-	OnError(err error)
+	OnClose(err error)
 	OnResult(raw *frame.RawFrame)
 }
 
@@ -336,7 +336,7 @@ func (i *internalRequest) Frame() interface{} {
 	return i.frame
 }
 
-func (i *internalRequest) OnError(err error) {
+func (i *internalRequest) OnClose(err error) {
 	i.err <- err
 }
 

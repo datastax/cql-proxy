@@ -56,7 +56,6 @@ type Proxy struct {
 	sessMu             *sync.Mutex
 	schemaEventClients sync.Map
 	clientIdGen        uint64
-	wp                 *workerPool
 	lb                 proxycore.LoadBalancer
 	systemLocalValues  map[string]message.Column
 }
@@ -148,14 +147,6 @@ func (p *Proxy) Listen(address string) error {
 	}
 
 	p.logger.Info("proxy is listening", zap.Stringer("address", p.listener.Addr()))
-
-	p.wp = &workerPool{
-		WorkerFunc:      serveRequest,
-		MaxWorkersCount: 2048, // TODO: Max count?
-		Logger:          p.logger,
-	}
-
-	p.wp.Start()
 
 	return nil
 }
@@ -295,16 +286,12 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 			client:     c,
 			session:    sess.(*proxycore.Session),
 			idempotent: idempotent,
+			done:       false,
 			stream:     raw.Header.StreamId,
 			qp:         c.proxy.newQueryPlan(),
 			raw:        raw,
-			err:        make(chan error),
-			res:        make(chan *frame.RawFrame),
 		}
-
-		if !c.proxy.wp.Serve(req) {
-			c.send(raw.Header, &message.Overloaded{ErrorMessage: "Proxy is overloaded"})
-		}
+		req.execute()
 	} else {
 		c.send(raw.Header, &message.ServerError{ErrorMessage: "Attempted to use invalid keyspace"})
 	}
