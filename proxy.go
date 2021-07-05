@@ -23,6 +23,8 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 )
 
 var cli struct {
@@ -32,6 +34,7 @@ var cli struct {
 	ContactPoints []string `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c"`
 	Bind          string   `help:"Address to use to bind serve" short:"a"`
 	Debug         bool     `help:"Show debug logging"`
+	Profiling     bool     `help:"Enable profiling"`
 }
 
 func main() {
@@ -82,6 +85,15 @@ func main() {
 	bind, _, err := net.SplitHostPort(cli.Bind)
 	if err != nil {
 		bind = net.JoinHostPort(cli.Bind, "9042")
+	}
+
+	if cli.Profiling {
+		go func() {
+			err := http.ListenAndServe("localhost:6060", nil) // Profiling
+			if err != nil {
+				logger.Error("unable to setup profiling", zap.Error(err))
+			}
+		}()
 	}
 
 	err = p.ListenAndServe(bind)

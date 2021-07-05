@@ -56,7 +56,7 @@ func (p *pendingRequests) loadAndDelete(stream int16) Request {
 func (p *pendingRequests) sendError(err error) {
 	p.pending.Range(func(key, value interface{}) bool {
 		request := value.(Request)
-		request.OnError(err)
+		request.OnClose(err)
 		return true
 	})
 }

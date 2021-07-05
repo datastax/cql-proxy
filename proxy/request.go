@@ -15,53 +15,42 @@
 package proxy
 
 import (
-	"context"
 	"cql-proxy/proxycore"
-	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
+	"go.uber.org/zap"
 	"io"
+	"sync"
 )
-
-func serveRequest(r *request) error {
-	done := false
-	var err error
-	for !done {
-		host := r.qp.Next()
-		if host == nil {
-			r.send(&message.Unavailable{ErrorMessage: "No more hosts available"}) // TODO: Is this the correct error to send back?
-			done = true
-		} else {
-			err = r.session.Send(host, r)
-			if err == nil {
-				select {
-				case err = <-r.err:
-					// TODO: Handle specific errors
-				case res := <-r.res:
-					r.sendRaw(res)
-				}
-				done = true
-			}
-		}
-	}
-
-	if err != nil {
-		r.send(&message.ServerError{ErrorMessage: fmt.Sprintf("Unable to handle request %v", err)})
-	}
-
-	return err
-}
 
 type request struct {
 	client     *client
 	session    *proxycore.Session
 	idempotent bool
+	done       bool
 	stream     int16
 	qp         proxycore.QueryPlan
 	raw        *frame.RawFrame
-	ctx        context.Context
-	res        chan *frame.RawFrame
-	err        chan error
+	mu         sync.Mutex
+}
+
+func (r *request) execute() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for !r.done {
+		host := r.qp.Next()
+		if host == nil {
+			r.done = true
+			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (exhausted query plan)"})
+		} else {
+			err := r.session.Send(host, r)
+			if err == nil {
+				break
+			} else {
+				r.client.proxy.logger.Debug("failed to send request to host", zap.Stringer("host", host), zap.Error(err))
+			}
+		}
+	}
 }
 
 func (r *request) send(msg message.Message) {
@@ -81,10 +70,24 @@ func (r *request) Frame() interface{} {
 	return r.raw
 }
 
-func (r *request) OnError(err error) {
-	r.err <- err
+func (r *request) OnClose(_ error) {
+	if r.idempotent {
+		r.execute()
+	} else {
+		r.mu.Lock()
+		if !r.done {
+			r.done = true
+			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (cluster connection closed and request is not idempotent)"})
+		}
+		r.mu.Unlock()
+	}
 }
 
 func (r *request) OnResult(raw *frame.RawFrame) {
-	r.res <- raw
+	r.mu.Lock()
+	if !r.done {
+		r.done = true
+		r.sendRaw(raw)
+	}
+	r.mu.Unlock()
 }
