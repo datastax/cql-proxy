@@ -33,6 +33,11 @@ import (
 	"time"
 )
 
+var (
+	mockSchemaVersion, _ = primitive.ParseUuid("4f2b29e6-59b5-4e2d-8fd6-01e32e67f0d7")
+	mockHostID, _        = primitive.ParseUuid("0a9ca869-9031-4d86-8a17-647b9606f757")
+)
+
 type MockHost struct {
 	IP     string
 	Port   int
@@ -45,50 +50,6 @@ func (h MockHost) String() string {
 
 func (h MockHost) equal(o MockHost) bool {
 	return h.IP == o.IP && h.Port == o.Port
-}
-
-var (
-	mockSchemaVersion, _ = primitive.ParseUuid("4f2b29e6-59b5-4e2d-8fd6-01e32e67f0d7")
-	mockHostID, _        = primitive.ParseUuid("0a9ca869-9031-4d86-8a17-647b9606f757")
-)
-
-type MockClient struct {
-	id         uint64
-	server     *MockServer
-	conn       *Conn
-	keyspace   string
-	registered int32
-	events     chan message.Event
-}
-
-func newMockClient(id uint64, server *MockServer) *MockClient {
-	return &MockClient{
-		id:     id,
-		server: server,
-		events: make(chan message.Event),
-	}
-}
-
-func removeHost(hosts []MockHost, host MockHost) []MockHost {
-	for i, h := range hosts {
-		if h.equal(host) {
-			hosts = append(hosts[:i], hosts[i+1:]...)
-			return hosts
-		}
-	}
-	return hosts
-}
-
-func (c *MockClient) Register(version primitive.ProtocolVersion) {
-	atomic.CompareAndSwapInt32(&c.registered, 0, int32(version))
-}
-
-func (c MockClient) Keyspace() string {
-	return c.keyspace
-}
-
-func (c MockClient) Local() MockHost {
-	return c.server.local
 }
 
 type MockRequestHandler func(client *MockClient, frm *frame.Frame) message.Message
@@ -139,6 +100,35 @@ func NewMockRequestHandlers(overrides MockRequestHandlers) MockRequestHandlers {
 	return handlers
 }
 
+type MockClient struct {
+	id         uint64
+	server     *MockServer
+	conn       *Conn
+	keyspace   string
+	registered int32
+	events     chan message.Event
+}
+
+func newMockClient(id uint64, server *MockServer) *MockClient {
+	return &MockClient{
+		id:     id,
+		server: server,
+		events: make(chan message.Event),
+	}
+}
+
+func (c *MockClient) Register(version primitive.ProtocolVersion) {
+	atomic.CompareAndSwapInt32(&c.registered, 0, int32(version))
+}
+
+func (c MockClient) Keyspace() string {
+	return c.keyspace
+}
+
+func (c MockClient) Local() MockHost {
+	return c.server.local
+}
+
 func (c *MockClient) Receive(reader io.Reader) error {
 	frm, err := codec.DecodeFrame(reader)
 	if err != nil {
@@ -160,44 +150,6 @@ func (c *MockClient) Receive(reader io.Reader) error {
 	}
 
 	return nil
-}
-
-func makeSystemLocalValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
-	ip := net.ParseIP(address)
-	values := makeSystemValues(version, ip, hostID, schemaVersion)
-	values["key"] = encodeTypeFatal(version, datatype.Varchar, "local")
-	values["partitioner"] = encodeTypeFatal(version, datatype.Varchar, "")
-	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "cql-proxy")
-	values["cql_version"] = encodeTypeFatal(version, datatype.Varchar, "3.4.5")
-	values["native_protocol_version"] = encodeTypeFatal(version, datatype.Varchar, version.String())
-	return values
-}
-
-func makeSystemPeerValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
-	ip := net.ParseIP(address)
-	values := makeSystemValues(version, ip, hostID, schemaVersion)
-	values["peer"] = encodeTypeFatal(version, datatype.Inet, ip)
-	return values
-}
-
-func makeSystemValues(version primitive.ProtocolVersion, address net.IP, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
-	return map[string]message.Column{
-		"rpc_address":     encodeTypeFatal(version, datatype.Inet, address),
-		"data_center":     encodeTypeFatal(version, datatype.Varchar, "dc1"),
-		"rack":            encodeTypeFatal(version, datatype.Varchar, "rack1"),
-		"tokens":          encodeTypeFatal(version, datatype.NewListType(datatype.Varchar), []string{"0"}),
-		"release_version": encodeTypeFatal(version, datatype.Varchar, "3.11.10"),
-		"host_id":         encodeTypeFatal(version, datatype.Uuid, hostID),
-		"schema_version":  encodeTypeFatal(version, datatype.Uuid, schemaVersion),
-	}
-}
-
-func encodeTypeFatal(version primitive.ProtocolVersion, dt datatype.DataType, val interface{}) []byte {
-	encoded, err := EncodeType(dt, version, val)
-	if err != nil {
-		panic("unable to encode type")
-	}
-	return encoded
 }
 
 func (c MockClient) filterValues(version primitive.ProtocolVersion, stmt *parser.SelectStatement,
@@ -510,4 +462,51 @@ func (c *MockCluster) maybeStop(host MockHost) {
 
 func (c *MockCluster) Stop(n int) {
 	c.maybeStop(c.generate(n))
+}
+func makeSystemLocalValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
+	ip := net.ParseIP(address)
+	values := makeSystemValues(version, ip, hostID, schemaVersion)
+	values["key"] = encodeTypeFatal(version, datatype.Varchar, "local")
+	values["partitioner"] = encodeTypeFatal(version, datatype.Varchar, "")
+	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "cql-proxy")
+	values["cql_version"] = encodeTypeFatal(version, datatype.Varchar, "3.4.5")
+	values["native_protocol_version"] = encodeTypeFatal(version, datatype.Varchar, version.String())
+	return values
+}
+
+func makeSystemPeerValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
+	ip := net.ParseIP(address)
+	values := makeSystemValues(version, ip, hostID, schemaVersion)
+	values["peer"] = encodeTypeFatal(version, datatype.Inet, ip)
+	return values
+}
+
+func makeSystemValues(version primitive.ProtocolVersion, address net.IP, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
+	return map[string]message.Column{
+		"rpc_address":     encodeTypeFatal(version, datatype.Inet, address),
+		"data_center":     encodeTypeFatal(version, datatype.Varchar, "dc1"),
+		"rack":            encodeTypeFatal(version, datatype.Varchar, "rack1"),
+		"tokens":          encodeTypeFatal(version, datatype.NewListType(datatype.Varchar), []string{"0"}),
+		"release_version": encodeTypeFatal(version, datatype.Varchar, "3.11.10"),
+		"host_id":         encodeTypeFatal(version, datatype.Uuid, hostID),
+		"schema_version":  encodeTypeFatal(version, datatype.Uuid, schemaVersion),
+	}
+}
+
+func encodeTypeFatal(version primitive.ProtocolVersion, dt datatype.DataType, val interface{}) []byte {
+	encoded, err := EncodeType(dt, version, val)
+	if err != nil {
+		panic("unable to encode type")
+	}
+	return encoded
+}
+
+func removeHost(hosts []MockHost, host MockHost) []MockHost {
+	for i, h := range hosts {
+		if h.equal(host) {
+			hosts = append(hosts[:i], hosts[i+1:]...)
+			return hosts
+		}
+	}
+	return hosts
 }
