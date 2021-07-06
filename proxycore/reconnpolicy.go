@@ -15,8 +15,14 @@
 package proxycore
 
 import (
+	"math/bits"
 	"math/rand"
 	"time"
+)
+
+const (
+	defaultBaseDelay = 2 * time.Second
+	defaultMaxDelay  = 10 * time.Minute
 )
 
 type ReconnectPolicy interface {
@@ -26,27 +32,32 @@ type ReconnectPolicy interface {
 }
 
 type defaultReconnectPolicy struct {
-	attempts  int
-	baseDelay time.Duration
-	maxDelay  time.Duration
+	attempts    int
+	maxAttempts int
+	baseDelay   time.Duration
+	maxDelay    time.Duration
 }
 
 func NewReconnectPolicy() ReconnectPolicy {
-	return NewReconnectPolicyWithDelays(2*time.Second, 10*time.Minute)
+	return NewReconnectPolicyWithDelays(defaultBaseDelay, defaultMaxDelay)
 }
 
 func NewReconnectPolicyWithDelays(baseDelay, maxDelay time.Duration) ReconnectPolicy {
 	return &defaultReconnectPolicy{
-		attempts:  0,
-		baseDelay: baseDelay,
-		maxDelay:  maxDelay,
+		attempts:    0,
+		maxAttempts: calcMaxAttempts(baseDelay),
+		baseDelay:   baseDelay,
+		maxDelay:    maxDelay,
 	}
 }
 
 func (d *defaultReconnectPolicy) NextDelay() time.Duration {
+	if d.attempts >= d.maxAttempts {
+		return d.maxDelay
+	}
 	jitter := time.Duration(rand.Intn(30)+85) * time.Millisecond
-	d.attempts++
 	exp := time.Millisecond << d.attempts
+	d.attempts++
 	delay := d.baseDelay + exp + jitter
 	if delay > d.maxDelay {
 		delay = d.maxDelay
@@ -60,4 +71,8 @@ func (d *defaultReconnectPolicy) Reset() {
 
 func (d defaultReconnectPolicy) Clone() ReconnectPolicy {
 	return NewReconnectPolicyWithDelays(d.baseDelay, d.maxDelay)
+}
+
+func calcMaxAttempts(baseDelay time.Duration) int {
+	return 63 - bits.LeadingZeros64(uint64(baseDelay))
 }

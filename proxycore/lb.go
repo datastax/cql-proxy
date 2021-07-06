@@ -29,9 +29,11 @@ type LoadBalancer interface {
 }
 
 func NewRoundRobinLoadBalancer() LoadBalancer {
-	return &roundRobinLoadBalancer{
+	lb := &roundRobinLoadBalancer{
 		mu: &sync.Mutex{},
 	}
+	lb.hosts.Store(make([]*Host, 0))
+	return lb
 }
 
 type roundRobinLoadBalancer struct {
@@ -62,7 +64,7 @@ func (l *roundRobinLoadBalancer) OnEvent(event interface{}) {
 
 func (l *roundRobinLoadBalancer) copy() []*Host {
 	hosts := l.hosts.Load().([]*Host)
-	var cpy []*Host
+	cpy := make([]*Host, len(hosts))
 	copy(cpy, hosts)
 	return cpy
 }
@@ -70,7 +72,7 @@ func (l *roundRobinLoadBalancer) copy() []*Host {
 func (l *roundRobinLoadBalancer) NewQueryPlan() QueryPlan {
 	return &roundRobinQueryPlan{
 		hosts:  l.hosts.Load().([]*Host),
-		offset: atomic.AddUint32(&l.index, 1),
+		offset: atomic.AddUint32(&l.index, 1) - 1,
 		index:  0,
 	}
 }
