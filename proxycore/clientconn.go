@@ -32,12 +32,6 @@ const (
 
 var allEvents = []primitive.EventType{primitive.EventTypeSchemaChange, primitive.EventTypeTopologyChange, primitive.EventTypeStatusChange}
 
-type Request interface {
-	Frame() interface{}
-	OnClose(err error)
-	OnResult(raw *frame.RawFrame)
-}
-
 type EventHandler interface {
 	OnEvent(frm *frame.Frame)
 }
@@ -262,7 +256,7 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 }
 
 func (c *ClientConn) Closing(err error) {
-	c.pending.sendError(err)
+	c.pending.closing(err)
 }
 
 func (c *ClientConn) Send(request Request) error {

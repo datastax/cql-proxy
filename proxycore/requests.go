@@ -15,8 +15,15 @@
 package proxycore
 
 import (
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"sync"
 )
+
+type Request interface {
+	Frame() interface{}
+	OnClose(err error)
+	OnResult(raw *frame.RawFrame)
+}
 
 type pendingRequests struct {
 	pending *sync.Map
@@ -53,7 +60,7 @@ func (p *pendingRequests) loadAndDelete(stream int16) Request {
 	return nil
 }
 
-func (p *pendingRequests) sendError(err error) {
+func (p *pendingRequests) closing(err error) {
 	p.pending.Range(func(key, value interface{}) bool {
 		request := value.(Request)
 		request.OnClose(err)
