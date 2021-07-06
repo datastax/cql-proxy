@@ -201,7 +201,7 @@ func (c *Cluster) mergeHosts(hosts []*Host) error {
 		}
 	}
 	if c.currentHostIndex < 0 {
-		return fmt.Errorf("host %v not found in system tables", c.currentEndpoint)
+		return fmt.Errorf("host %s not found in system tables", c.currentEndpoint)
 	}
 
 	for _, host := range hosts {

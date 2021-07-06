@@ -71,14 +71,17 @@ func (r *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
 		return nil, err
 	}
 
+	sniProxyAddress := metadata.ContactInfo.SniProxyAddress
+
 	r.mu.Lock()
-	r.sniProxyAddress = metadata.ContactInfo.SniProxyAddress
+	r.sniProxyAddress = sniProxyAddress
 	r.mu.Unlock()
 
 	var endpoints []proxycore.Endpoint
 	for _, cp := range metadata.ContactInfo.ContactPoints {
 		endpoints = append(endpoints, &astraEndpoint{
-			addr:      metadata.ContactInfo.SniProxyAddress,
+			addr:      sniProxyAddress,
+			key:       fmt.Sprintf("%s:%s", sniProxyAddress, cp),
 			tlsConfig: copyTLSConfig(r.bundle, cp),
 		})
 	}
@@ -107,7 +110,7 @@ func (r *astraResolver) NewEndpoint(row proxycore.Row) (proxycore.Endpoint, erro
 	uuid := hostId.(primitive.UUID)
 	return &astraEndpoint{
 		addr:      sniProxyAddress,
-		key:       fmt.Sprintf("%s:%v", sniProxyAddress, uuid),
+		key:       fmt.Sprintf("%s:%s", sniProxyAddress, &uuid),
 		tlsConfig: copyTLSConfig(r.bundle, uuid.String()),
 	}, nil
 }
