@@ -71,14 +71,17 @@ func (r *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
 		return nil, err
 	}
 
+	sniProxyAddress := metadata.ContactInfo.SniProxyAddress
+
 	r.mu.Lock()
-	r.sniProxyAddress = metadata.ContactInfo.SniProxyAddress
+	r.sniProxyAddress = sniProxyAddress
 	r.mu.Unlock()
 
 	var endpoints []proxycore.Endpoint
 	for _, cp := range metadata.ContactInfo.ContactPoints {
 		endpoints = append(endpoints, &astraEndpoint{
-			addr:      metadata.ContactInfo.SniProxyAddress,
+			addr:      sniProxyAddress,
+			key:       fmt.Sprintf("%s:%s", sniProxyAddress, cp),
 			tlsConfig: copyTLSConfig(r.bundle, cp),
 		})
 	}
@@ -107,28 +110,28 @@ func (r *astraResolver) NewEndpoint(row proxycore.Row) (proxycore.Endpoint, erro
 	uuid := hostId.(primitive.UUID)
 	return &astraEndpoint{
 		addr:      sniProxyAddress,
-		key:       fmt.Sprintf("%s:%v", sniProxyAddress, uuid),
+		key:       fmt.Sprintf("%s:%s", sniProxyAddress, &uuid),
 		tlsConfig: copyTLSConfig(r.bundle, uuid.String()),
 	}, nil
 }
 
-func (a *astraEndpoint) String() string {
+func (a astraEndpoint) String() string {
 	return a.Key()
 }
 
-func (a *astraEndpoint) Key() string {
+func (a astraEndpoint) Key() string {
 	return a.key
 }
 
-func (a *astraEndpoint) Addr() string {
+func (a astraEndpoint) Addr() string {
 	return a.addr
 }
 
-func (a *astraEndpoint) IsResolved() bool {
+func (a astraEndpoint) IsResolved() bool {
 	return false
 }
 
-func (a *astraEndpoint) TlsConfig() *tls.Config {
+func (a astraEndpoint) TlsConfig() *tls.Config {
 	return a.tlsConfig
 }
 

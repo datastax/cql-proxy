@@ -36,24 +36,25 @@ func NewReconnectPolicy() ReconnectPolicy {
 }
 
 func NewReconnectPolicyWithDelays(baseDelay, maxDelay time.Duration) ReconnectPolicy {
-	return defaultReconnectPolicy{
+	return &defaultReconnectPolicy{
 		attempts:  0,
 		baseDelay: baseDelay,
 		maxDelay:  maxDelay,
 	}
 }
 
-func (d defaultReconnectPolicy) NextDelay() time.Duration {
+func (d *defaultReconnectPolicy) NextDelay() time.Duration {
 	jitter := time.Duration(rand.Intn(30)+85) * time.Millisecond
 	d.attempts++
-	delay := d.baseDelay + (time.Millisecond << d.attempts) + jitter
+	exp := time.Millisecond << d.attempts
+	delay := d.baseDelay + exp + jitter
 	if delay > d.maxDelay {
 		delay = d.maxDelay
 	}
 	return delay
 }
 
-func (d defaultReconnectPolicy) Reset() {
+func (d *defaultReconnectPolicy) Reset() {
 	d.attempts = 0
 }
 

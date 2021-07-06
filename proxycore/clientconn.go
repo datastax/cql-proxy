@@ -42,6 +42,12 @@ type EventHandler interface {
 	OnEvent(frm *frame.Frame)
 }
 
+type EventHandlerFunc func(frm *frame.Frame)
+
+func (f EventHandlerFunc) OnEvent(frm *frame.Frame) {
+	f(frm)
+}
+
 type ClientConn struct {
 	conn         *Conn
 	inflight     int32
@@ -232,14 +238,14 @@ func (c *ClientConn) SetKeyspace(ctx context.Context, version primitive.Protocol
 func (c *ClientConn) Receive(reader io.Reader) error {
 	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {
-		return fmt.Errorf("unable to decode frame: %w", err)
+		return err
 	}
 
 	if raw.Header.OpCode == primitive.OpCodeEvent {
 		if c.eventHandler != nil {
 			frm, err := codec.ConvertFromRawFrame(raw)
 			if err != nil {
-				return fmt.Errorf("unable to convert raw event frame: %w", err)
+				return err
 			}
 			c.eventHandler.OnEvent(frm)
 		}

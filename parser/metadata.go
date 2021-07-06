@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package proxy
+package parser
 
 import (
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	systemLocalColumns = []*message.ColumnMetadata{
+	SystemLocalColumns = []*message.ColumnMetadata{
 		{
 			Keyspace: "system",
 			Table:    "local",
@@ -95,7 +95,7 @@ var (
 		},
 	}
 
-	systemPeersColumns = []*message.ColumnMetadata{
+	SystemPeersColumns = []*message.ColumnMetadata{
 		{
 			Keyspace: "system",
 			Table:    "peers",
@@ -147,7 +147,7 @@ var (
 	}
 )
 
-func findColumnMetadata(columns []*message.ColumnMetadata, name string) *message.ColumnMetadata {
+func FindColumnMetadata(columns []*message.ColumnMetadata, name string) *message.ColumnMetadata {
 	for _, column := range columns {
 		if column.Name == name {
 			return column

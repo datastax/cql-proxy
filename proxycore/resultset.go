@@ -53,11 +53,11 @@ func (rs *ResultSet) Row(i int) Row {
 		rs.result.Data[i]}
 }
 
-func (rs *ResultSet) RowCount() int {
+func (rs ResultSet) RowCount() int {
 	return len(rs.result.Data)
 }
 
-func (r *Row) ByPos(i int) (interface{}, error) {
+func (r Row) ByPos(i int) (interface{}, error) {
 	val, err := DecodeType(r.resultSet.result.Metadata.Columns[i].Type, r.resultSet.version, r.row[i])
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func (r *Row) ByPos(i int) (interface{}, error) {
 	return val, nil
 }
 
-func (r *Row) ByName(n string) (interface{}, error) {
+func (r Row) ByName(n string) (interface{}, error) {
 	if i, ok := r.resultSet.columnIndexes[n]; !ok {
 		return nil, ColumnNameNotFound
 	} else {

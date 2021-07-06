@@ -17,6 +17,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"cql-proxy/parser"
 	"cql-proxy/proxycore"
 	"crypto/md5"
 	"errors"
@@ -302,15 +303,15 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	if len(msg.Keyspace) != 0 {
 		keyspace = msg.Keyspace
 	}
-	handled, idempotent, stmt := parse(keyspace, msg.Query)
+	handled, idempotent, stmt := parser.Parse(keyspace, msg.Query)
 
 	if handled {
 		hdr := raw.Header
 
 		switch s := stmt.(type) {
-		case *selectStatement:
-			if s.table == "local" {
-				if columns, err := filterColumns(s, systemLocalColumns); err != nil {
+		case *parser.SelectStatement:
+			if s.Table == "local" {
+				if columns, err := parser.FilterColumns(s, parser.SystemLocalColumns); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -324,8 +325,8 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 					c.preparedSystemQuery[hash] = stmt
 				}
 				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
-			} else if s.table == "peers" {
-				if columns, err := filterColumns(s, systemPeersColumns); err != nil {
+			} else if s.Table == "peers" {
+				if columns, err := parser.FilterColumns(s, parser.SystemPeersColumns); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -341,14 +342,14 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 			} else {
 				c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 			}
-		case *useStatement:
+		case *parser.UseStatement:
 			hash := md5.Sum([]byte(msg.Query))
 			c.preparedSystemQuery[hash] = stmt
 			c.send(hdr, &message.PreparedResult{
 				PreparedQueryId: hash[:],
 			})
-		case *errorSelectStatement:
-			c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
+		case *parser.ErrorSelectStatement:
+			c.send(hdr, &message.Invalid{ErrorMessage: s.Err.Error()})
 		default:
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 		}
@@ -370,7 +371,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
-	handled, idempotent, stmt := parse(c.keyspace, msg.query)
+	handled, idempotent, stmt := parser.Parse(c.keyspace, msg.query)
 
 	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 
@@ -395,8 +396,8 @@ func (c *client) columnValue(values map[string]message.Column, name string, tabl
 	return val
 }
 
-func (c *client) filterSystemLocalValues(stmt *selectStatement) (row []message.Column, err error) {
-	return filterValues(stmt, systemLocalColumns, func(name string) (value message.Column, err error) {
+func (c *client) filterSystemLocalValues(stmt *parser.SelectStatement) (row []message.Column, err error) {
+	return parser.FilterValues(stmt, parser.SystemLocalColumns, func(name string) (value message.Column, err error) {
 		if val, ok := c.proxy.systemLocalValues[name]; ok {
 			return val, nil
 		} else if name == "rpc_address" {
@@ -406,7 +407,7 @@ func (c *client) filterSystemLocalValues(stmt *selectStatement) (row []message.C
 			default:
 				return nil, errors.New("unhandled local address type")
 			}
-		} else if name == countValueName {
+		} else if name == parser.CountValueName {
 			return encodedOneValue, nil
 		} else {
 			return nil, fmt.Errorf("no column value for %s", name)
@@ -416,9 +417,9 @@ func (c *client) filterSystemLocalValues(stmt *selectStatement) (row []message.C
 
 func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 	switch s := stmt.(type) {
-	case *selectStatement:
-		if s.table == "local" {
-			if columns, err := filterColumns(s, systemLocalColumns); err != nil {
+	case *parser.SelectStatement:
+		if s.Table == "local" {
+			if columns, err := parser.FilterColumns(s, parser.SystemLocalColumns); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else if row, err := c.filterSystemLocalValues(s); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
@@ -431,12 +432,12 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 					Data: []message.Row{row},
 				})
 			}
-		} else if s.table == "peers" {
-			if columns, err := filterColumns(s, systemPeersColumns); err != nil {
+		} else if s.Table == "peers" {
+			if columns, err := parser.FilterColumns(s, parser.SystemPeersColumns); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				var data []message.Row
-				if isCountStarQuery(s) { // COUNT(*) always returns a value, even when there are no rows
+				if parser.IsCountStarQuery(s) { // COUNT(*) always returns a value, even when there are no rows
 					data = []message.Row{{encodedZeroValue}}
 				}
 				c.send(hdr, &message.RowsResult{
@@ -450,15 +451,15 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 		} else {
 			c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 		}
-	case *useStatement:
-		if err := c.proxy.maybeCreateSession(s.keyspace); err != nil {
+	case *parser.UseStatement:
+		if err := c.proxy.maybeCreateSession(s.Keyspace); err != nil {
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
 		} else {
-			c.keyspace = s.keyspace
+			c.keyspace = s.Keyspace
 			c.send(hdr, &message.VoidResult{})
 		}
-	case *errorSelectStatement:
-		c.send(hdr, &message.Invalid{ErrorMessage: s.err.Error()})
+	case *parser.ErrorSelectStatement:
+		c.send(hdr, &message.Invalid{ErrorMessage: s.Err.Error()})
 	default:
 		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 	}

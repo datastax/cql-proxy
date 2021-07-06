@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package proxy
+package parser
 
 import (
 	parser "cql-proxy/proxycore/antlr"
@@ -25,42 +25,42 @@ import (
 )
 
 const (
-	countValueName = "count(*)"
+	CountValueName = "count(*)"
 )
 
 var systemTables = []string{"local", "peers", "peers_v2"}
 
-type aliasSelector struct {
-	selector interface{}
-	alias    string
+type AliasSelector struct {
+	Selector interface{}
+	Alias    string
 }
 
-type idSelector struct {
-	name string
+type IDSelector struct {
+	Name string
 }
 
-type starSelector struct{}
+type StarSelector struct{}
 
-type countStarSelector struct {
-	name string
+type CountStarSelector struct {
+	Name string
 }
 
-type errorSelectStatement struct {
-	err error
+type ErrorSelectStatement struct {
+	Err error
 }
 
-type selectStatement struct {
-	table     string
-	selectors []interface{}
+type SelectStatement struct {
+	Table     string
+	Selectors []interface{}
 }
 
-type useStatement struct {
-	keyspace string
+type UseStatement struct {
+	Keyspace string
 }
 
-type valueLookupFunc func(name string) (value message.Column, err error)
+type ValueLookupFunc func(name string) (value message.Column, err error)
 
-func parse(keyspace string, query string) (handled bool, idempotent bool, stmt interface{}) {
+func Parse(keyspace string, query string) (handled bool, idempotent bool, stmt interface{}) {
 	is := antlr.NewInputStream(query)
 	lexer := parser.NewSimplifiedCqlLexer(is)
 	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
@@ -70,8 +70,8 @@ func parse(keyspace string, query string) (handled bool, idempotent bool, stmt i
 	return listener.handled, listener.idempotent, listener.stmt
 }
 
-func filterValues(stmt *selectStatement, columns []*message.ColumnMetadata, valueFunc valueLookupFunc) (filtered []message.Column, err error) {
-	if _, ok := stmt.selectors[0].(*starSelector); ok {
+func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
+	if _, ok := stmt.Selectors[0].(*StarSelector); ok {
 		for _, column := range columns {
 			var val message.Column
 			val, err = valueFunc(column.Name)
@@ -81,7 +81,7 @@ func filterValues(stmt *selectStatement, columns []*message.ColumnMetadata, valu
 			filtered = append(filtered, val)
 		}
 	} else {
-		for _, selector := range stmt.selectors {
+		for _, selector := range stmt.Selectors {
 			var val message.Column
 			val, err = valueFromSelector(selector, valueFunc)
 			if err != nil {
@@ -93,26 +93,26 @@ func filterValues(stmt *selectStatement, columns []*message.ColumnMetadata, valu
 	return filtered, nil
 }
 
-func valueFromSelector(selector interface{}, valueFunc valueLookupFunc) (val message.Column, err error) {
+func valueFromSelector(selector interface{}, valueFunc ValueLookupFunc) (val message.Column, err error) {
 	switch s := selector.(type) {
-	case *countStarSelector:
-		return valueFunc(countValueName)
-	case *idSelector:
-		return valueFunc(s.name)
-	case *aliasSelector:
-		return valueFromSelector(s.selector, valueFunc)
+	case *CountStarSelector:
+		return valueFunc(CountValueName)
+	case *IDSelector:
+		return valueFunc(s.Name)
+	case *AliasSelector:
+		return valueFromSelector(s.Selector, valueFunc)
 	default:
 		return nil, errors.New("unhandled selector type")
 	}
 }
 
-func filterColumns(stmt *selectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
-	if _, ok := stmt.selectors[0].(*starSelector); ok {
+func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
+	if _, ok := stmt.Selectors[0].(*StarSelector); ok {
 		filtered = columns
 	} else {
-		for _, selector := range stmt.selectors {
+		for _, selector := range stmt.Selectors {
 			var column *message.ColumnMetadata
-			column, err = columnFromSelector(selector, columns, stmt.table)
+			column, err = columnFromSelector(selector, columns, stmt.Table)
 			if err != nil {
 				return nil, err
 			}
@@ -123,16 +123,16 @@ func filterColumns(stmt *selectStatement, columns []*message.ColumnMetadata) (fi
 }
 
 func isCountSelector(selector interface{}) bool {
-	_, ok := selector.(*countStarSelector)
+	_, ok := selector.(*CountStarSelector)
 	return ok
 }
 
-func isCountStarQuery(stmt *selectStatement) bool {
-	if len(stmt.selectors) == 1 {
-		if isCountSelector(stmt.selectors[0]) {
+func IsCountStarQuery(stmt *SelectStatement) bool {
+	if len(stmt.Selectors) == 1 {
+		if isCountSelector(stmt.Selectors[0]) {
 			return true
-		} else if alias, ok := stmt.selectors[0].(*aliasSelector); ok {
-			return isCountSelector(alias.selector)
+		} else if alias, ok := stmt.Selectors[0].(*AliasSelector); ok {
+			return isCountSelector(alias.Selector)
 		}
 	}
 	return false
@@ -140,26 +140,26 @@ func isCountStarQuery(stmt *selectStatement) bool {
 
 func columnFromSelector(selector interface{}, columns []*message.ColumnMetadata, table string) (column *message.ColumnMetadata, err error) {
 	switch s := selector.(type) {
-	case *countStarSelector:
+	case *CountStarSelector:
 		return &message.ColumnMetadata{
 			Keyspace: "system",
 			Table:    table,
-			Name:     s.name,
+			Name:     s.Name,
 			Type:     datatype.Int,
 		}, nil
-	case *idSelector:
-		if column = findColumnMetadata(columns, s.name); column != nil {
+	case *IDSelector:
+		if column = FindColumnMetadata(columns, s.Name); column != nil {
 			return column, nil
 		} else {
-			return nil, fmt.Errorf("invalid column %s", s.name)
+			return nil, fmt.Errorf("invalid column %s", s.Name)
 		}
-	case *aliasSelector:
-		column, err = columnFromSelector(s.selector, columns, table)
+	case *AliasSelector:
+		column, err = columnFromSelector(s.Selector, columns, table)
 		if err != nil {
 			return nil, err
 		}
 		alias := *column // Make a copy so we can modify the name
-		alias.Name = s.alias
+		alias.Name = s.Alias
 		return &alias, nil
 	default:
 		return nil, errors.New("unhandled selector type")
@@ -197,9 +197,9 @@ func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext)
 	if (keyspace == "system" || l.keyspace == "system") && isSystemTable(table) {
 		l.handled = true
 
-		selectStmt := &selectStatement{
-			table:     table,
-			selectors: make([]interface{}, 0),
+		selectStmt := &SelectStatement{
+			Table:     table,
+			Selectors: make([]interface{}, 0),
 		}
 
 		selectClauseCtx := ctx.SelectClause().(*parser.SelectClauseContext)
@@ -210,20 +210,20 @@ func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext)
 				selectorCtx := selector.(*parser.SelectorContext)
 				unaliasedSelector, err := extractUnaliasedSelector(selectorCtx.UnaliasedSelector().(*parser.UnaliasedSelectorContext))
 				if err != nil {
-					l.stmt = &errorSelectStatement{err}
+					l.stmt = &ErrorSelectStatement{err}
 					return // invalid selector
 				}
 				if selectorCtx.K_AS() != nil { // alias
-					selectStmt.selectors = append(selectStmt.selectors, &aliasSelector{
-						selector: unaliasedSelector,
-						alias:    extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
+					selectStmt.Selectors = append(selectStmt.Selectors, &AliasSelector{
+						Selector: unaliasedSelector,
+						Alias:    extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
 					})
 				} else {
-					selectStmt.selectors = append(selectStmt.selectors, unaliasedSelector)
+					selectStmt.Selectors = append(selectStmt.Selectors, unaliasedSelector)
 				}
 			}
 		} else { // 'SELECT * ...'
-			selectStmt.selectors = append(selectStmt.selectors, &starSelector{})
+			selectStmt.Selectors = append(selectStmt.Selectors, &StarSelector{})
 		}
 
 		l.stmt = selectStmt
@@ -232,7 +232,7 @@ func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext)
 
 func (l *queryListener) EnterUseStatement(ctx *parser.UseStatementContext) {
 	l.handled = true
-	l.stmt = &useStatement{keyspace: extractIdentifier(ctx.KeyspaceName().(*parser.KeyspaceNameContext).Identifier().(*parser.IdentifierContext))}
+	l.stmt = &UseStatement{Keyspace: extractIdentifier(ctx.KeyspaceName().(*parser.KeyspaceNameContext).Identifier().(*parser.IdentifierContext))}
 }
 
 func (l *queryListener) EnterInsertStatement(_ *parser.InsertStatementContext) {
@@ -249,10 +249,10 @@ func (l *queryListener) EnterDeleteStatement(_ *parser.DeleteStatementContext) {
 
 func extractUnaliasedSelector(selectorCtx *parser.UnaliasedSelectorContext) (interface{}, error) {
 	if selectorCtx.K_COUNT() != nil {
-		return &countStarSelector{name: selectorCtx.GetText()}, nil
+		return &CountStarSelector{Name: selectorCtx.GetText()}, nil
 	} else if selectorCtx.Identifier() != nil {
-		return &idSelector{
-			name: extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
+		return &IDSelector{
+			Name: extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
 		}, nil
 	} else {
 		return nil, errors.New("unsupported select clause for system table")
