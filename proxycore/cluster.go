@@ -22,6 +22,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
+	"sort"
 	"time"
 )
 
@@ -45,6 +46,10 @@ type BootstrapEvent struct {
 
 type SchemaChangeEvent struct {
 	Message *message.SchemaChangeEvent
+}
+
+type ReconnectEvent struct {
+	Endpoint
 }
 
 type ClusterListener interface {
@@ -88,7 +93,7 @@ type Cluster struct {
 }
 
 func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
-	cluster := &Cluster{
+	c := &Cluster{
 		ctx:              ctx,
 		config:           config,
 		logger:           GetOrCreateNopLogger(config.Logger),
@@ -110,8 +115,9 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 	}
 
 	for _, endpoint := range endpoints {
-		err = cluster.connect(ctx, endpoint, true)
+		err = c.connect(ctx, endpoint, true)
 		if err == nil {
+			c.logger.Info("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
 			break
 		}
 	}
@@ -120,9 +126,9 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 		return nil, err
 	}
 
-	go cluster.stayConnected()
+	go c.stayConnected()
 
-	return cluster, nil
+	return c, nil
 }
 
 func (c *Cluster) Listen(listener ClusterListener) error {
@@ -175,42 +181,45 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 	if initial {
 		c.NegotiatedVersion = negotiated
 		c.Info = info
-		c.hosts = hosts
-	} else {
-		c.mergeHosts(hosts)
 	}
 
-	return nil
+	return c.mergeHosts(hosts)
 }
 
-func (c *Cluster) mergeHosts(hosts []*Host) {
+func (c *Cluster) mergeHosts(hosts []*Host) error {
 	existing := make(map[string]*Host)
 
 	for _, host := range c.hosts {
 		existing[host.Endpoint().Key()] = host
 	}
 
-	currentKey := c.currentEndpoint.Key()
-
-	// TODO: Handle situation where current host is not in system tables
-
+	c.currentHostIndex = -1
 	for i, host := range hosts {
-		key := host.Endpoint().Key()
-		if key == currentKey {
+		if host.Key() == c.currentEndpoint.Key() {
 			c.currentHostIndex = i
+			break
 		}
+	}
+	if c.currentHostIndex < 0 {
+		return fmt.Errorf("host %v not found in system tables", c.currentEndpoint)
+	}
+
+	for _, host := range hosts {
+		key := host.Key()
 		if _, ok := existing[key]; ok {
 			delete(existing, key)
 		} else {
-			c.sendEvent(&AddEvent{Host: host})
+			c.sendEvent(&AddEvent{host})
 		}
 	}
 
 	for _, host := range existing {
-		c.sendEvent(&RemoveEvent{Host: host})
+		c.sendEvent(&RemoveEvent{host})
 	}
 
 	c.hosts = hosts
+
+	return nil
 }
 
 func (c *Cluster) sendEvent(event interface{}) {
@@ -267,6 +276,10 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 	}
 	hosts = c.addHosts(hosts, rs)
 
+	sort.Slice(hosts, func(i, j int) bool {
+		return hosts[i].Key() < hosts[j].Key()
+	})
+
 	return hosts, ClusterInfo{Partitioner: partitioner, ReleaseVersion: releaseVersion, CQLVersion: cqlVersion}, nil
 }
 
@@ -293,6 +306,7 @@ func (c *Cluster) reconnect() bool {
 		return false
 	} else {
 		c.logger.Info("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
+		c.sendEvent(&ReconnectEvent{c.currentEndpoint})
 		return true
 	}
 }
@@ -301,11 +315,12 @@ func (c *Cluster) refreshHosts() {
 	ctx, cancel := context.WithTimeout(context.Background(), RefreshTimeout)
 	defer cancel()
 	hosts, _, err := c.queryHosts(ctx, c.controlConn, c.NegotiatedVersion)
+	if err == nil {
+		err = c.mergeHosts(hosts)
+	}
 	if err != nil {
 		c.logger.Error("unable to refresh hosts", zap.Error(err))
 		_ = c.controlConn.Close()
-	} else {
-		c.mergeHosts(hosts)
 	}
 }
 
@@ -346,7 +361,7 @@ func (c *Cluster) stayConnected() {
 				done = true
 				_ = c.controlConn.Close()
 			case <-c.controlConn.IsClosed():
-				c.logger.Info("control connection closed", zap.Stringer("endpoint", c.currentEndpoint))
+				c.logger.Info("control connection closed", zap.Stringer("endpoint", c.currentEndpoint), zap.Error(c.controlConn.Err()))
 				c.controlConn = nil
 			case newListener := <-c.addListener:
 				for _, listener := range c.listeners {
@@ -354,7 +369,7 @@ func (c *Cluster) stayConnected() {
 						continue
 					}
 				}
-				newListener.OnEvent(&BootstrapEvent{Hosts: c.hosts})
+				newListener.OnEvent(&BootstrapEvent{c.hosts})
 				c.listeners = append(c.listeners, newListener)
 			case <-refreshTimer.C:
 				c.refreshHosts()

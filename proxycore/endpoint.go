@@ -35,23 +35,23 @@ type defaultEndpoint struct {
 	addr string
 }
 
-func (e *defaultEndpoint) String() string {
+func (e defaultEndpoint) String() string {
 	return e.Key()
 }
 
-func (e *defaultEndpoint) Key() string {
+func (e defaultEndpoint) Key() string {
 	return e.addr
 }
 
-func (e *defaultEndpoint) IsResolved() bool {
+func (e defaultEndpoint) IsResolved() bool {
 	return true
 }
 
-func (e *defaultEndpoint) Addr() string {
+func (e defaultEndpoint) Addr() string {
 	return e.addr
 }
 
-func (e *defaultEndpoint) TlsConfig() *tls.Config {
+func (e defaultEndpoint) TlsConfig() *tls.Config {
 	return nil
 }
 

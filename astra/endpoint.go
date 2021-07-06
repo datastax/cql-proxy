@@ -112,23 +112,23 @@ func (r *astraResolver) NewEndpoint(row proxycore.Row) (proxycore.Endpoint, erro
 	}, nil
 }
 
-func (a *astraEndpoint) String() string {
+func (a astraEndpoint) String() string {
 	return a.Key()
 }
 
-func (a *astraEndpoint) Key() string {
+func (a astraEndpoint) Key() string {
 	return a.key
 }
 
-func (a *astraEndpoint) Addr() string {
+func (a astraEndpoint) Addr() string {
 	return a.addr
 }
 
-func (a *astraEndpoint) IsResolved() bool {
+func (a astraEndpoint) IsResolved() bool {
 	return false
 }
 
-func (a *astraEndpoint) TlsConfig() *tls.Config {
+func (a astraEndpoint) TlsConfig() *tls.Config {
 	return a.tlsConfig
 }
 
