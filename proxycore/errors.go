@@ -18,7 +18,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/datastax/go-cassandra-native-protocol/message"
+	"io"
 	"strings"
+	"syscall"
 )
 
 var (
@@ -40,17 +42,11 @@ type CqlError struct {
 	message.Message
 }
 
-func (e *CqlError) Error() string {
+func (e CqlError) Error() string {
 	return fmt.Sprintf("cql error: %v", e.Message)
 }
 
 func isCriticalErr(err error) bool {
-	// TODO: This is not correct, make an allow list
-	switch err.(type) {
-	case *UnexpectedResponse:
-		return true
-	case *CqlError:
-		return true
-	}
-	return errors.Is(err, AuthExpected) || errors.Is(err, ProtocolNotSupported)
+	// Anything that's not a temporary unavailability
+	return !errors.Is(err, io.EOF) && !errors.Is(err, syscall.ECONNREFUSED) && !errors.Is(err, syscall.ECONNRESET)
 }

@@ -19,7 +19,6 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"net"
 	"testing"
 	"time"
@@ -40,12 +39,10 @@ func TestConnectCluster(t *testing.T) {
 	err = c.Add(ctx, 3)
 	require.NoError(t, err)
 
-	logger, _ := zap.NewDevelopment()
 	cluster, err := ConnectCluster(ctx, ClusterConfig{
 		Version:         primitive.ProtocolVersion4,
 		Resolver:        NewResolver("127.0.0.1:9042"),
 		ReconnectPolicy: NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
-		Logger:          logger,
 	})
 	require.NoError(t, err)
 

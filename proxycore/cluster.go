@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	RefreshWindow  = 10 * time.Second
-	ConnectTimeout = 10 * time.Second
-	RefreshTimeout = 5 * time.Second
+	DefaultRefreshWindow  = 10 * time.Second
+	DefaultConnectTimeout = 10 * time.Second
+	DefaultRefreshTimeout = 5 * time.Second
 )
 
 type AddEvent struct {
@@ -67,6 +67,9 @@ type ClusterConfig struct {
 	Auth            Authenticator
 	Resolver        EndpointResolver
 	ReconnectPolicy ReconnectPolicy
+	RefreshWindow   time.Duration
+	ConnectTimeout  time.Duration
+	RefreshTimeout  time.Duration
 	Logger          *zap.Logger
 }
 
@@ -117,7 +120,7 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 	for _, endpoint := range endpoints {
 		err = c.connect(ctx, endpoint, true)
 		if err == nil {
-			c.logger.Info("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
+			c.logger.Debug("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
 			break
 		}
 	}
@@ -151,7 +154,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 	}
 
 	defer func() {
-		if err != nil {
+		if err != nil && conn != nil {
 			_ = conn.Close()
 		}
 	}()
@@ -298,21 +301,23 @@ func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 func (c *Cluster) reconnect() bool {
 	c.currentHostIndex = (c.currentHostIndex + 1) % len(c.hosts)
 	host := c.hosts[c.currentHostIndex]
-	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
+	timeout := getOrUseDefault(c.config.ConnectTimeout, DefaultConnectTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	err := c.connect(ctx, host.Endpoint(), false)
 	if err != nil {
 		c.logger.Error("error reconnecting to host", zap.Stringer("host", host), zap.Error(err))
 		return false
 	} else {
-		c.logger.Info("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
+		c.logger.Debug("control connection connected", zap.Stringer("endpoint", c.currentEndpoint))
 		c.sendEvent(&ReconnectEvent{c.currentEndpoint})
 		return true
 	}
 }
 
 func (c *Cluster) refreshHosts() {
-	ctx, cancel := context.WithTimeout(context.Background(), RefreshTimeout)
+	timeout := getOrUseDefault(c.config.RefreshTimeout, DefaultRefreshTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	hosts, _, err := c.queryHosts(ctx, c.controlConn, c.NegotiatedVersion)
 	if err == nil {
@@ -340,7 +345,7 @@ func (c *Cluster) stayConnected() {
 		if c.controlConn == nil {
 			if !pendingConnect {
 				delay := reconnectPolicy.NextDelay()
-				c.logger.Info("control connection attempting to reconnect after delay", zap.Duration("delay", delay))
+				c.logger.Debug("control connection attempting to reconnect after delay", zap.Duration("delay", delay))
 				connectTimer = time.NewTimer(delay)
 				pendingConnect = true
 			} else {
@@ -361,7 +366,7 @@ func (c *Cluster) stayConnected() {
 				done = true
 				_ = c.controlConn.Close()
 			case <-c.controlConn.IsClosed():
-				c.logger.Info("control connection closed", zap.Stringer("endpoint", c.currentEndpoint), zap.Error(c.controlConn.Err()))
+				c.logger.Warn("control connection closed", zap.Stringer("endpoint", c.currentEndpoint), zap.Error(c.controlConn.Err()))
 				c.controlConn = nil
 			case newListener := <-c.addListener:
 				for _, listener := range c.listeners {
@@ -375,15 +380,16 @@ func (c *Cluster) stayConnected() {
 				c.refreshHosts()
 				pendingRefresh = false
 			case event := <-c.events:
+				window := getOrUseDefault(c.config.RefreshWindow, DefaultRefreshWindow)
 				switch msg := event.Body.Message.(type) {
 				case *message.TopologyChangeEvent:
 					if !pendingRefresh {
-						refreshTimer = time.NewTimer(RefreshWindow)
+						refreshTimer = time.NewTimer(window)
 						pendingRefresh = true
 					}
 				case *message.StatusChangeEvent:
 					if !pendingRefresh && msg.ChangeType == primitive.StatusChangeTypeUp {
-						refreshTimer = time.NewTimer(RefreshWindow)
+						refreshTimer = time.NewTimer(window)
 						pendingRefresh = true
 					}
 				case *message.SchemaChangeEvent:
@@ -394,4 +400,11 @@ func (c *Cluster) stayConnected() {
 			}
 		}
 	}
+}
+
+func getOrUseDefault(time time.Duration, def time.Duration) time.Duration {
+	if time == 0 {
+		return def
+	}
+	return time
 }

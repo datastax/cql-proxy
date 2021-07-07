@@ -21,23 +21,6 @@ import (
 	"testing"
 )
 
-type testRequest struct {
-	stream int16
-	errs   *[]error
-}
-
-func (t testRequest) Frame() interface{} {
-	panic("implement me")
-}
-
-func (t *testRequest) OnClose(err error) {
-	*t.errs = append(*t.errs, err)
-}
-
-func (t testRequest) OnResult(_ *frame.RawFrame) {
-	panic("implement me")
-}
-
 func TestPendingRequests(t *testing.T) {
 	const max = 10
 
@@ -46,19 +29,19 @@ func TestPendingRequests(t *testing.T) {
 	errs := make([]error, 0)
 
 	for i := int16(0); i < max; i++ {
-		assert.Equal(t, i, p.store(&testRequest{stream: i, errs: &errs}))
+		assert.Equal(t, i, p.store(&testPendingRequest{stream: i, errs: &errs}))
 	}
-	assert.Equal(t, int16(-1), p.store(&testRequest{}))
+	assert.Equal(t, int16(-1), p.store(&testPendingRequest{}))
 
-	r := p.loadAndDelete(0).(*testRequest)
+	r := p.loadAndDelete(0).(*testPendingRequest)
 	assert.Equal(t, int16(0), r.stream)
 
-	r = p.loadAndDelete(9).(*testRequest)
+	r = p.loadAndDelete(9).(*testPendingRequest)
 	assert.Equal(t, int16(9), r.stream)
 
-	assert.Equal(t, int16(0), p.store(&testRequest{stream: 0, errs: &errs}))
-	assert.Equal(t, int16(9), p.store(&testRequest{stream: 9, errs: &errs}))
-	assert.Equal(t, int16(-1), p.store(&testRequest{}))
+	assert.Equal(t, int16(0), p.store(&testPendingRequest{stream: 0, errs: &errs}))
+	assert.Equal(t, int16(9), p.store(&testPendingRequest{stream: 9, errs: &errs}))
+	assert.Equal(t, int16(-1), p.store(&testPendingRequest{}))
 
 	p.closing(io.EOF)
 
@@ -67,4 +50,21 @@ func TestPendingRequests(t *testing.T) {
 	for _, err := range errs {
 		assert.ErrorAs(t, err, &io.EOF)
 	}
+}
+
+type testPendingRequest struct {
+	stream int16
+	errs   *[]error
+}
+
+func (t testPendingRequest) Frame() interface{} {
+	panic("implement me")
+}
+
+func (t *testPendingRequest) OnClose(err error) {
+	*t.errs = append(*t.errs, err)
+}
+
+func (t testPendingRequest) OnResult(_ *frame.RawFrame) {
+	panic("implement me")
 }

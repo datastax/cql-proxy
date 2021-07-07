@@ -71,7 +71,7 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (c *Conn, er
 	}
 
 	defer func() {
-		if err != nil {
+		if err != nil && conn != nil {
 			_ = conn.Close()
 		}
 	}()

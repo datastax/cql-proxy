@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -213,7 +214,6 @@ func TestClientConn_Query(t *testing.T) {
 		Query: "SELECT * FROM system.local",
 	})
 	require.NoError(t, err)
-
 	require.Equal(t, rs.RowCount(), 1)
 
 	valueByKey := func(key string) interface{} {
@@ -274,6 +274,75 @@ func TestClientConn_SetKeyspace(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, rs.RowCount(), 1)
+}
+
+func TestClientConn_Inflight(t *testing.T) {
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeQuery: func(cl *MockClient, frm *frame.Frame) message.Message {
+				time.Sleep(100 * time.Millisecond) // Give time to make sure we're able to count inflight requests
+				if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
+					return msg
+				} else {
+					return &message.RowsResult{
+						Metadata: &message.RowsMetadata{
+							ColumnCount: 0,
+						},
+						Data: message.RowSet{},
+					}
+				}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	const expected = 10
+
+	var wg sync.WaitGroup
+	wg.Add(expected)
+
+	for i := 0; i < 10; i++ {
+		err := cl.Send(&testInflightRequest{&wg})
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, int32(expected), cl.Inflight()) // Verify async inflight requests
+	wg.Wait()
+	assert.Equal(t, int32(0), cl.Inflight()) // Should be 0 after they complete
+}
+
+type testInflightRequest struct {
+	wg *sync.WaitGroup
+}
+
+func (t testInflightRequest) Frame() interface{} {
+	return frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{
+		Query: "SELECT * FROM system.local",
+	})
+}
+
+func (t testInflightRequest) OnClose(_ error) {
+}
+
+func (t testInflightRequest) OnResult(_ *frame.RawFrame) {
+	t.wg.Done()
 }
 
 func mockServerWithAuth(username, password string) *MockServer {
