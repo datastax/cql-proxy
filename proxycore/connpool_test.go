@@ -262,9 +262,7 @@ func TestConnectPool_InvalidDNS(t *testing.T) {
 			Version:  supported,
 		},
 	})
-	if assert.Error(t, err) {
-		assert.Contains(t, err.Error(), "no such host")
-	}
+	assert.Error(t, err) // Errors for DNS can vary per system
 }
 
 func TestConnectPool_InvalidAddress(t *testing.T) {
