@@ -28,7 +28,6 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -284,7 +283,6 @@ func (c *client) Receive(reader io.Reader) error {
 
 func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 	if sess, ok := c.proxy.sessions.Load(c.keyspace); ok {
-		log.Printf("session %v keyspace %s\n", sess, c.keyspace)
 		req := &request{
 			client:     c,
 			session:    sess.(*proxycore.Session),

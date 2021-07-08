@@ -19,6 +19,7 @@ import (
 	"errors"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
+	"log"
 	"sync"
 	"time"
 )
@@ -63,10 +64,12 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 
 	select {
 	case <-ctx.Done():
+		log.Println("#################### ctx")
 		return nil, ctx.Err()
 	case <-session.connected:
 		return session, nil
 	case err = <-session.failed:
+		log.Println("#################### failed")
 		return nil, err
 	}
 }
