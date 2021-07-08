@@ -19,10 +19,8 @@ import (
 	"errors"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"log"
 	"sync"
 	"time"
-	"unsafe"
 )
 
 var (
@@ -74,7 +72,6 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 }
 
 func (s *Session) Send(host *Host, request Request) error {
-	log.Printf("parmeters %v %v", uintptr(unsafe.Pointer(s)), host)
 	conn := s.leastBusyConn(host)
 	if conn == nil {
 		return NoConnForHost
