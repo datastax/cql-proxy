@@ -64,7 +64,6 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 
 	select {
 	case <-ctx.Done():
-		log.Println("#################### ctx")
 		return nil, ctx.Err()
 	case <-session.connected:
 		return session, nil
@@ -105,8 +104,8 @@ func (s *Session) OnEvent(event interface{}) {
 						Endpoint:      host.Endpoint(),
 						SessionConfig: s.config,
 					})
+					log.Printf("################### Adding error %v\n", err)
 					if err != nil {
-						log.Printf("################### Adding error %v\n", err)
 						select {
 						case s.failed <- err:
 						default:
