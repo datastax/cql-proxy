@@ -18,6 +18,7 @@ import (
 	"crypto/tls"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"net"
 	"testing"
 )
 
@@ -28,7 +29,15 @@ func TestLookupEndpoint(t *testing.T) {
 
 	addr, err = LookupEndpoint(&testEndpoint{addr: "127.0.0.1:9042", isResolved: true})
 	require.NoError(t, err, "unable to lookup endpoint")
-	assert.Equal(t, "127.0.0.1:9042", addr)
+
+	// Normalize to IPv4 (some platforms return an IPv6 address)
+	host, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+
+	ip := net.ParseIP(host)
+	require.NotNil(t, ip)
+
+	assert.Equal(t, "127.0.0.1:9042", net.JoinHostPort(ip.To4().String(), port))
 }
 
 func TestLookupEndpoint_Invalid(t *testing.T) {
