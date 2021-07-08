@@ -69,7 +69,7 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 	case <-session.connected:
 		return session, nil
 	case err = <-session.failed:
-		log.Println("#################### failed")
+		log.Printf("#################### failed %v\n", err)
 		return nil, err
 	}
 }
