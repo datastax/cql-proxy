@@ -36,6 +36,7 @@ func TestLookupEndpoint(t *testing.T) {
 
 	addr, err = LookupEndpoint(&testEndpoint{addr: "127.0.0.1:9042", isResolved: true})
 	require.NoError(t, err, "unable to lookup endpoint")
+	assert.Equal(t, "127.0.0.1:9042", addr)
 }
 
 func TestLookupEndpoint_Invalid(t *testing.T) {
