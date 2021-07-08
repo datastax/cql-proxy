@@ -1,5 +1,7 @@
 # cql-proxy
 
+[![GitHub Action](https://github.com/datastax/cql-proxy/actions/workflows/test.yml/badge.svg)](https://github.com/datastax/cql-proxy/actions/workflows/test.yml)
+
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
 ## Getting Started

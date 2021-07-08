@@ -24,7 +24,7 @@ import (
 func TestLookupEndpoint(t *testing.T) {
 	addr, err := LookupEndpoint(&testEndpoint{addr: "localhost:9042"})
 	require.NoError(t, err, "unable to lookup endpoint")
-	assert.Equal(t, "127.0.0.1:9042", addr)
+	assert.True(t, addr == "127.0.0.1:9042" || addr == "[::1]:9042")
 
 	addr, err = LookupEndpoint(&testEndpoint{addr: "127.0.0.1:9042", isResolved: true})
 	require.NoError(t, err, "unable to lookup endpoint")
@@ -37,7 +37,7 @@ func TestLookupEndpoint_Invalid(t *testing.T) {
 		err  string
 	}{
 		{"localhost", "missing port in address"},
-		{"dne:1234", "no such host"},
+		{"dne:1234", ""}, // Errors for DNS can vary per system
 	}
 
 	for _, tt := range tests {

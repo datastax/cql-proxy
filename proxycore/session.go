@@ -116,7 +116,6 @@ func (s *Session) OnEvent(event interface{}) {
 			wg.Wait()
 
 			close(s.connected)
-			close(s.failed)
 		}()
 	case *AddEvent:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
