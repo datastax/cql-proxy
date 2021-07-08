@@ -43,7 +43,7 @@ func main() {
 	var resolver proxycore.EndpointResolver
 
 	if len(cli.Bundle) > 0 {
-		bundle, err := astra.LoadBundleZip(cli.Bundle)
+		bundle, err := astra.LoadBundleZipFromPath(cli.Bundle)
 		if err != nil {
 			cliCtx.Fatalf("unable to open bundle %s: %v", cli.Bundle, err)
 		}

@@ -31,35 +31,29 @@ type Bundle struct {
 	port      int
 }
 
-func LoadBundleZip(path string) (*Bundle, error) {
-	config := struct {
-		Host string `json:"host"`
-		Port int    `json:"port"`
-	}{}
-
-	contents, err := extract(path)
+func LoadBundleZip(reader *zip.Reader) (*Bundle, error) {
+	contents, err := extract(reader)
 	if err != nil {
 		return nil, err
 	}
 
+	config := struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}{}
 	err = json.Unmarshal(contents["config.json"], &config)
 	if err != nil {
 		return nil, err
 	}
 
-	ca, err := x509.SystemCertPool()
+	rootCAs, err := createCertPool()
 	if err != nil {
-		if runtime.GOOS == "windows" {
-			ca = x509.NewCertPool()
-			err = nil
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
 
-	ok := ca.AppendCertsFromPEM(contents["ca.crt"])
+	ok := rootCAs.AppendCertsFromPEM(contents["ca.crt"])
 	if !ok {
-		return nil, fmt.Errorf("the provided CA cert could not be added to the ca")
+		return nil, fmt.Errorf("the provided CA cert could not be added to the root CA pool")
 	}
 
 	cert, err := tls.X509KeyPair(contents["cert"], contents["key"])
@@ -69,13 +63,26 @@ func LoadBundleZip(path string) (*Bundle, error) {
 
 	return &Bundle{
 		tlsConfig: &tls.Config{
-			RootCAs:      ca,
+			RootCAs:      rootCAs,
 			Certificates: []tls.Certificate{cert},
 			ServerName:   config.Host,
 		},
 		host: config.Host,
 		port: config.Port,
 	}, nil
+}
+
+func LoadBundleZipFromPath(path string) (*Bundle, error) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(reader *zip.ReadCloser) {
+		_ = reader.Close()
+	}(reader)
+
+	return LoadBundleZip(&reader.Reader)
 }
 
 func (b *Bundle) Host() string {
@@ -90,16 +97,7 @@ func (b *Bundle) TLSConfig() *tls.Config {
 	return b.tlsConfig.Clone()
 }
 
-func extract(path string) (map[string][]byte, error) {
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func(reader *zip.ReadCloser) {
-		_ = reader.Close()
-	}(reader)
-
+func extract(reader *zip.Reader) (map[string][]byte, error) {
 	contents := make(map[string][]byte)
 
 	for _, file := range reader.File {
@@ -131,4 +129,12 @@ func loadBytes(file *zip.File) ([]byte, error) {
 		_ = r.Close()
 	}(r)
 	return ioutil.ReadAll(r)
+}
+
+func createCertPool() (*x509.CertPool, error) {
+	ca, err := x509.SystemCertPool()
+	if err != nil && runtime.GOOS == "windows" {
+		return x509.NewCertPool(), nil
+	}
+	return ca, err
 }
