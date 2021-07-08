@@ -19,7 +19,6 @@ import (
 	"errors"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"log"
 	"sync"
 	"time"
 )
@@ -68,7 +67,6 @@ func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig)
 	case <-session.connected:
 		return session, nil
 	case err = <-session.failed:
-		log.Printf("#################### failed %v\n", err)
 		return nil, err
 	}
 }
@@ -105,7 +103,6 @@ func (s *Session) OnEvent(event interface{}) {
 						SessionConfig: s.config,
 					})
 					if err != nil {
-						log.Printf("################### Adding error %v\n", err)
 						select {
 						case s.failed <- err:
 						default:
@@ -119,7 +116,6 @@ func (s *Session) OnEvent(event interface{}) {
 			wg.Wait()
 
 			close(s.connected)
-			close(s.failed)
 		}()
 	case *AddEvent:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
