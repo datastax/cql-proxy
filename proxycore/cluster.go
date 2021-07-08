@@ -148,6 +148,10 @@ func (c *Cluster) OnEvent(frame *frame.Frame) {
 }
 
 func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) (err error) {
+	timeout := getOrUseDefault(c.config.ConnectTimeout, DefaultConnectTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	conn, err := ConnectClientWithEvents(ctx, endpoint, c)
 	if err != nil {
 		return err
@@ -301,10 +305,7 @@ func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 func (c *Cluster) reconnect() bool {
 	c.currentHostIndex = (c.currentHostIndex + 1) % len(c.hosts)
 	host := c.hosts[c.currentHostIndex]
-	timeout := getOrUseDefault(c.config.ConnectTimeout, DefaultConnectTimeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	err := c.connect(ctx, host.Endpoint(), false)
+	err := c.connect(c.ctx, host.Endpoint(), false)
 	if err != nil {
 		c.logger.Error("error reconnecting to host", zap.Stringer("host", host), zap.Error(err))
 		return false
@@ -352,7 +353,6 @@ func (c *Cluster) stayConnected() {
 				select {
 				case <-c.ctx.Done():
 					done = true
-					_ = c.controlConn.Close()
 				case <-connectTimer.C:
 					if c.reconnect() {
 						reconnectPolicy.Reset()

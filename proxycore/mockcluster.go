@@ -383,14 +383,15 @@ type MockCluster struct {
 	port        int
 	hosts       []MockHost
 	servers     map[string]*MockServer
+	Handlers    map[primitive.OpCode]MockRequestHandler
 }
 
-func NewMockCluster(startIP net.IP) *MockCluster {
+func NewMockCluster(startIP net.IP, port int) *MockCluster {
 	hostID, _ := primitive.ParseUuid("b3bca296-5bb7-411d-b875-67c33fe10000")
 	return &MockCluster{
 		startHostID: hostID,
 		startIP:     startIP,
-		port:        9042,
+		port:        port,
 		servers:     make(map[string]*MockServer),
 	}
 }
@@ -426,7 +427,7 @@ func (c *MockCluster) Add(ctx context.Context, n int) error {
 func (c *MockCluster) maybeStart(ctx context.Context, host MockHost) error {
 	key := host.String()
 	if _, ok := c.servers[key]; !ok {
-		server := &MockServer{}
+		server := &MockServer{Handlers: c.Handlers}
 		err := server.Serve(ctx, primitive.ProtocolVersion4, host, c.hosts)
 		if err != nil {
 			return err

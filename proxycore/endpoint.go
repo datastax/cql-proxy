@@ -65,6 +65,10 @@ type defaultEndpointResolver struct {
 	defaultPort   string
 }
 
+func NewEndpoint(addr string) Endpoint {
+	return &defaultEndpoint{addr}
+}
+
 func NewResolver(contactPoints ...string) EndpointResolver {
 	return NewResolverWithDefaultPort(contactPoints, 9042)
 }

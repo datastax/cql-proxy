@@ -31,7 +31,7 @@ func TestLookupEndpoint(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:9042", addr)
 }
 
-func TestLookupEndpointInvalid(t *testing.T) {
+func TestLookupEndpoint_Invalid(t *testing.T) {
 	var tests = []struct {
 		addr string
 		err  string

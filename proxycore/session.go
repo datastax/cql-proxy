@@ -20,6 +20,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 	"sync"
+	"time"
 )
 
 var (
@@ -33,6 +34,7 @@ type SessionConfig struct {
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
 	Logger          *zap.Logger
+	ConnectTimeout  time.Duration
 }
 
 type Session struct {

@@ -33,7 +33,7 @@ func TestConnectSession(t *testing.T) {
 
 	const supported = primitive.ProtocolVersion4
 
-	c := NewMockCluster(net.ParseIP("127.0.0.0"))
+	c := NewMockCluster(net.ParseIP("127.0.0.0"), 9042)
 
 	err := c.Add(ctx, 1)
 	require.NoError(t, err)

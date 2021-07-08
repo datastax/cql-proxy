@@ -66,7 +66,7 @@ func TestConnectPool(t *testing.T) {
 	wg.Wait()
 }
 
-func TestConnectPoolNoServer(t *testing.T) {
+func TestConnectPool_NoServer(t *testing.T) {
 	var server MockServer
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -100,7 +100,7 @@ func TestConnectPoolNoServer(t *testing.T) {
 	assert.True(t, reconnected, "expected pool to reconnect after server starts")
 }
 
-func TestConnectPoolInvalidAuth(t *testing.T) {
+func TestConnectPool_InvalidAuth(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -131,7 +131,7 @@ func TestConnectPoolInvalidAuth(t *testing.T) {
 	}
 }
 
-func TestConnectPoolAuthExpected(t *testing.T) {
+func TestConnectPool_AuthExpected(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -161,7 +161,7 @@ func TestConnectPoolAuthExpected(t *testing.T) {
 	}
 }
 
-func TestConnectPoolInvalidProtocolVersion(t *testing.T) {
+func TestConnectPool_InvalidProtocolVersion(t *testing.T) {
 	var server MockServer
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -189,7 +189,7 @@ func TestConnectPoolInvalidProtocolVersion(t *testing.T) {
 	}
 }
 
-func TestConnectPoolInvalidKeyspace(t *testing.T) {
+func TestConnectPool_InvalidKeyspace(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -241,7 +241,7 @@ func TestConnectPoolInvalidKeyspace(t *testing.T) {
 	}
 }
 
-func TestConnectPoolInvalidDNS(t *testing.T) {
+func TestConnectPool_InvalidDNS(t *testing.T) {
 	var server MockServer
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -267,7 +267,7 @@ func TestConnectPoolInvalidDNS(t *testing.T) {
 	}
 }
 
-func TestConnectPoolInvalidAddress(t *testing.T) {
+func TestConnectPool_InvalidAddress(t *testing.T) {
 	var server MockServer
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -125,7 +125,8 @@ func (p *connPool) leastBusyConn() *ClientConn {
 }
 
 func (p *connPool) connect() (conn *ClientConn, err error) {
-	ctx, cancel := context.WithTimeout(p.ctx, DefaultConnectTimeout)
+	timeout := getOrUseDefault(p.config.ConnectTimeout, DefaultConnectTimeout)
+	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
 	conn, err = ConnectClient(ctx, p.config.Endpoint)
 	if err != nil {

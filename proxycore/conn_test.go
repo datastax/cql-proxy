@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-func TestConnClientAndServer(t *testing.T) {
+func TestConnect(t *testing.T) {
 	ctx := context.Background()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:8123")
@@ -80,7 +80,7 @@ func TestConnClientAndServer(t *testing.T) {
 	assert.True(t, clientRecv.closed, "client closing method never called")
 }
 
-func TestConnectFailures(t *testing.T) {
+func TestConnect_Failures(t *testing.T) {
 	var tests = []struct {
 		endpoint Endpoint
 		err      string

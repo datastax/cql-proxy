@@ -28,7 +28,7 @@ func TestConnectCluster(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	c := NewMockCluster(net.ParseIP("127.0.0.0"))
+	c := NewMockCluster(net.ParseIP("127.0.0.0"), 9042)
 
 	err := c.Add(ctx, 1)
 	require.NoError(t, err)
