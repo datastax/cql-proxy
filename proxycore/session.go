@@ -106,6 +106,7 @@ func (s *Session) OnEvent(event interface{}) {
 						SessionConfig: s.config,
 					})
 					if err != nil {
+						log.Printf("################### Adding error %v\n", err)
 						select {
 						case s.failed <- err:
 						default:
