@@ -25,11 +25,6 @@ import (
 func TestLookupEndpoint(t *testing.T) {
 	addr, err := LookupEndpoint(&testEndpoint{addr: "localhost:9042"})
 	require.NoError(t, err, "unable to lookup endpoint")
-	assert.Equal(t, "127.0.0.1:9042", addr)
-
-	addr, err = LookupEndpoint(&testEndpoint{addr: "127.0.0.1:9042", isResolved: true})
-	require.NoError(t, err, "unable to lookup endpoint")
-
 	// Normalize to IPv4 (some platforms return an IPv6 address)
 	host, port, err := net.SplitHostPort(addr)
 	require.NoError(t, err)
@@ -38,6 +33,9 @@ func TestLookupEndpoint(t *testing.T) {
 	require.NotNil(t, ip)
 
 	assert.Equal(t, "127.0.0.1:9042", net.JoinHostPort(ip.To4().String(), port))
+
+	addr, err = LookupEndpoint(&testEndpoint{addr: "127.0.0.1:9042", isResolved: true})
+	require.NoError(t, err, "unable to lookup endpoint")
 }
 
 func TestLookupEndpoint_Invalid(t *testing.T) {
