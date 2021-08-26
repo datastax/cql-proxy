@@ -26,3 +26,5 @@ EXPOSE 9042
 
 # Copy in the binary
 COPY --from=builder /go/bin/cql-proxy .
+
+ENTRYPOINT ["/cql-proxy"]
