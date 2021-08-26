@@ -25,8 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/datastax/cql-proxy/parser"
-	"github.com/datastax/cql-proxy/proxycore"
+	"cql-proxy/parser"
+	"cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"

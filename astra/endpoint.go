@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/datastax/cql-proxy/proxycore"
+	"cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io/ioutil"
 	"net/http"
