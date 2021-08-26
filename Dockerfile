@@ -1,4 +1,4 @@
-FROM golang:1.16.7-alpine3.14 as builder
+FROM golang:1.16 as builder
 
 # Disable cgo to remove gcc dependency
 ENV CGO_ENABLED=0
