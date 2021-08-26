@@ -470,7 +470,7 @@ func makeSystemLocalValues(version primitive.ProtocolVersion, address string, ho
 	values := makeSystemValues(version, ip, hostID, schemaVersion)
 	values["key"] = encodeTypeFatal(version, datatype.Varchar, "local")
 	values["partitioner"] = encodeTypeFatal(version, datatype.Varchar, "")
-	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "github.com/datastax/cql-proxy")
+	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "cql-proxy")
 	values["cql_version"] = encodeTypeFatal(version, datatype.Varchar, "3.4.5")
 	values["native_protocol_version"] = encodeTypeFatal(version, datatype.Varchar, version.String())
 	return values
