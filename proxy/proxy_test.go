@@ -16,18 +16,19 @@ package proxy
 
 import (
 	"context"
-	"cql-proxy/proxycore"
 	"errors"
+	"net"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/datastax/cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net"
-	"strconv"
-	"testing"
-	"time"
 )
 
 func TestProxy_ListenAndServe(t *testing.T) {

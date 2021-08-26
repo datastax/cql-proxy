@@ -16,15 +16,16 @@ package main
 
 import (
 	"context"
-	"cql-proxy/astra"
-	"cql-proxy/proxy"
-	"cql-proxy/proxycore"
-	"github.com/alecthomas/kong"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"go.uber.org/zap"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+
+	"github.com/alecthomas/kong"
+	"github.com/datastax/cql-proxy/astra"
+	"github.com/datastax/cql-proxy/proxy"
+	"github.com/datastax/cql-proxy/proxycore"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 var cli struct {

@@ -16,13 +16,8 @@ package proxycore
 
 import (
 	"context"
-	"cql-proxy/parser"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/datatype"
-	"github.com/datastax/go-cassandra-native-protocol/frame"
-	"github.com/datastax/go-cassandra-native-protocol/message"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
 	"math/big"
 	"net"
@@ -31,6 +26,12 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/datastax/cql-proxy/parser"
+	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
 var (
@@ -469,7 +470,7 @@ func makeSystemLocalValues(version primitive.ProtocolVersion, address string, ho
 	values := makeSystemValues(version, ip, hostID, schemaVersion)
 	values["key"] = encodeTypeFatal(version, datatype.Varchar, "local")
 	values["partitioner"] = encodeTypeFatal(version, datatype.Varchar, "")
-	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "cql-proxy")
+	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "github.com/datastax/cql-proxy")
 	values["cql_version"] = encodeTypeFatal(version, datatype.Varchar, "3.4.5")
 	values["native_protocol_version"] = encodeTypeFatal(version, datatype.Varchar, version.String())
 	return values

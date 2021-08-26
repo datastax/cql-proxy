@@ -17,20 +17,21 @@ package proxy
 import (
 	"bytes"
 	"context"
-	"cql-proxy/parser"
-	"cql-proxy/proxycore"
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"sync"
+	"sync/atomic"
+
+	"github.com/datastax/cql-proxy/parser"
+	"github.com/datastax/cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"io"
-	"net"
-	"sync"
-	"sync/atomic"
 )
 
 var (
@@ -210,7 +211,7 @@ func (p *Proxy) buildLocalRow() {
 		"tokens":                  p.encodeTypeFatal(datatype.NewListType(datatype.Varchar), []string{"0"}),
 		"release_version":         p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.ReleaseVersion),
 		"partitioner":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.Partitioner),
-		"cluster_name":            p.encodeTypeFatal(datatype.Varchar, "cql-proxy"),
+		"cluster_name":            p.encodeTypeFatal(datatype.Varchar, "github.com/datastax/cql-proxy"),
 		"cql_version":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.CQLVersion),
 		"schema_version":          p.encodeTypeFatal(datatype.Uuid, schemaVersion), // TODO: Make this match the downstream cluster(s)
 		"native_protocol_version": p.encodeTypeFatal(datatype.Varchar, p.cluster.NegotiatedVersion.String()),

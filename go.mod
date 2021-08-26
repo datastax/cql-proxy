@@ -1,4 +1,4 @@
-module cql-proxy
+module github.com/datastax/cql-proxy 
 
 go 1.16
 
