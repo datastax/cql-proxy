@@ -59,6 +59,7 @@ func (s SenderFunc) Send(writer io.Writer) error {
 	return s(writer)
 }
 
+// Connect creates a new connection to an endpoint within a downstream cluster using TLS if specified.
 func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (c *Conn, err error) {
 	var dialer net.Dialer
 	addr, err := LookupEndpoint(endpoint)

@@ -15,17 +15,19 @@
 package astra
 
 import (
-	"cql-proxy/proxycore"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+
+	"cql-proxy/proxycore"
 )
 
 type astraResolver struct {

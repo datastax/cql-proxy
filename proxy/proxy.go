@@ -134,6 +134,7 @@ func (p *Proxy) Listen(address string) error {
 		NumConns:        p.config.NumConns,
 		Version:         p.cluster.NegotiatedVersion,
 		Auth:            p.config.Auth,
+		Logger:          p.config.Logger,
 	})
 
 	if err != nil {

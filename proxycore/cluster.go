@@ -79,6 +79,7 @@ type ClusterInfo struct {
 	CQLVersion     string
 }
 
+// Cluster defines a downstream cluster that is being proxied to.
 type Cluster struct {
 	ctx              context.Context
 	config           ClusterConfig
@@ -95,6 +96,7 @@ type Cluster struct {
 	Info              ClusterInfo
 }
 
+// ConnectCluster establishes control connections to each of the endpoints within a downstream cluster that is being proxied to.
 func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
 	c := &Cluster{
 		ctx:              ctx,

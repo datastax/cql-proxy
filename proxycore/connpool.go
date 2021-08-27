@@ -16,8 +16,11 @@ package proxycore
 
 import (
 	"context"
+	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
+	"errors"
 	"math"
 	"sync"
 	"time"
@@ -38,6 +41,8 @@ type connPool struct {
 	connsMu   *sync.RWMutex
 }
 
+// connectPool establishes a pool of connections to a given endpoint within a downstream cluster. These connection pools will
+// be used to proxy requests from the client to the cluster.
 func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -159,10 +164,14 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	return conn, nil
 }
 
+// stayConnected will perform a heartbeat for a connection within the pool to keep the connection alive. Will also attempt
+// to reestablish a disconnected (`connection == nil`) connection within the pool. Reconnect attempts will be made at intervals
+// defined by the ReconnectPolicy.
 func (p *connPool) stayConnected(idx int) {
 	conn := p.conns[idx]
 
 	connectTimer := time.NewTimer(0)
+	heartbeatTimer := time.NewTicker(30 * time.Second)
 	reconnectPolicy := p.config.ReconnectPolicy.Clone()
 	pendingConnect := false
 
@@ -196,11 +205,34 @@ func (p *connPool) stayConnected(idx int) {
 			case <-p.ctx.Done():
 				done = true
 				_ = conn.Close()
+				heartbeatTimer.Stop()
 			case <-conn.IsClosed():
 				p.connsMu.Lock()
 				conn, p.conns[idx] = nil, nil
 				p.connsMu.Unlock()
+			case <- heartbeatTimer.C:
+				err := p.performHeartbeat(conn)
+				if err != nil {
+					p.logger.Warn("error occurred performing heartbeat", zap.Error(err))
+				}
 			}
 		}
 	}
+}
+
+// performHeartbeat sends an OPTIONS request to the endpoint in order to keep the connection alive.
+func (p *connPool) performHeartbeat(conn *ClientConn) error {
+	response, err := conn.SendAndReceive(p.ctx, frame.NewFrame(p.config.Version, -1, &message.Options{}))
+	if err != nil {
+		return err
+	}
+
+	switch response.Body.Message.(type) {
+	case *message.Supported:
+		p.logger.Debug("successfully performed a heartbeat", zap.Stringer("endpoint", p.config.Endpoint))
+	case message.Error:
+		return errors.New("error occurred performing heartbeat")
+	}
+
+	return nil
 }
