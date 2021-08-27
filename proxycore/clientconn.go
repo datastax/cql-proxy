@@ -273,8 +273,8 @@ func (c *ClientConn) Send(request Request) error {
 func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame.Frame, error) {
 	request := &internalRequest{
 		frame: f,
-		err:   make(chan error),
-		res:   make(chan *frame.RawFrame),
+		err:   make(chan error, 1),
+		res:   make(chan *frame.RawFrame, 1),
 	}
 
 	err := c.Send(request)
@@ -337,9 +337,17 @@ func (i *internalRequest) Frame() interface{} {
 }
 
 func (i *internalRequest) OnClose(err error) {
-	i.err <- err
+	select {
+	case i.err <- err:
+	default:
+		panic("attempted to close request multiple times")
+	}
 }
 
 func (i *internalRequest) OnResult(raw *frame.RawFrame) {
-	i.res <- raw
+	select {
+	case i.res <- raw:
+	default:
+		panic("attempted to set result multiple times")
+	}
 }
