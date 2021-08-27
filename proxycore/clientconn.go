@@ -18,12 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/frame"
-	"github.com/datastax/go-cassandra-native-protocol/message"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
 	"strings"
 	"sync/atomic"
+
+	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
 const (
@@ -49,6 +50,7 @@ type ClientConn struct {
 	eventHandler EventHandler
 }
 
+// ConnectClient creates a new connection to an endpoint within a downstream cluster using TLS if specified.
 func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) {
 	return ConnectClientWithEvents(ctx, endpoint, nil)
 }
