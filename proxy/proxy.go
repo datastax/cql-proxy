@@ -17,20 +17,21 @@ package proxy
 import (
 	"bytes"
 	"context"
-	"cql-proxy/parser"
-	"cql-proxy/proxycore"
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"sync"
+	"sync/atomic"
+
+	"cql-proxy/parser"
+	"cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"io"
-	"net"
-	"sync"
-	"sync/atomic"
 )
 
 var (
