@@ -15,12 +15,12 @@
 package astra
 
 import (
-	"cql-proxy/proxycore"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io/ioutil"
 	"net/http"

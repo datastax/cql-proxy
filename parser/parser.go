@@ -15,13 +15,14 @@
 package parser
 
 import (
-	parser "cql-proxy/proxycore/antlr"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/antlr/antlr4/runtime/Go/antlr"
+	parser "cql-proxy/proxycore/antlr"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
-	"strings"
 )
 
 const (

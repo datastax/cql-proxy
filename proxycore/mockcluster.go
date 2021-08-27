@@ -16,13 +16,8 @@ package proxycore
 
 import (
 	"context"
-	"cql-proxy/parser"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/datatype"
-	"github.com/datastax/go-cassandra-native-protocol/frame"
-	"github.com/datastax/go-cassandra-native-protocol/message"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
 	"math/big"
 	"net"
@@ -31,6 +26,12 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"cql-proxy/parser"
+	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
 var (

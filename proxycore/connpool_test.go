@@ -16,15 +16,16 @@ package proxycore
 
 import (
 	"context"
+	"sync"
+	"testing"
+	"time"
+
 	"cql-proxy/parser"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestConnectPool(t *testing.T) {

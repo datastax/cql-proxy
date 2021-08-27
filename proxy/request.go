@@ -15,12 +15,13 @@
 package proxy
 
 import (
+	"io"
+	"sync"
+
 	"cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"go.uber.org/zap"
-	"io"
-	"sync"
 )
 
 type request struct {
