@@ -260,8 +260,13 @@ func (c *ClientConn) Closing(err error) {
 }
 
 func (c *ClientConn) Send(request Request) error {
+	stream := c.pending.store(request)
+	if stream < 0 {
+		return StreamsExhausted
+	}
 	err := c.conn.Write(&requestSender{
 		request: request,
+		stream:  stream,
 		conn:    c,
 	})
 	if err == nil {
@@ -306,20 +311,17 @@ func (c *ClientConn) Err() error {
 
 type requestSender struct {
 	request Request
+	stream  int16
 	conn    *ClientConn
 }
 
 func (r *requestSender) Send(writer io.Writer) error {
-	stream := r.conn.pending.store(r.request)
-	if stream < 0 {
-		return StreamsExhausted
-	}
 	switch frm := r.request.Frame().(type) {
 	case *frame.Frame:
-		frm.Header.StreamId = stream
+		frm.Header.StreamId = r.stream
 		return codec.EncodeFrame(frm, writer)
 	case *frame.RawFrame:
-		frm.Header.StreamId = stream
+		frm.Header.StreamId = r.stream
 		return codec.EncodeRawFrame(frm, writer)
 	default:
 		return errors.New("unhandled frame type")
