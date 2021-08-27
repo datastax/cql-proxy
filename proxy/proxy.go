@@ -51,7 +51,7 @@ type Proxy struct {
 	ctx                context.Context
 	config             Config
 	logger             *zap.Logger
-	listener           net.Listener
+	listener           *net.TCPListener
 	cluster            *proxycore.Cluster
 	sessions           sync.Map
 	sessMu             *sync.Mutex
@@ -143,7 +143,11 @@ func (p *Proxy) Listen(address string) error {
 
 	p.sessions.Store("", sess) // No keyspace
 
-	p.listener, err = net.Listen("tcp", address)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", address)
+	if err != nil {
+		return err
+	}
+	p.listener, err = net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		return err
 	}
@@ -155,7 +159,7 @@ func (p *Proxy) Listen(address string) error {
 
 func (p *Proxy) Serve() error {
 	for {
-		conn, err := p.listener.Accept()
+		conn, err := p.listener.AcceptTCP()
 		if err != nil {
 			return err
 		}
@@ -163,7 +167,15 @@ func (p *Proxy) Serve() error {
 	}
 }
 
-func (p *Proxy) handle(conn net.Conn) {
+func (p *Proxy) handle(conn *net.TCPConn) {
+	if err := conn.SetKeepAlive(false); err != nil {
+		p.logger.Warn("failed to disable keepalive on connection", zap.Error(err))
+	}
+
+	if err := conn.SetNoDelay(true); err != nil {
+		p.logger.Warn("failed to set TCP_NODELAY on connection", zap.Error(err))
+	}
+
 	cl := &client{
 		ctx:                 p.ctx,
 		proxy:               p,
