@@ -24,9 +24,11 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"cql-proxy/parser"
 	"cql-proxy/proxycore"
+
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -40,12 +42,14 @@ var (
 )
 
 type Config struct {
-	Version         primitive.ProtocolVersion
-	Auth            proxycore.Authenticator
-	Resolver        proxycore.EndpointResolver
-	ReconnectPolicy proxycore.ReconnectPolicy
-	NumConns        int
-	Logger          *zap.Logger
+	Version           primitive.ProtocolVersion
+	Auth              proxycore.Authenticator
+	Resolver          proxycore.EndpointResolver
+	ReconnectPolicy   proxycore.ReconnectPolicy
+	NumConns          int
+	Logger            *zap.Logger
+	HeartBeatInterval time.Duration
+	IdleTimeout       time.Duration
 }
 
 type Proxy struct {
@@ -107,10 +111,12 @@ func (p *Proxy) Listen(address string) error {
 	var err error
 
 	p.cluster, err = proxycore.ConnectCluster(p.ctx, proxycore.ClusterConfig{
-		Version:         p.config.Version,
-		Auth:            p.config.Auth,
-		Resolver:        p.config.Resolver,
-		ReconnectPolicy: p.config.ReconnectPolicy,
+		Version:           p.config.Version,
+		Auth:              p.config.Auth,
+		Resolver:          p.config.Resolver,
+		ReconnectPolicy:   p.config.ReconnectPolicy,
+		HeartBeatInterval: p.config.HeartBeatInterval,
+		IdleTimeout:       p.config.IdleTimeout,
 	})
 
 	if err != nil {
@@ -131,11 +137,13 @@ func (p *Proxy) Listen(address string) error {
 	}
 
 	sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
-		ReconnectPolicy: p.config.ReconnectPolicy,
-		NumConns:        p.config.NumConns,
-		Version:         p.cluster.NegotiatedVersion,
-		Auth:            p.config.Auth,
-		Logger:          p.config.Logger,
+		ReconnectPolicy:   p.config.ReconnectPolicy,
+		NumConns:          p.config.NumConns,
+		Version:           p.cluster.NegotiatedVersion,
+		Auth:              p.config.Auth,
+		Logger:            p.config.Logger,
+		HeartBeatInterval: p.config.HeartBeatInterval,
+		IdleTimeout:       p.config.IdleTimeout,
 	})
 
 	if err != nil {
@@ -193,11 +201,13 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 	defer p.sessMu.Unlock()
 	if _, ok := p.sessions.Load(keyspace); !ok {
 		sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
-			ReconnectPolicy: p.config.ReconnectPolicy,
-			NumConns:        p.config.NumConns,
-			Version:         p.cluster.NegotiatedVersion,
-			Auth:            p.config.Auth,
-			Keyspace:        keyspace,
+			ReconnectPolicy:   p.config.ReconnectPolicy,
+			NumConns:          p.config.NumConns,
+			Version:           p.cluster.NegotiatedVersion,
+			Auth:              p.config.Auth,
+			Keyspace:          keyspace,
+			HeartBeatInterval: p.config.HeartBeatInterval,
+			IdleTimeout:       p.config.IdleTimeout,
 		})
 		if err != nil {
 			return err

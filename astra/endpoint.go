@@ -15,14 +15,11 @@
 package astra
 
 import (
-
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"cql-proxy/proxycore"
-
 	"io/ioutil"
 	"net/http"
 	"sync"

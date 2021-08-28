@@ -17,15 +17,16 @@ package proxycore
 import (
 	"bytes"
 	"context"
+	"net"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestClientConn_Handshake(t *testing.T) {

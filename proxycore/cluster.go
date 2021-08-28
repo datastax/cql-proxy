@@ -18,12 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"sort"
-	"time"
 )
 
 const (
@@ -63,14 +64,16 @@ func (f ClusterListenerFunc) OnEvent(event interface{}) {
 }
 
 type ClusterConfig struct {
-	Version         primitive.ProtocolVersion
-	Auth            Authenticator
-	Resolver        EndpointResolver
-	ReconnectPolicy ReconnectPolicy
-	RefreshWindow   time.Duration
-	ConnectTimeout  time.Duration
-	RefreshTimeout  time.Duration
-	Logger          *zap.Logger
+	Version           primitive.ProtocolVersion
+	Auth              Authenticator
+	Resolver          EndpointResolver
+	ReconnectPolicy   ReconnectPolicy
+	RefreshWindow     time.Duration
+	ConnectTimeout    time.Duration
+	RefreshTimeout    time.Duration
+	Logger            *zap.Logger
+	HeartBeatInterval time.Duration
+	IdleTimeout       time.Duration
 }
 
 type ClusterInfo struct {
@@ -191,6 +194,8 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 		c.NegotiatedVersion = negotiated
 		c.Info = info
 	}
+
+	go conn.Heartbeats(timeout, version, c.config.HeartBeatInterval, c.config.IdleTimeout, GetOrCreateNopLogger(c.config.Logger))
 
 	return c.mergeHosts(hosts)
 }

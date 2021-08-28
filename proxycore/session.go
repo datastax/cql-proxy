@@ -17,10 +17,11 @@ package proxycore
 import (
 	"context"
 	"errors"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"go.uber.org/zap"
 	"sync"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 var (
@@ -35,6 +36,8 @@ type SessionConfig struct {
 	Auth            Authenticator
 	Logger          *zap.Logger
 	ConnectTimeout  time.Duration
+	HeartBeatInterval time.Duration
+	IdleTimeout       time.Duration
 }
 
 type Session struct {

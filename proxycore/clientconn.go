@@ -21,10 +21,12 @@ import (
 	"io"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 const (
@@ -304,6 +306,42 @@ func (c *ClientConn) IsClosed() chan struct{} {
 
 func (c *ClientConn) Err() error {
 	return c.conn.Err()
+}
+
+// Heartbeats sends an OPTIONS request to the endpoint in order to keep the connection alive.
+func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.ProtocolVersion, heartbeatInterval time.Duration, idleTimeout time.Duration, logger *zap.Logger) {
+	heartbeatTimer := time.NewTicker(heartbeatInterval)
+	mark := time.Now()
+	nextMark := mark.Add(idleTimeout)
+
+	done := false
+	for !done {
+		select {
+		case <- heartbeatTimer.C:
+			ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+			response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Options{}))
+			cancel()
+			if err != nil {
+				logger.Warn("error occurred performing heartbeat", zap.Error(err))
+				continue
+			}
+
+			switch response.Body.Message.(type) {
+			case *message.Supported:
+				logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
+				mark = time.Now()
+				nextMark = mark.Add(idleTimeout)
+			case message.Error:
+				logger.Warn("error occurred performing heartbeat", zap.String("optionsError", response.Body.String()))
+			}
+		}
+
+		if time.Now().After(nextMark) {
+			if err := c.Close(); err != nil {
+				return
+			}
+		}
+	}
 }
 
 type requestSender struct {
