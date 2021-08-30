@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"cql-proxy/proxycore"
+
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -85,6 +86,8 @@ func TestProxy_ListenAndServe(t *testing.T) {
 		Resolver:        proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
 		ReconnectPolicy: proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
 		NumConns:        2,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	})
 
 	err = proxy.Listen(proxyContactPoint)
