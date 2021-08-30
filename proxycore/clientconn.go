@@ -23,6 +23,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -47,6 +48,8 @@ type ClientConn struct {
 	inflight     int32
 	pending      *pendingRequests
 	eventHandler EventHandler
+	closing      bool
+	mu           *sync.Mutex
 }
 
 func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) {
@@ -55,9 +58,9 @@ func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) 
 
 func ConnectClientWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClientConn, error) {
 	c := &ClientConn{
-		conn:         nil,
 		pending:      newPendingRequests(MaxStreams),
 		eventHandler: handler,
+		mu:           &sync.Mutex{},
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -256,15 +259,32 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 }
 
 func (c *ClientConn) Closing(err error) {
+	c.mu.Lock()
+	c.closing = true
 	c.pending.closing(err)
+	c.mu.Unlock()
+}
+
+func (c* ClientConn) addToPending(request Request) (int16, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closing {
+		return 0, Closed
+	}
+	stream := c.pending.store(request)
+	if stream < 0 {
+		return 0, StreamsExhausted
+	}
+	return stream, nil
 }
 
 func (c *ClientConn) Send(request Request) error {
-	stream := c.pending.store(request)
-	if stream < 0 {
-		return StreamsExhausted
+	stream, err := c.addToPending(request)
+	if err != nil {
+		return err
 	}
-	err := c.conn.Write(&requestSender{
+
+	err = c.conn.Write(&requestSender{
 		request: request,
 		stream:  stream,
 		conn:    c,
