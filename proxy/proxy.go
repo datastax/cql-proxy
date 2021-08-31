@@ -27,6 +27,7 @@ import (
 
 	"cql-proxy/parser"
 	"cql-proxy/proxycore"
+
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -57,6 +58,7 @@ type Proxy struct {
 	sessions           sync.Map
 	sessMu             *sync.Mutex
 	schemaEventClients sync.Map
+	preparedCache      sync.Map
 	clientIdGen        uint64
 	lb                 proxycore.LoadBalancer
 	systemLocalValues  map[string]message.Column
@@ -86,12 +88,10 @@ func (p *Proxy) OnEvent(event interface{}) {
 
 func NewProxy(ctx context.Context, config Config) *Proxy {
 	return &Proxy{
-		ctx:                ctx,
-		config:             config,
-		logger:             proxycore.GetOrCreateNopLogger(config.Logger),
-		sessions:           sync.Map{},
-		sessMu:             &sync.Mutex{},
-		schemaEventClients: sync.Map{},
+		ctx:    ctx,
+		config: config,
+		logger: proxycore.GetOrCreateNopLogger(config.Logger),
+		sessMu: &sync.Mutex{},
 	}
 }
 
@@ -293,7 +293,7 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 			qp:         c.proxy.newQueryPlan(),
 			raw:        raw,
 		}
-		req.execute()
+		req.execute(true)
 	} else {
 		c.send(raw.Header, &message.ServerError{ErrorMessage: "Attempted to use invalid keyspace"})
 	}
