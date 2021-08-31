@@ -18,13 +18,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/frame"
-	"github.com/datastax/go-cassandra-native-protocol/message"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
 const (
@@ -49,7 +50,7 @@ type ClientConn struct {
 	pending      *pendingRequests
 	eventHandler EventHandler
 	closing      bool
-	mu           *sync.Mutex
+	closingMu    *sync.RWMutex
 }
 
 func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) {
@@ -60,7 +61,7 @@ func ConnectClientWithEvents(ctx context.Context, endpoint Endpoint, handler Eve
 	c := &ClientConn{
 		pending:      newPendingRequests(MaxStreams),
 		eventHandler: handler,
-		mu:           &sync.Mutex{},
+		closingMu:    &sync.RWMutex{},
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -259,15 +260,15 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 }
 
 func (c *ClientConn) Closing(err error) {
-	c.mu.Lock()
+	c.closingMu.Lock()
 	c.closing = true
 	c.pending.closing(err)
-	c.mu.Unlock()
+	c.closingMu.Unlock()
 }
 
-func (c* ClientConn) addToPending(request Request) (int16, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *ClientConn) addToPending(request Request) (int16, error) {
+	c.closingMu.RLock()
+	defer c.closingMu.RUnlock()
 	if c.closing {
 		return 0, Closed
 	}
