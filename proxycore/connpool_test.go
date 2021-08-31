@@ -351,7 +351,7 @@ func TestConnectPool_HandshakeTimeout(t *testing.T) {
 		},
 	})
 	if assert.Error(t, err) {
-		assert.Contains(t, err.Error(), "context deadline exceeded")
+		assert.Contains(t, err.Error(), "handshake took longer than 1s to complete")
 	}
 }
 
