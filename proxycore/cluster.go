@@ -195,7 +195,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 		c.Info = info
 	}
 
-	go conn.Heartbeats(timeout, version, c.config.HeartBeatInterval, c.config.IdleTimeout, GetOrCreateNopLogger(c.config.Logger))
+	go conn.Heartbeats(timeout, version, c.config.HeartBeatInterval, c.config.IdleTimeout, c.logger)
 
 	return c.mergeHosts(hosts)
 }

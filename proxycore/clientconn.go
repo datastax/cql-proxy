@@ -337,12 +337,12 @@ func (c *ClientConn) Err() error {
 // Heartbeats sends an OPTIONS request to the endpoint in order to keep the connection alive.
 func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.ProtocolVersion, heartbeatInterval time.Duration, idleTimeout time.Duration, logger *zap.Logger) {
 	heartbeatTimer := time.NewTicker(heartbeatInterval)
-	mark := time.Now()
-	nextMark := mark.Add(idleTimeout)
+	idleTimer := time.NewTimer(idleTimeout)
 
-	done := false
-	for !done {
+	for true {
 		select {
+		case <-c.conn.IsClosed():
+			return
 		case <-heartbeatTimer.C:
 			ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 			response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Options{}))
@@ -355,17 +355,19 @@ func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.
 			switch response.Body.Message.(type) {
 			case *message.Supported:
 				logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
-				mark = time.Now()
-				nextMark = mark.Add(idleTimeout)
+				if !idleTimer.Stop() {
+					<-idleTimer.C
+				}
+				idleTimer.Reset(idleTimeout)
 			case message.Error:
 				logger.Warn("error occurred performing heartbeat", zap.String("optionsError", response.Body.String()))
+			default:
+				logger.Warn("unexpected message received while performing heartbeat", zap.String("optionsError", response.Body.String()))
 			}
-		}
-
-		if time.Now().After(nextMark) {
-			if err := c.Close(); err != nil {
-				return
-			}
+		case <-idleTimer.C:
+			_ = c.Close()
+			logger.Sugar().Errorf("error connection didn't perform heartbeats within %v", idleTimeout)
+			return
 		}
 	}
 }

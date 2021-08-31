@@ -159,7 +159,7 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 		}
 	}
 
-	go conn.Heartbeats(timeout, p.config.Version, p.config.HeartBeatInterval, p.config.IdleTimeout, GetOrCreateNopLogger(p.config.Logger))
+	go conn.Heartbeats(timeout, p.config.Version, p.config.HeartBeatInterval, p.config.IdleTimeout, p.logger)
 	return conn, nil
 }
 
@@ -210,5 +210,3 @@ func (p *connPool) stayConnected(idx int) {
 		}
 	}
 }
-
-
