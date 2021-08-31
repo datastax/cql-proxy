@@ -20,12 +20,14 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+
 	"go.uber.org/zap"
 )
 
@@ -50,6 +52,8 @@ type ClientConn struct {
 	inflight     int32
 	pending      *pendingRequests
 	eventHandler EventHandler
+	closing      bool
+	closingMu    *sync.RWMutex
 }
 
 // ConnectClient creates a new connection to an endpoint within a downstream cluster using TLS if specified.
@@ -59,9 +63,9 @@ func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) 
 
 func ConnectClientWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClientConn, error) {
 	c := &ClientConn{
-		conn:         nil,
 		pending:      newPendingRequests(MaxStreams),
 		eventHandler: handler,
+		closingMu:    &sync.RWMutex{},
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -260,12 +264,34 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 }
 
 func (c *ClientConn) Closing(err error) {
+	c.closingMu.Lock()
+	c.closing = true
 	c.pending.closing(err)
+	c.closingMu.Unlock()
+}
+
+func (c *ClientConn) addToPending(request Request) (int16, error) {
+	c.closingMu.RLock()
+	defer c.closingMu.RUnlock()
+	if c.closing {
+		return 0, Closed
+	}
+	stream := c.pending.store(request)
+	if stream < 0 {
+		return 0, StreamsExhausted
+	}
+	return stream, nil
 }
 
 func (c *ClientConn) Send(request Request) error {
-	err := c.conn.Write(&requestSender{
+	stream, err := c.addToPending(request)
+	if err != nil {
+		return err
+	}
+
+	err = c.conn.Write(&requestSender{
 		request: request,
+		stream:  stream,
 		conn:    c,
 	})
 	if err == nil {
@@ -277,8 +303,8 @@ func (c *ClientConn) Send(request Request) error {
 func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame.Frame, error) {
 	request := &internalRequest{
 		frame: f,
-		err:   make(chan error),
-		res:   make(chan *frame.RawFrame),
+		err:   make(chan error, 1),
+		res:   make(chan *frame.RawFrame, 1),
 	}
 
 	err := c.Send(request)
@@ -317,7 +343,7 @@ func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.
 	done := false
 	for !done {
 		select {
-		case <- heartbeatTimer.C:
+		case <-heartbeatTimer.C:
 			ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 			response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Options{}))
 			cancel()
@@ -346,20 +372,17 @@ func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.
 
 type requestSender struct {
 	request Request
+	stream  int16
 	conn    *ClientConn
 }
 
 func (r *requestSender) Send(writer io.Writer) error {
-	stream := r.conn.pending.store(r.request)
-	if stream < 0 {
-		return StreamsExhausted
-	}
 	switch frm := r.request.Frame().(type) {
 	case *frame.Frame:
-		frm.Header.StreamId = stream
+		frm.Header.StreamId = r.stream
 		return codec.EncodeFrame(frm, writer)
 	case *frame.RawFrame:
-		frm.Header.StreamId = stream
+		frm.Header.StreamId = r.stream
 		return codec.EncodeRawFrame(frm, writer)
 	default:
 		return errors.New("unhandled frame type")
@@ -377,9 +400,17 @@ func (i *internalRequest) Frame() interface{} {
 }
 
 func (i *internalRequest) OnClose(err error) {
-	i.err <- err
+	select {
+	case i.err <- err:
+	default:
+		panic("attempted to close request multiple times")
+	}
 }
 
 func (i *internalRequest) OnResult(raw *frame.RawFrame) {
-	i.res <- raw
+	select {
+	case i.res <- raw:
+	default:
+		panic("attempted to set result multiple times")
+	}
 }
