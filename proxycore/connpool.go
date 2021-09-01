@@ -30,28 +30,28 @@ type connPoolConfig struct {
 }
 
 type connPool struct {
-	ctx       context.Context
-	config    connPoolConfig
-	logger    *zap.Logger
-	prepareCache *sync.Map
-	cancel    context.CancelFunc
-	remaining int32
-	conns     []*ClientConn
-	connsMu   *sync.RWMutex
+	ctx           context.Context
+	config        connPoolConfig
+	logger        *zap.Logger
+	preparedCache *sync.Map
+	cancel        context.CancelFunc
+	remaining     int32
+	conns         []*ClientConn
+	connsMu       *sync.RWMutex
 }
 
 func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	pool := &connPool{
-		ctx:       ctx,
-		config:    config,
-		logger:    GetOrCreateNopLogger(config.Logger),
-		prepareCache: config.PrepareCache,
-		cancel:    cancel,
-		remaining: int32(config.NumConns),
-		conns:     make([]*ClientConn, config.NumConns),
-		connsMu:   &sync.RWMutex{},
+		ctx:           ctx,
+		config:        config,
+		logger:        GetOrCreateNopLogger(config.Logger),
+		preparedCache: config.PreparedCache,
+		cancel:        cancel,
+		remaining:     int32(config.NumConns),
+		conns:         make([]*ClientConn, config.NumConns),
+		connsMu:       &sync.RWMutex{},
 	}
 
 	errs := make([]error, config.NumConns)
@@ -132,8 +132,8 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
 	conn, err = ConnectClient(ctx, p.config.Endpoint, ClientConnConfig{
-		prepareCache: p.prepareCache,
-		logger:       p.logger})
+		preparedCache: p.preparedCache,
+		logger:        p.logger})
 	if err != nil {
 		return nil, err
 	}

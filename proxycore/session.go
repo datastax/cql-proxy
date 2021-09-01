@@ -35,18 +35,18 @@ type SessionConfig struct {
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
 	Logger          *zap.Logger
-	PrepareCache    *sync.Map
+	PreparedCache   *sync.Map
 	ConnectTimeout  time.Duration
 }
 
 type Session struct {
-	ctx          context.Context
-	config       SessionConfig
-	logger       *zap.Logger
-	pools        sync.Map
-	connected    chan struct{}
-	failed       chan error
-	prepareCache *sync.Map
+	ctx           context.Context
+	config        SessionConfig
+	logger        *zap.Logger
+	pools         sync.Map
+	connected     chan struct{}
+	failed        chan error
+	preparedCache *sync.Map
 }
 
 func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {

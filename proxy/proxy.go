@@ -135,7 +135,7 @@ func (p *Proxy) Listen(address string) error {
 		NumConns:        p.config.NumConns,
 		Version:         p.cluster.NegotiatedVersion,
 		Auth:            p.config.Auth,
-		PrepareCache:    &p.preparedCache,
+		PreparedCache:   &p.preparedCache,
 	})
 
 	if err != nil {
@@ -185,7 +185,7 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 			NumConns:        p.config.NumConns,
 			Version:         p.cluster.NegotiatedVersion,
 			Auth:            p.config.Auth,
-			PrepareCache:    &p.preparedCache,
+			PreparedCache:   &p.preparedCache,
 			Keyspace:        keyspace,
 		})
 		if err != nil {

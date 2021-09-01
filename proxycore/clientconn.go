@@ -48,20 +48,20 @@ func (f EventHandlerFunc) OnEvent(frm *frame.Frame) {
 }
 
 type ClientConnConfig struct {
-	prepareCache *sync.Map
-	handler      EventHandler
-	logger       *zap.Logger
+	preparedCache *sync.Map
+	handler       EventHandler
+	logger        *zap.Logger
 }
 
 type ClientConn struct {
-	conn         *Conn
-	inflight     int32
-	pending      *pendingRequests
-	eventHandler EventHandler
-	prepareCache *sync.Map
-	logger       *zap.Logger
-	closing      bool
-	closingMu    *sync.RWMutex
+	conn          *Conn
+	inflight      int32
+	pending       *pendingRequests
+	eventHandler  EventHandler
+	preparedCache *sync.Map
+	logger        *zap.Logger
+	closing       bool
+	closingMu     *sync.RWMutex
 }
 
 func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConfig) (*ClientConn, error) {
@@ -264,7 +264,7 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 
 		handled := false
 
-		if c.prepareCache != nil {
+		if c.preparedCache != nil {
 			switch raw.Header.OpCode {
 			case primitive.OpCodeError:
 				handled = c.maybePrepareAndExecute(request, raw)
@@ -296,7 +296,7 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 		}
 		msg := frm.Body.Message.(*message.Unprepared)
 		id := hex.EncodeToString(msg.Id)
-		if prepare, ok := c.prepareCache.Load(id); ok {
+		if prepare, ok := c.preparedCache.Load(id); ok {
 			err := c.Send(&prepareRequest{
 				prepare:     prepare.(*frame.RawFrame),
 				origRequest: request,
@@ -331,7 +331,7 @@ func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
 			return
 		}
 		msg := frm.Body.Message.(*message.PreparedResult)
-		c.prepareCache.Store(hex.EncodeToString(msg.PreparedQueryId), raw) // Store frame so we can re-prepare
+		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId), raw) // Store frame so we can re-prepare
 	}
 }
 
