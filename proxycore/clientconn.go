@@ -336,14 +336,13 @@ func (c *ClientConn) Err() error {
 
 // Heartbeats sends an OPTIONS request to the endpoint in order to keep the connection alive.
 func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.ProtocolVersion, heartbeatInterval time.Duration, idleTimeout time.Duration, logger *zap.Logger) {
-	heartbeatTimer := time.NewTicker(heartbeatInterval)
 	idleTimer := time.NewTimer(idleTimeout)
 
-	for true {
+	for {
 		select {
 		case <-c.conn.IsClosed():
 			return
-		case <-heartbeatTimer.C:
+		case <-time.After(heartbeatInterval):
 			ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 			response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Options{}))
 			cancel()
@@ -355,10 +354,9 @@ func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.
 			switch response.Body.Message.(type) {
 			case *message.Supported:
 				logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
-				if !idleTimer.Stop() {
-					<-idleTimer.C
+				if idleTimer.Stop() {
+					idleTimer.Reset(idleTimeout)
 				}
-				idleTimer.Reset(idleTimeout)
 			case message.Error:
 				logger.Warn("error occurred performing heartbeat", zap.String("optionsError", response.Body.String()))
 			default:

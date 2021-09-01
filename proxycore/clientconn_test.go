@@ -372,15 +372,20 @@ func mockServerWithAuth(username, password string) *MockServer {
 	}
 }
 
+const (
+	connectTimeout    = 100 * time.Millisecond
+	heartbeatInterval = 500 * time.Millisecond
+	idleTimeout       = 1000 * time.Millisecond
+)
+
 func TestClientConn_Heartbeats(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
-	connectTimeout := 1 * time.Second
-	heartbeatInterval := 2 * time.Second
-	idleTimeout := 4 * time.Second
+	heartbeatCh := make(chan bool, 1)
 
 	server := &MockServer{
 		Handlers: NewMockRequestHandlers(MockRequestHandlers{
 			primitive.OpCodeOptions: func(cl *MockClient, frm *frame.Frame) message.Message {
+				heartbeatCh <- true
 				return &message.Supported{}
 			},
 		}),
@@ -404,17 +409,17 @@ func TestClientConn_Heartbeats(t *testing.T) {
 	_, err = cl.Handshake(ctx, supported, nil)
 	require.NoError(t, err)
 
-	go cl.Heartbeats(connectTimeout, primitive.ProtocolVersion4, heartbeatInterval, idleTimeout, logger)
-	time.Sleep(idleTimeout * 2)
-	assert.Equal(t, false, cl.closing)
-	_ = cl.Close()
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	select {
+	case <-heartbeatCh:
+		_ = cl.Close()
+	case <-time.After(idleTimeout * 2):
+		assert.Fail(t, "expected heartbeat")
+	}
 }
 
 func TestClientConn_HeartbeatsError(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
-	connectTimeout := 1 * time.Second
-	heartbeatInterval := 2 * time.Second
-	idleTimeout := 4 * time.Second
 
 	server := &MockServer{
 		Handlers: NewMockRequestHandlers(MockRequestHandlers{
@@ -442,22 +447,25 @@ func TestClientConn_HeartbeatsError(t *testing.T) {
 	_, err = cl.Handshake(ctx, supported, nil)
 	require.NoError(t, err)
 
-	go cl.Heartbeats(connectTimeout, primitive.ProtocolVersion4, heartbeatInterval, idleTimeout, logger)
-	time.Sleep(idleTimeout * 2)
-	// no heartbeats should have been performed so the connection should have been closed
-	assert.Equal(t, true, cl.closing)
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	closed := waitUntil(2*idleTimeout, func() bool {
+		select {
+		case <-cl.IsClosed():
+			return true
+		default:
+			return false
+		}
+	})
+	assert.True(t, closed, "expected the connection to be closed")
 }
 
 func TestClientConn_HeartbeatsTimeout(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
-	connectTimeout := 1 * time.Second
-	heartbeatInterval := 2 * time.Second
-	idleTimeout := 4 * time.Second
 
 	server := &MockServer{
 		Handlers: NewMockRequestHandlers(MockRequestHandlers{
 			primitive.OpCodeOptions: func(cl *MockClient, frm *frame.Frame) message.Message {
-				time.Sleep(connectTimeout + 1)
+				time.Sleep(heartbeatInterval)
 				return &message.Supported{}
 			},
 		}),
@@ -481,17 +489,21 @@ func TestClientConn_HeartbeatsTimeout(t *testing.T) {
 	_, err = cl.Handshake(ctx, supported, nil)
 	require.NoError(t, err)
 
-	go cl.Heartbeats(connectTimeout, primitive.ProtocolVersion4, heartbeatInterval, idleTimeout, logger)
-	time.Sleep(idleTimeout * 2)
-	// no heartbeats should have been performed so the connection should have been closed
-	assert.Equal(t, true, cl.closing)
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	closed := waitUntil(2*idleTimeout, func() bool {
+		select {
+		case <-cl.IsClosed():
+			return true
+		default:
+			return false
+		}
+	})
+	assert.True(t, closed, "expected the connection to be closed")
+
 }
 
 func TestClientConn_HeartbeatsUnexpectedMessage(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
-	connectTimeout := 1 * time.Second
-	heartbeatInterval := 2 * time.Second
-	idleTimeout := 4 * time.Second
 
 	server := &MockServer{
 		Handlers: NewMockRequestHandlers(MockRequestHandlers{
@@ -519,8 +531,15 @@ func TestClientConn_HeartbeatsUnexpectedMessage(t *testing.T) {
 	_, err = cl.Handshake(ctx, supported, nil)
 	require.NoError(t, err)
 
-	go cl.Heartbeats(connectTimeout, primitive.ProtocolVersion4, heartbeatInterval, idleTimeout, logger)
-	time.Sleep(idleTimeout * 2)
-	// no heartbeats should have been performed so the connection should have been closed
-	assert.Equal(t, true, cl.closing)
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	closed := waitUntil(2*idleTimeout, func() bool {
+		select {
+		case <-cl.IsClosed():
+			return true
+		default:
+			return false
+		}
+	})
+	assert.True(t, closed, "expected the connection to be closed")
+
 }
