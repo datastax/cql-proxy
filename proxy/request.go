@@ -92,26 +92,19 @@ func (r *request) OnClose(_ error) {
 	}
 }
 
-func readInt(bytes []byte) (int32, error) {
-	if len(bytes) < 4 {
-		return 0, errors.New("[int] expects at least 4 bytes")
-	}
-	return int32(binary.BigEndian.Uint32(bytes)), nil
-}
-
 func (r *request) OnResult(raw *frame.RawFrame) {
 	switch raw.Header.OpCode {
 	case primitive.OpCodeError:
-		if r.handleErrorResponse(raw) {
+		if r.maybePrepareAndExecute(raw) {
 			return
 		}
 	case primitive.OpCodeResult:
-		r.handleResultResponse(raw)
+		r.maybeCachePrepared(raw)
 	}
 	r.sendResult(raw)
 }
 
-func (r *request) handleErrorResponse(raw *frame.RawFrame) bool {
+func (r *request) maybePrepareAndExecute(raw *frame.RawFrame) bool {
 	code, err := readInt(raw.Body)
 	if err != nil {
 		r.client.proxy.logger.Error("failed to read `code` in error response", zap.Error(err))
@@ -132,23 +125,23 @@ func (r *request) handleErrorResponse(raw *frame.RawFrame) bool {
 				origRequest: r,
 			})
 			if err != nil {
-				r.client.proxy.logger.Error("failed to re-prepared query after receiving an unprepared error response",
+				r.client.proxy.logger.Error("failed to prepare query after receiving an unprepared error response",
 					zap.String("host", r.host.String()),
 					zap.String("id", id),
 					zap.Error(err))
 				return false
+			} else {
+				return true
 			}
-			return true
 		} else {
 			r.client.proxy.logger.Warn("received unprepared error response, but existing prepared ID not in the cache",
 				zap.String("id", id))
 		}
 	}
-
 	return false
 }
 
-func (r *request) handleResultResponse(raw *frame.RawFrame) {
+func (r *request) maybeCachePrepared(raw *frame.RawFrame) {
 	kind, err := readInt(raw.Body)
 	if err != nil {
 		r.client.proxy.logger.Error("failed to read `kind` in result response", zap.Error(err))
@@ -194,4 +187,11 @@ func (r *prepareRequest) OnResult(raw *frame.RawFrame) {
 		next = true                                                             // Try the next node
 	}
 	r.origRequest.execute(next)
+}
+
+func readInt(bytes []byte) (int32, error) {
+	if len(bytes) < 4 {
+		return 0, errors.New("[int] expects at least 4 bytes")
+	}
+	return int32(binary.BigEndian.Uint32(bytes)), nil
 }

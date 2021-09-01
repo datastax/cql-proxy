@@ -17,10 +17,11 @@ package proxycore
 import (
 	"context"
 	"errors"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"go.uber.org/zap"
 	"sync"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 var (
