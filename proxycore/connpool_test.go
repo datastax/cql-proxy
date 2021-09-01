@@ -292,6 +292,69 @@ func TestConnectPool_InvalidAddress(t *testing.T) {
 	}
 }
 
+func TestConnectPool_Timeout(t *testing.T) {
+	var server MockServer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const supported = primitive.ProtocolVersion2
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:   "127.0.0.1",
+		Port: 9042,
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = connectPool(ctx, connPoolConfig{
+		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
+		SessionConfig: SessionConfig{
+			ReconnectPolicy: NewReconnectPolicy(),
+			NumConns:        2,
+			Version:         supported,
+			ConnectTimeout:  1 * time.Nanosecond, // set timeout ridiculously low to trigger error
+		},
+	})
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "dial tcp 127.0.0.1:9042: i/o timeout")
+	}
+}
+
+func TestConnectPool_HandshakeTimeout(t *testing.T) {
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeStartup: func(client *MockClient, frm *frame.Frame) message.Message {
+				time.Sleep(2 * time.Second)
+				return &message.Ready{}
+			},
+		}),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const supported = primitive.ProtocolVersion2
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:   "127.0.0.1",
+		Port: 9042,
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = connectPool(ctx, connPoolConfig{
+		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
+		SessionConfig: SessionConfig{
+			ReconnectPolicy: NewReconnectPolicy(),
+			NumConns:        2,
+			Version:         supported,
+			ConnectTimeout:  1 * time.Second,
+		},
+	})
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "handshake took longer than 1s to complete")
+	}
+}
+
 func waitUntil(d time.Duration, check func() bool) bool {
 	iterations := int(d / (100 * time.Millisecond))
 	for i := 0; i < iterations; i++ {
