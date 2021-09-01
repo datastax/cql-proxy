@@ -16,6 +16,8 @@ package proxycore
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +28,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 const (
@@ -44,24 +47,29 @@ func (f EventHandlerFunc) OnEvent(frm *frame.Frame) {
 	f(frm)
 }
 
+type ClientConnConfig struct {
+	prepareCache *sync.Map
+	handler      EventHandler
+	logger       *zap.Logger
+}
+
 type ClientConn struct {
 	conn         *Conn
 	inflight     int32
 	pending      *pendingRequests
 	eventHandler EventHandler
+	prepareCache *sync.Map
+	logger       *zap.Logger
 	closing      bool
 	closingMu    *sync.RWMutex
 }
 
-func ConnectClient(ctx context.Context, endpoint Endpoint) (*ClientConn, error) {
-	return ConnectClientWithEvents(ctx, endpoint, nil)
-}
-
-func ConnectClientWithEvents(ctx context.Context, endpoint Endpoint, handler EventHandler) (*ClientConn, error) {
+func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConfig) (*ClientConn, error) {
 	c := &ClientConn{
 		pending:      newPendingRequests(MaxStreams),
-		eventHandler: handler,
+		eventHandler: config.handler,
 		closingMu:    &sync.RWMutex{},
+		logger:       GetOrCreateNopLogger(config.logger),
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -253,10 +261,78 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 			return errors.New("invalid stream")
 		}
 		atomic.AddInt32(&c.inflight, -1)
-		request.OnResult(raw)
+
+		handled := false
+
+		if c.prepareCache != nil {
+			switch raw.Header.OpCode {
+			case primitive.OpCodeError:
+				handled = c.maybePrepareAndExecute(request, raw)
+			case primitive.OpCodeResult:
+				c.maybeCachePrepared(request, raw)
+			}
+		}
+
+		if !handled {
+			request.OnResult(raw)
+		}
 	}
 
 	return nil
+}
+
+func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame) bool {
+	code, err := readInt(raw.Body)
+	if err != nil {
+		c.logger.Error("failed to read `code` in error response", zap.Error(err))
+		return false
+	}
+
+	if primitive.ErrorCode(code) == primitive.ErrorCodeUnprepared {
+		frm, err := codec.ConvertFromRawFrame(raw)
+		if err != nil {
+			c.logger.Error("failed to decode unprepared error response", zap.Error(err))
+			return false
+		}
+		msg := frm.Body.Message.(*message.Unprepared)
+		id := hex.EncodeToString(msg.Id)
+		if prepare, ok := c.prepareCache.Load(id); ok {
+			err := c.Send(&prepareRequest{
+				prepare:     prepare.(*frame.RawFrame),
+				origRequest: request,
+			})
+			if err != nil {
+				c.logger.Error("failed to prepare query after receiving an unprepared error response",
+					zap.String("host", c.conn.RemoteAddr().String()),
+					zap.String("id", id),
+					zap.Error(err))
+				return false
+			} else {
+				return true
+			}
+		} else {
+			c.logger.Warn("received unprepared error response, but existing prepared ID not in the cache",
+				zap.String("id", id))
+		}
+	}
+	return false
+}
+
+func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
+	kind, err := readInt(raw.Body)
+	if err != nil {
+		c.logger.Error("failed to read `kind` in result response", zap.Error(err))
+		return
+	}
+	if primitive.ResultType(kind) == primitive.ResultTypePrepared {
+		frm, err := codec.ConvertFromRawFrame(raw)
+		if err != nil {
+			c.logger.Error("failed to decode prepared result response", zap.Error(err))
+			return
+		}
+		msg := frm.Body.Message.(*message.PreparedResult)
+		c.prepareCache.Store(hex.EncodeToString(msg.PreparedQueryId), raw) // Store frame so we can re-prepare
+	}
 }
 
 func (c *ClientConn) Closing(err error) {
@@ -355,6 +431,10 @@ type internalRequest struct {
 	res   chan *frame.RawFrame
 }
 
+func (i *internalRequest) Execute(_ bool) {
+	panic("not implemented")
+}
+
 func (i *internalRequest) Frame() interface{} {
 	return i.frame
 }
@@ -373,4 +453,36 @@ func (i *internalRequest) OnResult(raw *frame.RawFrame) {
 	default:
 		panic("attempted to set result multiple times")
 	}
+}
+
+type prepareRequest struct {
+	prepare     *frame.RawFrame
+	origRequest Request
+}
+
+func (r *prepareRequest) Execute(_ bool) {
+	panic("not implemented")
+}
+
+func (r *prepareRequest) Frame() interface{} {
+	return r.prepare
+}
+
+func (r *prepareRequest) OnClose(err error) {
+	r.origRequest.OnClose(err)
+}
+
+func (r *prepareRequest) OnResult(raw *frame.RawFrame) {
+	next := false // If there's no error then we re-try on the original host
+	if raw.Header.OpCode == primitive.OpCodeError {
+		next = true // Try the next node
+	}
+	r.origRequest.Execute(next)
+}
+
+func readInt(bytes []byte) (int32, error) {
+	if len(bytes) < 4 {
+		return 0, errors.New("[int] expects at least 4 bytes")
+	}
+	return int32(binary.BigEndian.Uint32(bytes)), nil
 }

@@ -18,12 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"sort"
-	"time"
 )
 
 const (
@@ -152,7 +153,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	conn, err := ConnectClientWithEvents(ctx, endpoint, c)
+	conn, err := ConnectClient(ctx, endpoint, ClientConnConfig{handler: c, logger: c.logger})
 	if err != nil {
 		return err
 	}

@@ -16,15 +16,16 @@ package proxycore
 
 import (
 	"context"
+	"net"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestConnectSession(t *testing.T) {
@@ -106,6 +107,10 @@ type testSessionRequest struct {
 	version primitive.ProtocolVersion
 	rpcAddr string
 	wg      *sync.WaitGroup
+}
+
+func (r testSessionRequest) Execute(next bool) {
+	panic("not implemented")
 }
 
 func (r testSessionRequest) Frame() interface{} {

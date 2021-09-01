@@ -15,10 +15,11 @@
 package proxycore
 
 import (
-	"github.com/datastax/go-cassandra-native-protocol/frame"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"testing"
+
+	"github.com/datastax/go-cassandra-native-protocol/frame"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPendingRequests(t *testing.T) {
@@ -57,8 +58,12 @@ type testPendingRequest struct {
 	errs   *[]error
 }
 
+func (t testPendingRequest) Execute(_ bool) {
+	panic("not implemented")
+}
+
 func (t testPendingRequest) Frame() interface{} {
-	panic("implement me")
+	panic("not implemented")
 }
 
 func (t *testPendingRequest) OnClose(err error) {
@@ -66,5 +71,5 @@ func (t *testPendingRequest) OnClose(err error) {
 }
 
 func (t testPendingRequest) OnResult(_ *frame.RawFrame) {
-	panic("implement me")
+	panic("not implemented")
 }

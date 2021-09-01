@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"cql-proxy/proxycore"
+
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -94,7 +95,7 @@ func TestProxy_ListenAndServe(t *testing.T) {
 		_ = proxy.Serve()
 	}()
 
-	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint))
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, primitive.ProtocolVersion4, nil)

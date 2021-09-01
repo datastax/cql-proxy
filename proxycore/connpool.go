@@ -16,11 +16,12 @@ package proxycore
 
 import (
 	"context"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"go.uber.org/zap"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 type connPoolConfig struct {
@@ -32,6 +33,7 @@ type connPool struct {
 	ctx       context.Context
 	config    connPoolConfig
 	logger    *zap.Logger
+	prepareCache *sync.Map
 	cancel    context.CancelFunc
 	remaining int32
 	conns     []*ClientConn
@@ -45,6 +47,7 @@ func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) 
 		ctx:       ctx,
 		config:    config,
 		logger:    GetOrCreateNopLogger(config.Logger),
+		prepareCache: config.PrepareCache,
 		cancel:    cancel,
 		remaining: int32(config.NumConns),
 		conns:     make([]*ClientConn, config.NumConns),
@@ -128,7 +131,9 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	timeout := getOrUseDefault(p.config.ConnectTimeout, DefaultConnectTimeout)
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
-	conn, err = ConnectClient(ctx, p.config.Endpoint)
+	conn, err = ConnectClient(ctx, p.config.Endpoint, ClientConnConfig{
+		prepareCache: p.prepareCache,
+		logger:       p.logger})
 	if err != nil {
 		return nil, err
 	}

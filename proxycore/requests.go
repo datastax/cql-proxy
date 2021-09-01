@@ -15,12 +15,14 @@
 package proxycore
 
 import (
-	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"sync"
+
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 )
 
 type Request interface {
 	Frame() interface{}
+	Execute(next bool)
 	OnClose(err error)
 	OnResult(raw *frame.RawFrame)
 }

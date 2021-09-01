@@ -17,15 +17,16 @@ package proxycore
 import (
 	"bytes"
 	"context"
+	"net"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestClientConn_Handshake(t *testing.T) {
@@ -40,7 +41,7 @@ func TestClientConn_Handshake(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, primitive.ProtocolVersion4, nil)
@@ -63,7 +64,7 @@ func TestClientConn_HandshakeNegotiateProtocolVersion(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, starting, nil)
@@ -87,7 +88,7 @@ func TestClientConn_HandshakePasswordAuth(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, NewPasswordAuth(username, password))
@@ -110,9 +111,11 @@ func TestConnectClientWithEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	events := make(chan *frame.Frame)
-	cl, err := ConnectClientWithEvents(ctx, &defaultEndpoint{"127.0.0.1:9042"}, EventHandlerFunc(func(frm *frame.Frame) {
-		events <- frm
-	}))
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{
+		handler: EventHandlerFunc(func(frm *frame.Frame) {
+			events <- frm
+		}),
+	})
 	require.NoError(t, err)
 
 	wait := func() *frame.Frame {
@@ -156,7 +159,7 @@ func TestClientConn_HandshakePasswordInvalidAuth(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, NewPasswordAuth("invalid", "invalid"))
@@ -180,7 +183,7 @@ func TestClientConn_HandshakeAuthRequireButNotProvided(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, starting, nil)
@@ -204,7 +207,7 @@ func TestClientConn_Query(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -253,7 +256,7 @@ func TestClientConn_SetKeyspace(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -307,7 +310,7 @@ func TestClientConn_Inflight(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -330,6 +333,10 @@ func TestClientConn_Inflight(t *testing.T) {
 
 type testInflightRequest struct {
 	wg *sync.WaitGroup
+}
+
+func (t testInflightRequest) Execute(_ bool) {
+	panic("not implemented")
 }
 
 func (t testInflightRequest) Frame() interface{} {

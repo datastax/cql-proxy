@@ -135,6 +135,7 @@ func (p *Proxy) Listen(address string) error {
 		NumConns:        p.config.NumConns,
 		Version:         p.cluster.NegotiatedVersion,
 		Auth:            p.config.Auth,
+		PrepareCache:    &p.preparedCache,
 	})
 
 	if err != nil {
@@ -184,6 +185,7 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 			NumConns:        p.config.NumConns,
 			Version:         p.cluster.NegotiatedVersion,
 			Auth:            p.config.Auth,
+			PrepareCache:    &p.preparedCache,
 			Keyspace:        keyspace,
 		})
 		if err != nil {
@@ -293,7 +295,7 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 			qp:         c.proxy.newQueryPlan(),
 			raw:        raw,
 		}
-		req.execute(true)
+		req.Execute(true)
 	} else {
 		c.send(raw.Header, &message.ServerError{ErrorMessage: "Attempted to use invalid keyspace"})
 	}
