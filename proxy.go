@@ -20,22 +20,23 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	"github.com/alecthomas/kong"
 	"cql-proxy/astra"
 	"cql-proxy/proxy"
 	"cql-proxy/proxycore"
+
+	"github.com/alecthomas/kong"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 )
 
 var cli struct {
-	Bundle        string   `help:"Path to secure connect bundle" short:"b"`
-	Username      string   `help:"Username to use for authentication" short:"u"`
-	Password      string   `help:"Password to use for authentication" short:"p"`
-	ContactPoints []string `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c"`
-	Bind          string   `help:"Address to use to bind serve" short:"a"`
-	Debug         bool     `help:"Show debug logging"`
-	Profiling     bool     `help:"Enable profiling"`
+	Bundle        string   `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
+	Username      string   `help:"Username to use for authentication" short:"u" env:"USERNAME"`
+	Password      string   `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
+	ContactPoints []string `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
+	Bind          string   `help:"Address to use to bind serve" short:"a" env:"BIND"`
+	Debug         bool     `help:"Show debug logging" env:"DEBUG"`
+	Profiling     bool     `help:"Enable profiling" env:"PROFILING"`
 }
 
 func main() {
