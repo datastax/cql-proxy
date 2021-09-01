@@ -27,6 +27,7 @@ import (
 
 	"cql-proxy/parser"
 	"cql-proxy/proxycore"
+
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -46,6 +47,7 @@ type Config struct {
 	ReconnectPolicy proxycore.ReconnectPolicy
 	NumConns        int
 	Logger          *zap.Logger
+	ProxyAuth       proxycore.ProxyAuthenticator
 }
 
 type Proxy struct {
@@ -237,6 +239,8 @@ type client struct {
 	preparedIdempotence map[[16]byte]bool
 }
 
+// Receive handles a request from a client to the proxy by decoding the frame and delegating to the correct function that is
+// able to handle the particular message type.
 func (c *client) Receive(reader io.Reader) error {
 	raw, err := codec.DecodeRawFrame(reader)
 	if err != nil {
@@ -261,7 +265,10 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Options:
 		c.send(raw.Header, &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.0.0"}, "COMPRESSION": {}}})
 	case *message.Startup:
-		c.send(raw.Header, &message.Ready{})
+		c.send(raw.Header, c.proxy.config.ProxyAuth.MessageForStartup())
+	case *message.AuthResponse:
+		resp := body.Message.(*message.AuthResponse)
+		c.send(raw.Header, c.proxy.config.ProxyAuth.HandleAuthResponse(resp.Token))
 	case *message.Register:
 		for _, t := range msg.EventTypes {
 			if t == primitive.EventTypeSchemaChange {
