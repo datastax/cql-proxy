@@ -20,10 +20,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	"github.com/alecthomas/kong"
 	"cql-proxy/astra"
 	"cql-proxy/proxy"
 	"cql-proxy/proxycore"
+
+	"github.com/alecthomas/kong"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 )
@@ -36,6 +37,7 @@ var cli struct {
 	Bind          string   `help:"Address to use to bind serve" short:"a"`
 	Debug         bool     `help:"Show debug logging"`
 	Profiling     bool     `help:"Enable profiling"`
+	FakeAuth      bool     `help:"Enables an authenticator which will imitate authentication between the client and proxy but accepts any credentials provided."`
 }
 
 func main() {
@@ -74,13 +76,20 @@ func main() {
 		auth = proxycore.NewPasswordAuth(cli.Username, cli.Password)
 	}
 
+	proxyAuth := proxycore.NewNoopProxyAuth()
+
+	if cli.FakeAuth {
+		proxyAuth = proxycore.NewFakeProxyAuth()
+	}
+
 	p := proxy.NewProxy(ctx, proxy.Config{
 		Version:         primitive.ProtocolVersion4,
+		Auth:            auth,
 		Resolver:        resolver,
 		ReconnectPolicy: proxycore.NewReconnectPolicy(),
 		NumConns:        1,
-		Auth:            auth,
 		Logger:          logger,
+		ProxyAuth:       proxyAuth,
 	})
 
 	bind, _, err := net.SplitHostPort(cli.Bind)
