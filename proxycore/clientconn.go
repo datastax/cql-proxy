@@ -48,9 +48,9 @@ func (f EventHandlerFunc) OnEvent(frm *frame.Frame) {
 }
 
 type ClientConnConfig struct {
-	preparedCache *sync.Map
-	handler       EventHandler
-	logger        *zap.Logger
+	PreparedCache *sync.Map
+	Handler       EventHandler
+	Logger        *zap.Logger
 }
 
 type ClientConn struct {
@@ -66,10 +66,11 @@ type ClientConn struct {
 
 func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConfig) (*ClientConn, error) {
 	c := &ClientConn{
-		pending:      newPendingRequests(MaxStreams),
-		eventHandler: config.handler,
-		closingMu:    &sync.RWMutex{},
-		logger:       GetOrCreateNopLogger(config.logger),
+		pending:       newPendingRequests(MaxStreams),
+		eventHandler:  config.Handler,
+		closingMu:     &sync.RWMutex{},
+		preparedCache: config.PreparedCache,
+		logger:        GetOrCreateNopLogger(config.Logger),
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -264,6 +265,8 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 
 		handled := false
 
+		// If we have a prepared cache attempt to recover from unprepared errors and cache previously seen prepared
+		// requests (so they can be used to prepare other nodes).
 		if c.preparedCache != nil {
 			switch raw.Header.OpCode {
 			case primitive.OpCodeError:
@@ -281,6 +284,9 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 	return nil
 }
 
+// maybePrepareAndExecute checks the response looking for unprepared errors and attempts to prepare them.
+// If an unprepared error is encountered it attempts to prepare the query on the connection and re-execute the original
+// request.
 func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame) bool {
 	code, err := readInt(raw.Body)
 	if err != nil {
@@ -297,7 +303,7 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 		msg := frm.Body.Message.(*message.Unprepared)
 		id := hex.EncodeToString(msg.Id)
 		if prepare, ok := c.preparedCache.Load(id); ok {
-			err := c.Send(&prepareRequest{
+			err = c.Send(&prepareRequest{
 				prepare:     prepare.(*frame.RawFrame),
 				origRequest: request,
 			})
@@ -318,6 +324,9 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 	return false
 }
 
+// maybeCachePrepared checks the response looking for prepared frames and caches the original prepare request.
+// This is done so that the prepare request can be used to prepare other nodes that have not been prepared, but are
+// attempting to execute a request that has been prepared on another node in the cluster.
 func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
 	kind, err := readInt(raw.Body)
 	if err != nil {
@@ -331,7 +340,7 @@ func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
 			return
 		}
 		msg := frm.Body.Message.(*message.PreparedResult)
-		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId), raw) // Store frame so we can re-prepare
+		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId), request.Frame()) // Store frame so we can re-prepare
 	}
 }
 

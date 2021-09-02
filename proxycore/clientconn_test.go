@@ -17,6 +17,7 @@ package proxycore
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"net"
 	"sync"
 	"testing"
@@ -27,6 +28,8 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+	"go.uber.org/zap"
 )
 
 func TestClientConn_Handshake(t *testing.T) {
@@ -112,7 +115,7 @@ func TestConnectClientWithEvents(t *testing.T) {
 
 	events := make(chan *frame.Frame)
 	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{
-		handler: EventHandlerFunc(func(frm *frame.Frame) {
+		Handler: EventHandlerFunc(func(frm *frame.Frame) {
 			events <- frm
 		}),
 	})
@@ -331,6 +334,175 @@ func TestClientConn_Inflight(t *testing.T) {
 	assert.Equal(t, int32(0), cl.Inflight()) // Should be 0 after they complete
 }
 
+func TestClientConn_Unprepared(t *testing.T) {
+	const (
+		Unprepared int32 = iota
+		UnpreparedError
+		Prepared
+		Executed
+	)
+
+	var preparedCache sync.Map
+	preparedId := []byte("abc")
+
+	state := atomic.NewInt32(Unprepared)
+
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodePrepare: func(cl *MockClient, frm *frame.Frame) message.Message {
+				require.True(t, state.CAS(UnpreparedError, Prepared), "expected the query to be prepared as the result of an unprepared error")
+				return &message.PreparedResult{
+					PreparedQueryId: preparedId,
+				}
+			},
+			primitive.OpCodeExecute: func(cl *MockClient, frm *frame.Frame) message.Message {
+				if state.CAS(Unprepared, UnpreparedError) {
+					ex := frm.Body.Message.(*message.Execute)
+					require.Equal(t, preparedId, ex.QueryId)
+					return &message.Unprepared{Id: preparedId}
+				} else if state.CAS(Prepared, Executed) {
+					return &message.RowsResult{
+						Metadata: &message.RowsMetadata{
+							ColumnCount: 0,
+						},
+						Data: message.RowSet{},
+					}
+				} else {
+					return &message.ServerError{ErrorMessage: "expected the query to be either unprepared or prepared"}
+				}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	// Pre-populate the prepared cache as if the query was prepared, but on another node
+	prepareFrame, err := codec.ConvertToRawFrame(frame.NewFrame(supported, 0, &message.Prepare{Query: "SELECT * FROM test.test"}))
+	require.NoError(t, err)
+
+	preparedCache.Store(hex.EncodeToString(preparedId), prepareFrame)
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{PreparedCache: &preparedCache})
+	defer func(cl *ClientConn) {
+		_ = cl.Close()
+	}(cl)
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(1) //
+
+	err = cl.Send(&testPrepareRequest{
+		t:          t,
+		wg:         &wg,
+		cl:         cl,
+		version:    supported,
+		preparedId: preparedId,
+	})
+	require.NoError(t, err)
+
+	wg.Wait()
+}
+
+func TestClientConn_UnpreparedNotCached(t *testing.T) {
+	var preparedCache sync.Map
+	preparedId := []byte("abc")
+
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodePrepare: func(cl *MockClient, frm *frame.Frame) message.Message {
+				require.Fail(t, "prepare was never cached so this shouldn't happen")
+				return &message.PreparedResult{
+					PreparedQueryId: preparedId,
+				}
+			},
+			primitive.OpCodeExecute: func(cl *MockClient, frm *frame.Frame) message.Message {
+				ex := frm.Body.Message.(*message.Execute)
+				require.Equal(t, preparedId, ex.QueryId)
+				return &message.Unprepared{Id: ex.QueryId}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	logger, _ := zap.NewDevelopment()
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"},
+		ClientConnConfig{
+			PreparedCache: &preparedCache, // Empty cache
+			Logger:        logger,
+		},
+	)
+	defer func(cl *ClientConn) {
+		_ = cl.Close()
+	}(cl)
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	resp, err := cl.SendAndReceive(ctx, frame.NewFrame(supported, 0, &message.Execute{QueryId: preparedId}))
+	require.NoError(t, err)
+
+	assert.Equal(t, primitive.OpCodeError, resp.Header.OpCode)
+
+	_, ok := resp.Body.Message.(*message.Unprepared)
+	assert.True(t, ok, "expecting an unprepared response")
+}
+
+type testPrepareRequest struct {
+	t          *testing.T
+	wg         *sync.WaitGroup
+	cl         *ClientConn
+	version    primitive.ProtocolVersion
+	preparedId []byte
+}
+
+func (t *testPrepareRequest) Frame() interface{} {
+	return frame.NewFrame(t.version, 0, &message.Execute{QueryId: t.preparedId})
+}
+
+func (t *testPrepareRequest) Execute(next bool) {
+	err := t.cl.Send(t)
+	require.NoError(t.t, err)
+}
+
+func (t *testPrepareRequest) OnClose(_ error) {
+	panic("not implemented")
+}
+
+func (t *testPrepareRequest) OnResult(raw *frame.RawFrame) {
+	assert.Equal(t.t, primitive.OpCodeResult, raw.Header.OpCode)
+	frm, err := codec.ConvertFromRawFrame(raw)
+	require.NoError(t.t, err)
+	_, ok := frm.Body.Message.(*message.RowsResult)
+	assert.True(t.t, ok)
+	t.wg.Done()
+}
+
 type testInflightRequest struct {
 	wg *sync.WaitGroup
 }
@@ -346,6 +518,7 @@ func (t testInflightRequest) Frame() interface{} {
 }
 
 func (t testInflightRequest) OnClose(_ error) {
+	panic("not implemented")
 }
 
 func (t testInflightRequest) OnResult(_ *frame.RawFrame) {

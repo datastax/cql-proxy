@@ -35,7 +35,7 @@ type SessionConfig struct {
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
 	Logger          *zap.Logger
-	PreparedCache   *sync.Map
+	PreparedCache   *sync.Map // A global cache share across sessions for storing previously prepared queries
 	ConnectTimeout  time.Duration
 }
 

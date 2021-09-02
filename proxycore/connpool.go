@@ -132,8 +132,8 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
 	conn, err = ConnectClient(ctx, p.config.Endpoint, ClientConnConfig{
-		preparedCache: p.preparedCache,
-		logger:        p.logger})
+		PreparedCache: p.preparedCache,
+		Logger:        p.logger})
 	if err != nil {
 		return nil, err
 	}
