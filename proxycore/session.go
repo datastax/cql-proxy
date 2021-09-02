@@ -61,7 +61,6 @@ type Session struct {
 	pools         sync.Map
 	connected     chan struct{}
 	failed        chan error
-	preparedCache *sync.Map
 }
 
 func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
