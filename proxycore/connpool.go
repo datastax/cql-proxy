@@ -16,6 +16,8 @@ package proxycore
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -145,6 +147,9 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	var version primitive.ProtocolVersion
 	version, err = conn.Handshake(ctx, p.config.Version, p.config.Auth)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("handshake took longer than %s to complete", timeout)
+		}
 		return nil, err
 	}
 	if version != p.config.Version {
