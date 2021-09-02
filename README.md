@@ -38,6 +38,14 @@ or using Docker as
 docker run -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 --contact-points <cluster node IPs or DNS names>
 ```
 
+or using Kubernetes as below. Check the k8s folder for `config` and `cql-proxy.yaml` and more documentation.
+
+```sh
+kubectl create -f cql-proxy.yaml
+```
+
+
+
 ## Configuration
 
 To pass configuration to the cql-proxy both command line flags and environment variables can be used. Below are examples of
