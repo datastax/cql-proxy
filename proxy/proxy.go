@@ -501,7 +501,7 @@ func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.P
 // NewDefaultPreparedCache creates a new default prepared cache capping the max capacity to `maxBytes`.
 func NewDefaultPreparedCache(maxBytes int64) (proxycore.PreparedCache, error) {
 	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: maxBytes / 32, // Assuming an average size of ~32 bytes per entry.
+		NumCounters: maxBytes / 64, // Assuming an average size of ~64 bytes per entry. Underestimating is preferred.
 		MaxCost: maxBytes,
 		BufferItems: 64,
 	})
