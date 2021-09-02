@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"cql-proxy/parser"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -45,9 +46,12 @@ func TestConnectPool(t *testing.T) {
 	p, err := connectPool(ctx, connPoolConfig{
 		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
 		SessionConfig: SessionConfig{
-			ReconnectPolicy: NewReconnectPolicy(),
-			NumConns:        2,
-			Version:         supported,
+			ReconnectPolicy:   NewReconnectPolicy(),
+			NumConns:          2,
+			Version:           supported,
+			ConnectTimeout:    10 * time.Second,
+			HeartBeatInterval: 30 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		},
 	})
 	require.NoError(t, err)
@@ -78,9 +82,12 @@ func TestConnectPool_NoServer(t *testing.T) {
 	p, err := connectPool(ctx, connPoolConfig{
 		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
 		SessionConfig: SessionConfig{
-			ReconnectPolicy: NewReconnectPolicyWithDelays(100*time.Millisecond, time.Second),
-			NumConns:        2,
-			Version:         supported,
+			ReconnectPolicy:   NewReconnectPolicyWithDelays(100*time.Millisecond, time.Second),
+			NumConns:          2,
+			Version:           supported,
+			ConnectTimeout:    10 * time.Second,
+			HeartBeatInterval: 30 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		},
 	})
 	require.NoError(t, err) // Not a critical failure, no error returned

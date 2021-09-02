@@ -16,13 +16,14 @@ package proxycore
 
 import (
 	"context"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"go.uber.org/zap"
 	"errors"
 	"fmt"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 type connPoolConfig struct {
@@ -40,6 +41,8 @@ type connPool struct {
 	connsMu   *sync.RWMutex
 }
 
+// connectPool establishes a pool of connections to a given endpoint within a downstream cluster. These connection pools will
+// be used to proxy requests from the client to the cluster.
 func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -161,9 +164,12 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 		}
 	}
 
+	go conn.Heartbeats(timeout, p.config.Version, p.config.HeartBeatInterval, p.config.IdleTimeout, p.logger)
 	return conn, nil
 }
 
+// stayConnected will attempt to reestablish a disconnected (`connection == nil`) connection within the pool. Reconnect attempts
+// will be made at intervals defined by the ReconnectPolicy.
 func (p *connPool) stayConnected(idx int) {
 	conn := p.conns[idx]
 

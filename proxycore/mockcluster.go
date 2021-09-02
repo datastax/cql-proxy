@@ -299,10 +299,15 @@ func (s *MockServer) copyPeers() []MockHost {
 }
 
 func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVersion, local MockHost, peers []MockHost) error {
-	var listener net.Listener
+	var listener *net.TCPListener
 	var err error
 	for {
-		listener, err = net.Listen("tcp", net.JoinHostPort(local.IP, strconv.Itoa(local.Port)))
+		tcpAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(local.IP, strconv.Itoa(local.Port)))
+		if err != nil {
+			break
+		}
+
+		listener, err = net.ListenTCP("tcp", tcpAddr)
 		if err == nil || !errors.Is(err, syscall.EADDRINUSE) {
 			break
 		}

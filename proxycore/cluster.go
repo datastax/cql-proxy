@@ -18,12 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
-	"sort"
-	"time"
 )
 
 const (
@@ -63,14 +64,16 @@ func (f ClusterListenerFunc) OnEvent(event interface{}) {
 }
 
 type ClusterConfig struct {
-	Version         primitive.ProtocolVersion
-	Auth            Authenticator
-	Resolver        EndpointResolver
-	ReconnectPolicy ReconnectPolicy
-	RefreshWindow   time.Duration
-	ConnectTimeout  time.Duration
-	RefreshTimeout  time.Duration
-	Logger          *zap.Logger
+	Version           primitive.ProtocolVersion
+	Auth              Authenticator
+	Resolver          EndpointResolver
+	ReconnectPolicy   ReconnectPolicy
+	RefreshWindow     time.Duration
+	ConnectTimeout    time.Duration
+	RefreshTimeout    time.Duration
+	Logger            *zap.Logger
+	HeartBeatInterval time.Duration
+	IdleTimeout       time.Duration
 }
 
 type ClusterInfo struct {
@@ -79,6 +82,7 @@ type ClusterInfo struct {
 	CQLVersion     string
 }
 
+// Cluster defines a downstream cluster that is being proxied to.
 type Cluster struct {
 	ctx              context.Context
 	config           ClusterConfig
@@ -95,6 +99,7 @@ type Cluster struct {
 	Info              ClusterInfo
 }
 
+// ConnectCluster establishes control connections to each of the endpoints within a downstream cluster that is being proxied to.
 func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error) {
 	c := &Cluster{
 		ctx:              ctx,
@@ -189,6 +194,8 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 		c.NegotiatedVersion = negotiated
 		c.Info = info
 	}
+
+	go conn.Heartbeats(timeout, version, c.config.HeartBeatInterval, c.config.IdleTimeout, c.logger)
 
 	return c.mergeHosts(hosts)
 }

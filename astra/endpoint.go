@@ -20,12 +20,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"cql-proxy/proxycore"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+
+	"cql-proxy/proxycore"
 )
 
 type astraResolver struct {
