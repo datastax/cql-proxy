@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 )
@@ -28,6 +29,19 @@ var (
 	NoConnForHost = errors.New("no connection available for host")
 )
 
+// PreparedEntry is an entry in the prepared cache.
+type PreparedEntry struct {
+	PreparedFrame *frame.RawFrame
+}
+
+// PreparedCache a thread-safe cache for storing prepared queries.
+type PreparedCache interface {
+	// Store add an entry to the cache.
+	Store(id string, entry *PreparedEntry)
+	// Load retrieves an entry from the cache. `ok` is true if the entry is present; otherwise it's false.
+	Load(id string) (entry *PreparedEntry, ok bool)
+}
+
 type SessionConfig struct {
 	ReconnectPolicy ReconnectPolicy
 	NumConns        int
@@ -35,7 +49,8 @@ type SessionConfig struct {
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
 	Logger          *zap.Logger
-	PreparedCache   *sync.Map // A global cache share across sessions for storing previously prepared queries
+	// PreparedCache a global cache share across sessions for storing previously prepared queries
+	PreparedCache   PreparedCache
 	ConnectTimeout  time.Duration
 }
 

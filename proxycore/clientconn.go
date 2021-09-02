@@ -48,7 +48,7 @@ func (f EventHandlerFunc) OnEvent(frm *frame.Frame) {
 }
 
 type ClientConnConfig struct {
-	PreparedCache *sync.Map
+	PreparedCache PreparedCache
 	Handler       EventHandler
 	Logger        *zap.Logger
 }
@@ -58,7 +58,7 @@ type ClientConn struct {
 	inflight      int32
 	pending       *pendingRequests
 	eventHandler  EventHandler
-	preparedCache *sync.Map
+	preparedCache PreparedCache
 	logger        *zap.Logger
 	closing       bool
 	closingMu     *sync.RWMutex
@@ -304,7 +304,7 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 		id := hex.EncodeToString(msg.Id)
 		if prepare, ok := c.preparedCache.Load(id); ok {
 			err = c.Send(&prepareRequest{
-				prepare:     prepare.(*frame.RawFrame),
+				prepare:     prepare.PreparedFrame,
 				origRequest: request,
 			})
 			if err != nil {
@@ -340,7 +340,10 @@ func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
 			return
 		}
 		msg := frm.Body.Message.(*message.PreparedResult)
-		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId), request.Frame()) // Store frame so we can re-prepare
+		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId),
+			&PreparedEntry{
+				request.Frame().(*frame.RawFrame), // Store frame so we can re-prepare
+			})
 	}
 }
 

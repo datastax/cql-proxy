@@ -33,7 +33,7 @@ type connPool struct {
 	ctx           context.Context
 	config        connPoolConfig
 	logger        *zap.Logger
-	preparedCache *sync.Map
+	preparedCache PreparedCache
 	cancel        context.CancelFunc
 	remaining     int32
 	conns         []*ClientConn

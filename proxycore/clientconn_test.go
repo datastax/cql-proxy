@@ -342,7 +342,6 @@ func TestClientConn_Unprepared(t *testing.T) {
 		Executed
 	)
 
-	var preparedCache sync.Map
 	preparedId := []byte("abc")
 
 	state := atomic.NewInt32(Unprepared)
@@ -390,7 +389,8 @@ func TestClientConn_Unprepared(t *testing.T) {
 	prepareFrame, err := codec.ConvertToRawFrame(frame.NewFrame(supported, 0, &message.Prepare{Query: "SELECT * FROM test.test"}))
 	require.NoError(t, err)
 
-	preparedCache.Store(hex.EncodeToString(preparedId), prepareFrame)
+	var preparedCache testPrepareCache
+	preparedCache.Store(hex.EncodeToString(preparedId), &PreparedEntry{ prepareFrame})
 
 	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{PreparedCache: &preparedCache})
 	defer func(cl *ClientConn) {
@@ -417,7 +417,6 @@ func TestClientConn_Unprepared(t *testing.T) {
 }
 
 func TestClientConn_UnpreparedNotCached(t *testing.T) {
-	var preparedCache sync.Map
 	preparedId := []byte("abc")
 
 	server := &MockServer{
@@ -450,6 +449,8 @@ func TestClientConn_UnpreparedNotCached(t *testing.T) {
 
 	logger, _ := zap.NewDevelopment()
 
+	var preparedCache testPrepareCache
+
 	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"},
 		ClientConnConfig{
 			PreparedCache: &preparedCache, // Empty cache
@@ -471,6 +472,21 @@ func TestClientConn_UnpreparedNotCached(t *testing.T) {
 
 	_, ok := resp.Body.Message.(*message.Unprepared)
 	assert.True(t, ok, "expecting an unprepared response")
+}
+
+type testPrepareCache struct {
+	cache sync.Map
+}
+
+func (t *testPrepareCache) Store(id string, entry *PreparedEntry) {
+	t.cache.Store(id, entry)
+}
+
+func (t *testPrepareCache) Load(id string) (entry *PreparedEntry, ok bool) {
+	if val, ok := t.cache.Load(id); ok {
+		return val.(*PreparedEntry), true
+	}
+	return nil, false
 }
 
 type testPrepareRequest struct {
