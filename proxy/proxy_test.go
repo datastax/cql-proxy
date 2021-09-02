@@ -43,6 +43,7 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	const proxyContactPoint = "127.0.0.1:9042"
 
 	cluster := proxycore.NewMockCluster(net.ParseIP("127.0.0.0"), clusterPort)
+	defer cluster.Shutdown()
 
 	cluster.Handlers = proxycore.NewMockRequestHandlers(proxycore.MockRequestHandlers{
 		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
@@ -90,6 +91,9 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	})
 
 	err = proxy.Listen(proxyContactPoint)
+	defer func(proxy *Proxy) {
+		_ = proxy.Shutdown()
+	}(proxy)
 	require.NoError(t, err)
 
 	go func() {
@@ -142,6 +146,7 @@ func TestProxy_Unprepared(t *testing.T) {
 	preparedId := []byte("abc")
 
 	cluster := proxycore.NewMockCluster(net.ParseIP("127.0.0.0"), clusterPort)
+	defer cluster.Shutdown()
 
 	var prepared sync.Map
 
@@ -181,6 +186,9 @@ func TestProxy_Unprepared(t *testing.T) {
 	})
 
 	err := proxy.Listen(proxyContactPoint)
+	defer func(proxy *Proxy) {
+		_ = proxy.Shutdown()
+	}(proxy)
 	require.NoError(t, err)
 
 	go func() {

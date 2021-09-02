@@ -164,6 +164,10 @@ func (p *Proxy) Serve() error {
 	}
 }
 
+func (p *Proxy) Shutdown() error {
+	return p.listener.Close()
+}
+
 func (p *Proxy) handle(conn net.Conn) {
 	cl := &client{
 		ctx:                 p.ctx,
