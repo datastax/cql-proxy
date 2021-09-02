@@ -31,15 +31,15 @@ import (
 )
 
 var cli struct {
-	Bundle            string        `help:"Path to secure connect bundle" short:"b"`
-	Username          string        `help:"Username to use for authentication" short:"u"`
-	Password          string        `help:"Password to use for authentication" short:"p"`
-	ContactPoints     []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c"`
-	Bind              string        `help:"Address to use to bind serve" short:"a"`
-	Debug             bool          `help:"Show debug logging"`
-	Profiling         bool          `help:"Enable profiling"`
-	HeartbeatInterval time.Duration `help:"Interval between performing heartbeats to the cluster" default:"30s"`
-	IdleTimeout       time.Duration `help:"Time between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s"`
+	Bundle            string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
+	Username          string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
+	Password          string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
+	ContactPoints     []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
+	Bind              string        `help:"Address to use to bind serve" short:"a" env:"BIND"`
+	Debug             bool          `help:"Show debug logging" env:"DEBUG"`
+	Profiling         bool          `help:"Enable profiling" env:"PROFILING"`
+	HeartbeatInterval time.Duration `help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
+	IdleTimeout       time.Duration `help:"Time between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
 }
 
 func main() {
