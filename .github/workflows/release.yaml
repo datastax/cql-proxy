@@ -36,4 +36,6 @@ jobs:
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: datastax/cql-proxy:${{ steps.vars.outputs.tag }}
+          tags: |
+            datastax/cql-proxy:${{ steps.vars.outputs.tag }}
+            datastax/cql-proxy:latest
