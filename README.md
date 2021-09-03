@@ -2,10 +2,10 @@
 
 [![GitHub Action](https://github.com/datastax/cql-proxy/actions/workflows/test.yml/badge.svg)](https://github.com/datastax/cql-proxy/actions/workflows/test.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/datastax/cql-proxy)](https://goreportcard.com/report/github.com/datastax/cql-proxy)
 
-
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
-**CQL proxy is still under development**
+**Note**: CQL proxy in its current state works well, but it is still under development. That means
+that things might break or change. Please give it a try and let us know what you think!
 
 ![cql-proxy](cql-proxy.png)
 
