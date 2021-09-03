@@ -597,7 +597,7 @@ func TestClientConn_Heartbeats(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -635,7 +635,7 @@ func TestClientConn_HeartbeatsError(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -677,7 +677,7 @@ func TestClientConn_HeartbeatsTimeout(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -719,7 +719,7 @@ func TestClientConn_HeartbeatsUnexpectedMessage(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)

@@ -84,10 +84,10 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	require.NoError(t, err)
 
 	proxy := NewProxy(ctx, Config{
-		Version:         primitive.ProtocolVersion4,
-		Resolver:        proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
-		ReconnectPolicy: proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
-		NumConns:        2,
+		Version:           primitive.ProtocolVersion4,
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
+		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		NumConns:          2,
 		HeartBeatInterval: 30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	})
@@ -181,10 +181,12 @@ func TestProxy_Unprepared(t *testing.T) {
 	}
 
 	proxy := NewProxy(ctx, Config{
-		Version:         version,
-		Resolver:        proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
-		ReconnectPolicy: proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
-		NumConns:        2,
+		Version:           version,
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
+		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		NumConns:          2,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	})
 
 	err := proxy.Listen(proxyContactPoint)
