@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+
 )
 
 func TestClientConn_Handshake(t *testing.T) {
@@ -564,4 +565,176 @@ func mockServerWithAuth(username, password string) *MockServer {
 			},
 		}),
 	}
+}
+
+const (
+	connectTimeout    = 100 * time.Millisecond
+	heartbeatInterval = 500 * time.Millisecond
+	idleTimeout       = 1000 * time.Millisecond
+)
+
+func TestClientConn_Heartbeats(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	heartbeatCh := make(chan bool, 1)
+
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeOptions: func(cl *MockClient, frm *frame.Frame) message.Message {
+				heartbeatCh <- true
+				return &message.Supported{}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	select {
+	case <-heartbeatCh:
+		_ = cl.Close()
+	case <-time.After(idleTimeout * 2):
+		assert.Fail(t, "expected heartbeat")
+	}
+}
+
+func TestClientConn_HeartbeatsError(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeOptions: func(cl *MockClient, frm *frame.Frame) message.Message {
+				return &message.ServerError{}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	closed := waitUntil(2*idleTimeout, func() bool {
+		select {
+		case <-cl.IsClosed():
+			return true
+		default:
+			return false
+		}
+	})
+	assert.True(t, closed, "expected the connection to be closed")
+}
+
+func TestClientConn_HeartbeatsTimeout(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeOptions: func(cl *MockClient, frm *frame.Frame) message.Message {
+				time.Sleep(heartbeatInterval)
+				return &message.Supported{}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	closed := waitUntil(2*idleTimeout, func() bool {
+		select {
+		case <-cl.IsClosed():
+			return true
+		default:
+			return false
+		}
+	})
+	assert.True(t, closed, "expected the connection to be closed")
+
+}
+
+func TestClientConn_HeartbeatsUnexpectedMessage(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeOptions: func(cl *MockClient, frm *frame.Frame) message.Message {
+				return &message.Startup{}
+			},
+		}),
+	}
+
+	const supported = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:     "127.0.0.1",
+		Port:   9042,
+		HostID: mockHostID,
+	}, nil)
+	require.NoError(t, err)
+
+	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"})
+	require.NoError(t, err)
+
+	_, err = cl.Handshake(ctx, supported, nil)
+	require.NoError(t, err)
+
+	go cl.Heartbeats(connectTimeout, supported, heartbeatInterval, idleTimeout, logger)
+	closed := waitUntil(2*idleTimeout, func() bool {
+		select {
+		case <-cl.IsClosed():
+			return true
+		default:
+			return false
+		}
+	})
+	assert.True(t, closed, "expected the connection to be closed")
+
 }

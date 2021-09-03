@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"cql-proxy/parser"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -45,9 +46,12 @@ func TestConnectPool(t *testing.T) {
 	p, err := connectPool(ctx, connPoolConfig{
 		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
 		SessionConfig: SessionConfig{
-			ReconnectPolicy: NewReconnectPolicy(),
-			NumConns:        2,
-			Version:         supported,
+			ReconnectPolicy:   NewReconnectPolicy(),
+			NumConns:          2,
+			Version:           supported,
+			ConnectTimeout:    10 * time.Second,
+			HeartBeatInterval: 30 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		},
 	})
 	require.NoError(t, err)
@@ -78,9 +82,12 @@ func TestConnectPool_NoServer(t *testing.T) {
 	p, err := connectPool(ctx, connPoolConfig{
 		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
 		SessionConfig: SessionConfig{
-			ReconnectPolicy: NewReconnectPolicyWithDelays(100*time.Millisecond, time.Second),
-			NumConns:        2,
-			Version:         supported,
+			ReconnectPolicy:   NewReconnectPolicyWithDelays(100*time.Millisecond, time.Second),
+			NumConns:          2,
+			Version:           supported,
+			ConnectTimeout:    10 * time.Second,
+			HeartBeatInterval: 30 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		},
 	})
 	require.NoError(t, err) // Not a critical failure, no error returned
@@ -289,6 +296,69 @@ func TestConnectPool_InvalidAddress(t *testing.T) {
 	})
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "missing port in address")
+	}
+}
+
+func TestConnectPool_Timeout(t *testing.T) {
+	var server MockServer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const supported = primitive.ProtocolVersion2
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:   "127.0.0.1",
+		Port: 9042,
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = connectPool(ctx, connPoolConfig{
+		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
+		SessionConfig: SessionConfig{
+			ReconnectPolicy: NewReconnectPolicy(),
+			NumConns:        2,
+			Version:         supported,
+			ConnectTimeout:  1 * time.Nanosecond, // set timeout ridiculously low to trigger error
+		},
+	})
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "dial tcp 127.0.0.1:9042: i/o timeout")
+	}
+}
+
+func TestConnectPool_HandshakeTimeout(t *testing.T) {
+	server := &MockServer{
+		Handlers: NewMockRequestHandlers(MockRequestHandlers{
+			primitive.OpCodeStartup: func(client *MockClient, frm *frame.Frame) message.Message {
+				time.Sleep(2 * time.Second)
+				return &message.Ready{}
+			},
+		}),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const supported = primitive.ProtocolVersion2
+
+	err := server.Serve(ctx, supported, MockHost{
+		IP:   "127.0.0.1",
+		Port: 9042,
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = connectPool(ctx, connPoolConfig{
+		Endpoint: &defaultEndpoint{addr: "127.0.0.1:9042"},
+		SessionConfig: SessionConfig{
+			ReconnectPolicy: NewReconnectPolicy(),
+			NumConns:        2,
+			Version:         supported,
+			ConnectTimeout:  1 * time.Second,
+		},
+	})
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "handshake took longer than 1s to complete")
 	}
 }
 

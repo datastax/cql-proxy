@@ -59,6 +59,7 @@ func (s SenderFunc) Send(writer io.Writer) error {
 	return s(writer)
 }
 
+// Connect creates a new connection to a server specified by the endpoint using TLS if specified
 func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (c *Conn, err error) {
 	var dialer net.Dialer
 	addr, err := LookupEndpoint(endpoint)

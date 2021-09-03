@@ -52,6 +52,8 @@ type SessionConfig struct {
 	// PreparedCache a global cache share across sessions for storing previously prepared queries
 	PreparedCache   PreparedCache
 	ConnectTimeout  time.Duration
+	HeartBeatInterval time.Duration
+	IdleTimeout       time.Duration
 }
 
 type Session struct {

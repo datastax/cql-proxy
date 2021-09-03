@@ -26,9 +26,12 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestConnectSession(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -46,17 +49,24 @@ func TestConnectSession(t *testing.T) {
 	require.NoError(t, err)
 
 	cluster, err := ConnectCluster(ctx, ClusterConfig{
-		RefreshWindow:   100 * time.Millisecond,
-		Version:         supported,
-		Resolver:        NewResolver("127.0.0.1:9042"),
-		ReconnectPolicy: NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		Version:           supported,
+		Resolver:          NewResolver("127.0.0.1:9042"),
+		ReconnectPolicy:   NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		RefreshWindow:     100 * time.Millisecond,
+		ConnectTimeout:    10 * time.Second,
+		Logger:            logger,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	})
 	require.NoError(t, err)
 
 	session, err := ConnectSession(ctx, cluster, SessionConfig{
-		ReconnectPolicy: NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
-		NumConns:        2,
-		Version:         supported,
+		ReconnectPolicy:   NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		NumConns:          2,
+		Version:           supported,
+		ConnectTimeout:    10 * time.Second,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	})
 	require.NoError(t, err)
 

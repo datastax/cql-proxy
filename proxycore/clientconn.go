@@ -24,10 +24,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+
 	"go.uber.org/zap"
 )
 
@@ -64,6 +66,7 @@ type ClientConn struct {
 	closingMu     *sync.RWMutex
 }
 
+// ConnectClient creates a new connection to an endpoint within a downstream cluster using TLS if specified.
 func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConfig) (*ClientConn, error) {
 	c := &ClientConn{
 		pending:       newPendingRequests(MaxStreams),
@@ -416,6 +419,42 @@ func (c *ClientConn) IsClosed() chan struct{} {
 
 func (c *ClientConn) Err() error {
 	return c.conn.Err()
+}
+
+// Heartbeats sends an OPTIONS request to the endpoint in order to keep the connection alive.
+func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.ProtocolVersion, heartbeatInterval time.Duration, idleTimeout time.Duration, logger *zap.Logger) {
+	idleTimer := time.NewTimer(idleTimeout)
+
+	for {
+		select {
+		case <-c.conn.IsClosed():
+			return
+		case <-time.After(heartbeatInterval):
+			ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+			response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, &message.Options{}))
+			cancel()
+			if err != nil {
+				logger.Warn("error occurred performing heartbeat", zap.Error(err))
+				continue
+			}
+
+			switch response.Body.Message.(type) {
+			case *message.Supported:
+				logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
+				if idleTimer.Stop() {
+					idleTimer.Reset(idleTimeout)
+				}
+			case message.Error:
+				logger.Warn("error occurred performing heartbeat", zap.String("optionsError", response.Body.String()))
+			default:
+				logger.Warn("unexpected message received while performing heartbeat", zap.String("optionsError", response.Body.String()))
+			}
+		case <-idleTimer.C:
+			_ = c.Close()
+			logger.Sugar().Errorf("error connection didn't perform heartbeats within %v", idleTimeout)
+			return
+		}
+	}
 }
 
 type requestSender struct {

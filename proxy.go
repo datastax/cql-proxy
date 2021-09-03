@@ -19,23 +19,27 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"time"
 
-	"github.com/alecthomas/kong"
 	"cql-proxy/astra"
 	"cql-proxy/proxy"
 	"cql-proxy/proxycore"
+
+	"github.com/alecthomas/kong"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"go.uber.org/zap"
 )
 
 var cli struct {
-	Bundle        string   `help:"Path to secure connect bundle" short:"b"`
-	Username      string   `help:"Username to use for authentication" short:"u"`
-	Password      string   `help:"Password to use for authentication" short:"p"`
-	ContactPoints []string `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c"`
-	Bind          string   `help:"Address to use to bind serve" short:"a"`
-	Debug         bool     `help:"Show debug logging"`
-	Profiling     bool     `help:"Enable profiling"`
+	Bundle            string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
+	Username          string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
+	Password          string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
+	ContactPoints     []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
+	Bind              string        `help:"Address to use to bind serve" short:"a" env:"BIND"`
+	Debug             bool          `help:"Show debug logging" env:"DEBUG"`
+	Profiling         bool          `help:"Enable profiling" env:"PROFILING"`
+	HeartbeatInterval time.Duration `help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
+	IdleTimeout       time.Duration `help:"Time between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
 }
 
 func main() {
@@ -53,6 +57,10 @@ func main() {
 		resolver = proxycore.NewResolver(cli.ContactPoints...)
 	} else {
 		cliCtx.Fatalf("must provide either bundle path or contact points")
+	}
+
+	if cli.HeartbeatInterval >= cli.IdleTimeout {
+		cliCtx.Fatalf("idle-timeout must be greater than heartbeat-interval")
 	}
 
 	ctx := context.Background()
@@ -75,12 +83,14 @@ func main() {
 	}
 
 	p := proxy.NewProxy(ctx, proxy.Config{
-		Version:         primitive.ProtocolVersion4,
-		Resolver:        resolver,
-		ReconnectPolicy: proxycore.NewReconnectPolicy(),
-		NumConns:        1,
-		Auth:            auth,
-		Logger:          logger,
+		Version:           primitive.ProtocolVersion4,
+		Resolver:          resolver,
+		ReconnectPolicy:   proxycore.NewReconnectPolicy(),
+		NumConns:          1,
+		Auth:              auth,
+		Logger:            logger,
+		HeartBeatInterval: cli.HeartbeatInterval,
+		IdleTimeout:       cli.IdleTimeout,
 	})
 
 	bind, _, err := net.SplitHostPort(cli.Bind)

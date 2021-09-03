@@ -16,15 +16,19 @@ package proxycore
 
 import (
 	"context"
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestConnectCluster(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -39,10 +43,15 @@ func TestConnectCluster(t *testing.T) {
 	err = c.Add(ctx, 3)
 	require.NoError(t, err)
 
+
 	cluster, err := ConnectCluster(ctx, ClusterConfig{
-		Version:         primitive.ProtocolVersion4,
-		Resolver:        NewResolver("127.0.0.1:9042"),
-		ReconnectPolicy: NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		Version:           primitive.ProtocolVersion4,
+		Resolver:          NewResolver("127.0.0.1:9042"),
+		ReconnectPolicy:   NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		ConnectTimeout:    10 * time.Second,
+		Logger:            logger,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	})
 	require.NoError(t, err)
 
