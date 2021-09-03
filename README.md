@@ -2,29 +2,35 @@
 
 [![GitHub Action](https://github.com/datastax/cql-proxy/actions/workflows/test.yml/badge.svg)](https://github.com/datastax/cql-proxy/actions/workflows/test.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/datastax/cql-proxy)](https://goreportcard.com/report/github.com/datastax/cql-proxy)
 
-
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
-## Getting Started
+**Note**: `cql-proxy` in its current state works well, but it is still under development. That means
+that things might break or change. Please give it a try and let us know what you think!
+
+![cql-proxy](cql-proxy.png)
+
+## Getting started
 
 ```sh
 go build
 ```
 
-Run against an [Astra cluster][astra]:
+Run against a [DataStax Astra][astra] cluster:
 
 ```sh
-./cql-proxy --bundle <your-secure-connect-zip> --username token --password <your-astra-token>
+./cql-proxy --bundle <your-secure-connect-zip> \
+  --username <astra-client-id> --password <astra-client-secret>
 ```
 
 or using Docker as
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 \
---bundle /tmp/scb.zip --username token --password <your-astra-token>
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 
-Note: Use the literal `token` as the username.
+`<astra-client-id>` and `<astra-client-secret>` can be generated using these [instructions].
 
 Run against a Apache Cassandra cluster:
 
@@ -35,8 +41,25 @@ Run against a Apache Cassandra cluster:
 or using Docker as
 
 ```sh
-docker run -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 --contact-points <cluster node IPs or DNS names>
+docker run -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --contact-points <cluster node IPs or DNS names>
 ```
+
+## When to use `cql-proxy`
+
+The main use for `cql-proxy` is to enable unsupported CQL drivers and existing applications to work
+well with [DataStax Astra][astra]. Unsupported CQL drivers include legacy [DataStax
+drivers][drivers] and non-Datastax, community maintained CQL drivers (including [gocql],
+[rust-driver], etc.). 
+
+`cql-proxy` also enables applications that are currently using [Apache Cassandra][cassandra] or
+[DataStax Enterprise (DSE)][dse] to use Astra without requiring any code changes.  Your application
+just needs to be configured to use the proxy.
+
+If you're building a new application using [DataStax drivers][drivers] then those should be used to
+communicate directly with Astra. They have excellent support for Astra out-of-the-box. To use a
+DataStax driver with Astra follow [this][driver-guide] guide.
 
 ## Configuration
 
@@ -46,15 +69,17 @@ the same command using both methods
 Flags
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 \
---bundle /tmp/scb.zip --username token --password <your-astra-token>
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 
 Environment Variables
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 \
--e BUNDLE=/tmp/scb.zip -e USERNAME=token -e PASSWORD=<your-astra-token>
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
+  --rm datastax/cql-proxy:v0.0.2 \
+  -e BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
 ```
 
 To see what options are available the `-h` flag will display a help message listing all flags and their corresponding descriptions
@@ -78,3 +103,10 @@ Flags:
 ```
 
 [astra]: https://astra.datastax.com/
+[instructions]: https://docs.datastax.com/en/astra/docs/manage-application-tokens.html
+[gocql]: https://github.com/gocql/gocql
+[rust-driver]: https://github.com/scylladb/scylla-rust-driver
+[driver-guide]: https://docs.datastax.com/en/astra/docs/connecting-to-astra-databases-using-datastax-drivers.html
+[cassandra]: https://cassandra.apache.org/
+[dse]: https://www.datastax.com/products/datastax-enterprise
+[drivers]: https://docs.datastax.com/en/driver-matrix/doc/driver_matrix/common/driverMatrix.html
