@@ -5,6 +5,10 @@
 
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
+**CQL proxy is still under development**
+
+![cql-proxy](cql-proxy.png)
+
 ## Getting Started
 
 ```sh
@@ -20,8 +24,9 @@ Run against an [Astra cluster][astra]:
 or using Docker as
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 \
---bundle /tmp/scb.zip --username token --password <your-astra-token>
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --bundle /tmp/scb.zip --username token --password <your-astra-token>
 ```
 
 Note: Use the literal `token` as the username.
@@ -35,7 +40,9 @@ Run against a Apache Cassandra cluster:
 or using Docker as
 
 ```sh
-docker run -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 --contact-points <cluster node IPs or DNS names>
+docker run -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --contact-points <cluster node IPs or DNS names>
 ```
 
 ## Configuration
@@ -46,15 +53,17 @@ the same command using both methods
 Flags
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 \
---bundle /tmp/scb.zip --username token --password <your-astra-token>
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --bundle /tmp/scb.zip --username token --password <your-astra-token>
 ```
 
 Environment Variables
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 --rm datastax/cql-proxy:v0.0.1 \
--e BUNDLE=/tmp/scb.zip -e USERNAME=token -e PASSWORD=<your-astra-token>
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
+  --rm datastax/cql-proxy:v0.0.2 \
+  -e BUNDLE=/tmp/scb.zip -e USERNAME=token -e PASSWORD=<your-astra-token>
 ```
 
 To see what options are available the `-h` flag will display a help message listing all flags and their corresponding descriptions
