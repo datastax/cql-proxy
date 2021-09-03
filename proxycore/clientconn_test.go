@@ -30,7 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-
 )
 
 func TestClientConn_Handshake(t *testing.T) {
@@ -391,7 +390,7 @@ func TestClientConn_Unprepared(t *testing.T) {
 	require.NoError(t, err)
 
 	var preparedCache testPrepareCache
-	preparedCache.Store(hex.EncodeToString(preparedId), &PreparedEntry{ prepareFrame})
+	preparedCache.Store(hex.EncodeToString(preparedId), &PreparedEntry{prepareFrame})
 
 	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{PreparedCache: &preparedCache})
 	defer func(cl *ClientConn) {
