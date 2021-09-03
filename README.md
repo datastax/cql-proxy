@@ -4,7 +4,7 @@
 
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
-**Note**: CQL proxy in its current state works well, but it is still under development. That means
+**Note**: CQL Proxy in its current state works well, but it is still under development. That means
 that things might break or change. Please give it a try and let us know what you think!
 
 ![cql-proxy](cql-proxy.png)
@@ -15,10 +15,11 @@ that things might break or change. Please give it a try and let us know what you
 go build
 ```
 
-Run against an [Astra cluster][astra]:
+Run against a [DataStax Astra][astra] cluster:
 
 ```sh
-./cql-proxy --bundle <your-secure-connect-zip> --username <astra-client-id> --password <astra-client-secret>
+./cql-proxy --bundle <your-secure-connect-zip> \
+  --username <astra-client-id> --password <astra-client-secret>
 ```
 
 or using Docker as
@@ -44,6 +45,20 @@ docker run -p 9042:9042 \
   --rm datastax/cql-proxy:v0.0.2 \
   --contact-points <cluster node IPs or DNS names>
 ```
+
+## When to use CQL Proxy
+
+The main use for CQL Proxy is to enable unsupported CQL drivers and existing applications to work
+well with [DataStax Astra][astra]. Unsupported CQL drivers include legacy DataStax drivers and
+non-Datastax, community maintained CQL drivers (including [gocql], [rust-driver], etc.). 
+
+CQL Proxy also enables applications that are currently using [Apache Cassandra][cassandra] or
+[DataStax Enterprise (DSE)][dse] to use Astra without requiring any code changes.  Your application
+just needs to be configured to use the proxy.
+
+If you're building a new application using DataStax drivers then those should be used to communicate
+directly with Astra. They have excellent support for Astra out-of-the-box. To use a DataStax driver
+with Astra follow [this][driver-guide] guide.
 
 ## Configuration
 
@@ -88,3 +103,8 @@ Flags:
 
 [astra]: https://astra.datastax.com/
 [instructions]: https://docs.datastax.com/en/astra/docs/manage-application-tokens.html
+[gocql]: https://github.com/gocql/gocql
+[rust-driver]: https://github.com/scylladb/scylla-rust-driver
+[driver-guide]: https://docs.datastax.com/en/astra/docs/connecting-to-astra-databases-using-datastax-drivers.html
+[cassandra]: https://cassandra.apache.org/
+[dse]: https://www.datastax.com/products/datastax-enterprise
