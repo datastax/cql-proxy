@@ -18,7 +18,7 @@ go build
 Run against an [Astra cluster][astra]:
 
 ```sh
-./cql-proxy --bundle <your-secure-connect-zip> --username token --password <your-astra-token>
+./cql-proxy --bundle <your-secure-connect-zip> --username <astra-client-id> --password <astra-client-secret>
 ```
 
 or using Docker as
@@ -26,10 +26,10 @@ or using Docker as
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
   --rm datastax/cql-proxy:v0.0.2 \
-  --bundle /tmp/scb.zip --username token --password <your-astra-token>
+  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 
-Note: Use the literal `token` as the username.
+`<astra-client-id>` and `<astra-client-secret>` can be generated using these [instructions].
 
 Run against a Apache Cassandra cluster:
 
@@ -55,7 +55,7 @@ Flags
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
   --rm datastax/cql-proxy:v0.0.2 \
-  --bundle /tmp/scb.zip --username token --password <your-astra-token>
+  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 
 Environment Variables
@@ -63,7 +63,7 @@ Environment Variables
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
   --rm datastax/cql-proxy:v0.0.2 \
-  -e BUNDLE=/tmp/scb.zip -e USERNAME=token -e PASSWORD=<your-astra-token>
+  -e BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
 ```
 
 To see what options are available the `-h` flag will display a help message listing all flags and their corresponding descriptions
@@ -87,3 +87,4 @@ Flags:
 ```
 
 [astra]: https://astra.datastax.com/
+[instructions]: https://docs.datastax.com/en/astra/docs/manage-application-tokens.html
