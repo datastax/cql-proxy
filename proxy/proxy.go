@@ -17,6 +17,8 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"cql-proxy/parser"
+	"cql-proxy/proxycore"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -24,16 +26,12 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
-	"unsafe"
-
-	"cql-proxy/parser"
-	"cql-proxy/proxycore"
 
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
-	"github.com/dgraph-io/ristretto"
+	lru "github.com/hashicorp/golang-lru"
 	"go.uber.org/zap"
 )
 
@@ -50,8 +48,8 @@ type Config struct {
 	NumConns        int
 	Logger          *zap.Logger
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
-	// capacity of 100MB.
-	PreparedCache   proxycore.PreparedCache
+	// capacity of ~100MB.
+	PreparedCache proxycore.PreparedCache
 }
 
 type Proxy struct {
@@ -493,18 +491,14 @@ func (c *client) Closing(_ error) {
 
 func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.PreparedCache, error) {
 	if cache == nil {
-		return NewDefaultPreparedCache(1e8) // 100MB
+		return NewDefaultPreparedCache(1e8 / 256) // ~100MB with an average query size of 256 bytes
 	}
 	return cache, nil
 }
 
-// NewDefaultPreparedCache creates a new default prepared cache capping the max capacity to `maxBytes`.
-func NewDefaultPreparedCache(maxBytes int64) (proxycore.PreparedCache, error) {
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: maxBytes / 64, // Assuming an average size of ~64 bytes per entry. Underestimating is preferred.
-		MaxCost: maxBytes,
-		BufferItems: 64,
-	})
+// NewDefaultPreparedCache creates a new default prepared cache capping the max item capacity to `size`.
+func NewDefaultPreparedCache(size int) (proxycore.PreparedCache, error) {
+	cache, err := lru.New(size)
 	if err != nil {
 		return nil, err
 	}
@@ -512,12 +506,11 @@ func NewDefaultPreparedCache(maxBytes int64) (proxycore.PreparedCache, error) {
 }
 
 type defaultPreparedCache struct {
-	cache *ristretto.Cache
+	cache *lru.Cache
 }
 
 func (d defaultPreparedCache) Store(id string, entry *proxycore.PreparedEntry) {
-	cost := int64(len(id)) + int64(unsafe.Sizeof(frame.Header{})) + int64(unsafe.Sizeof(frame.Body{})) + int64(len(entry.PreparedFrame.Body))
-	d.cache.Set(id, entry, cost)
+	d.cache.Add(id, entry)
 }
 
 func (d defaultPreparedCache) Load(id string) (entry *proxycore.PreparedEntry, ok bool) {
