@@ -31,15 +31,15 @@ func TestConnect(t *testing.T) {
 	ctx := context.Background()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:8123")
+	defer func(listener net.Listener) {
+		_ = listener.Close()
+	}(listener)
 	require.NoError(t, err, "failed to listen")
 
 	clientData := randomData(64 * 1024)
 	serverData := randomData(64 * 1024)
 
-	serverRecv := &testRecv{
-		expected: clientData,
-		received: make(chan struct{}),
-	}
+	serverRecv := newTestRecv(clientData)
 	servClosed := make(chan struct{})
 
 	go func() {
@@ -55,10 +55,7 @@ func TestConnect(t *testing.T) {
 		}
 	}()
 
-	clientRecv := &testRecv{
-		expected: serverData,
-		received: make(chan struct{}),
-	}
+	clientRecv := newTestRecv(serverData)
 	clientConn, err := Connect(ctx, &defaultEndpoint{"127.0.0.1:8123"}, clientRecv)
 	require.NoError(t, err, "failed to connect")
 
@@ -67,34 +64,24 @@ func TestConnect(t *testing.T) {
 
 	timer := time.NewTimer(2 * time.Second)
 
-	select {
-	case <-clientRecv.received:
-	case <-timer.C:
-		require.Fail(t, "timed out waiting to receive data from the server")
+	wait := func(waitFor chan struct{}, msg string) {
+		select {
+		case <-waitFor:
+		case <-timer.C:
+			require.Fail(t, msg)
+		}
 	}
 
-	select {
-	case <-serverRecv.received:
-	case <-timer.C:
-		require.Fail(t, "timed out waiting to receive data from the client")
-	}
+	wait(clientRecv.received, "timed out waiting to receive data from the server")
+	wait(serverRecv.received, "timed out waiting to receive data from the client")
 
 	_ = clientConn.Close()
 
-	select {
-	case <-clientConn.IsClosed():
-	case <-timer.C:
-		require.Fail(t, "timed out waiting for client to close")
-	}
+	wait(clientConn.IsClosed(), "timed out waiting for client to close")
+	wait(servClosed, "timed out waiting for server to close")
 
-	select {
-	case <-servClosed:
-	case <-timer.C:
-		require.Fail(t, "timed out waiting for server to close")
-	}
-
-	assert.True(t, serverRecv.closed, "server closing method never called")
-	assert.True(t, clientRecv.closed, "client closing method never called")
+	wait(clientRecv.closing, "client closing method never called")
+	wait(serverRecv.closing, "server closing method never called")
 }
 
 func TestConnect_Failures(t *testing.T) {
@@ -117,16 +104,16 @@ func TestConnect_Failures(t *testing.T) {
 type testRecv struct {
 	expected []byte
 	buf      bytes.Buffer
-	closed   bool
+	closing  chan struct{}
 	received chan struct{}
 }
 
-func randomData(n int) []byte {
-	data := make([]byte, n)
-	for i := 0; i < n; i++ {
-		data[i] = 'a' + byte(rand.Intn(26))
+func newTestRecv(expected []byte) *testRecv {
+	return &testRecv{
+		expected: expected,
+		closing:  make(chan struct{}),
+		received: make(chan struct{}),
 	}
-	return data
 }
 
 func (t *testRecv) Receive(reader io.Reader) error {
@@ -143,5 +130,14 @@ func (t *testRecv) Receive(reader io.Reader) error {
 }
 
 func (t *testRecv) Closing(_ error) {
-	t.closed = true
+	close(t.closing)
 }
+
+func randomData(n int) []byte {
+	data := make([]byte, n)
+	for i := 0; i < n; i++ {
+		data[i] = 'a' + byte(rand.Intn(26))
+	}
+	return data
+}
+
