@@ -50,19 +50,19 @@ type SessionConfig struct {
 	Auth            Authenticator
 	Logger          *zap.Logger
 	// PreparedCache a global cache share across sessions for storing previously prepared queries
-	PreparedCache   PreparedCache
-	ConnectTimeout  time.Duration
+	PreparedCache     PreparedCache
+	ConnectTimeout    time.Duration
 	HeartBeatInterval time.Duration
 	IdleTimeout       time.Duration
 }
 
 type Session struct {
-	ctx           context.Context
-	config        SessionConfig
-	logger        *zap.Logger
-	pools         sync.Map
-	connected     chan struct{}
-	failed        chan error
+	ctx       context.Context
+	config    SessionConfig
+	logger    *zap.Logger
+	pools     sync.Map
+	connected chan struct{}
+	failed    chan error
 }
 
 func ConnectSession(ctx context.Context, cluster *Cluster, config SessionConfig) (*Session, error) {
