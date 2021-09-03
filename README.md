@@ -4,12 +4,12 @@
 
 A CQL proxy/sidecar. It listens on a local address and securely forwards your application's CQL traffic.
 
-**Note**: CQL Proxy in its current state works well, but it is still under development. That means
+**Note**: `cql-proxy` in its current state works well, but it is still under development. That means
 that things might break or change. Please give it a try and let us know what you think!
 
 ![cql-proxy](cql-proxy.png)
 
-## Getting Started
+## Getting started
 
 ```sh
 go build
@@ -46,13 +46,13 @@ docker run -p 9042:9042 \
   --contact-points <cluster node IPs or DNS names>
 ```
 
-## When to use CQL Proxy
+## When to use `cql-proxy`
 
-The main use for CQL Proxy is to enable unsupported CQL drivers and existing applications to work
+The main use for `cql-proxy` is to enable unsupported CQL drivers and existing applications to work
 well with [DataStax Astra][astra]. Unsupported CQL drivers include legacy DataStax drivers and
 non-Datastax, community maintained CQL drivers (including [gocql], [rust-driver], etc.). 
 
-CQL Proxy also enables applications that are currently using [Apache Cassandra][cassandra] or
+`cql-proxy` also enables applications that are currently using [Apache Cassandra][cassandra] or
 [DataStax Enterprise (DSE)][dse] to use Astra without requiring any code changes.  Your application
 just needs to be configured to use the proxy.
 
