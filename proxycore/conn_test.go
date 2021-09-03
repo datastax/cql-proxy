@@ -38,6 +38,7 @@ func TestConnect(t *testing.T) {
 
 	serverRecv := &testRecv{
 		expected: clientData,
+		received: make(chan struct{}),
 	}
 	servClosed := make(chan struct{})
 
@@ -56,6 +57,7 @@ func TestConnect(t *testing.T) {
 
 	clientRecv := &testRecv{
 		expected: serverData,
+		received: make(chan struct{}),
 	}
 	clientConn, err := Connect(ctx, &defaultEndpoint{"127.0.0.1:8123"}, clientRecv)
 	require.NoError(t, err, "failed to connect")
@@ -66,15 +68,29 @@ func TestConnect(t *testing.T) {
 	timer := time.NewTimer(2 * time.Second)
 
 	select {
+	case <-clientRecv.received:
+	case <-timer.C:
+		require.Fail(t, "timed out waiting to receive data from the server")
+	}
+
+	select {
+	case <-serverRecv.received:
+	case <-timer.C:
+		require.Fail(t, "timed out waiting to receive data from the client")
+	}
+
+	_ = clientConn.Close()
+
+	select {
 	case <-clientConn.IsClosed():
 	case <-timer.C:
-		require.Fail(t, "timed out waiting for client")
+		require.Fail(t, "timed out waiting for client to close")
 	}
 
 	select {
 	case <-servClosed:
 	case <-timer.C:
-		require.Fail(t, "timed out waiting for server")
+		require.Fail(t, "timed out waiting for server to close")
 	}
 
 	assert.True(t, serverRecv.closed, "server closing method never called")
@@ -102,6 +118,7 @@ type testRecv struct {
 	expected []byte
 	buf      bytes.Buffer
 	closed   bool
+	received chan struct{}
 }
 
 func randomData(n int) []byte {
@@ -120,7 +137,7 @@ func (t *testRecv) Receive(reader io.Reader) error {
 	}
 	t.buf.Write(buf[:n])
 	if bytes.Equal(t.buf.Bytes(), t.expected) {
-		return io.EOF
+		close(t.received)
 	}
 	return nil
 }
