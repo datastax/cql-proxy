@@ -17,13 +17,14 @@ package proxycore
 import (
 	"bytes"
 	"context"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"math/rand"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConnect(t *testing.T) {
@@ -45,7 +46,7 @@ func TestConnect(t *testing.T) {
 		require.NoError(t, err, "failed to accept client connection")
 		conn := NewConn(c, serverRecv)
 		conn.Start()
-		err = writeInChunks(conn, serverData, 100)
+		err = conn.WriteBytes(serverData)
 		require.NoError(t, err, "failed to write bytes to client")
 		select {
 		case <-conn.IsClosed():
@@ -59,7 +60,7 @@ func TestConnect(t *testing.T) {
 	clientConn, err := Connect(ctx, &defaultEndpoint{"127.0.0.1:8123"}, clientRecv)
 	require.NoError(t, err, "failed to connect")
 
-	err = writeInChunks(clientConn, clientData, 100)
+	err = clientConn.WriteBytes(clientData)
 	require.NoError(t, err, "failed to write bytes to server")
 
 	timer := time.NewTimer(2 * time.Second)
@@ -113,7 +114,6 @@ func randomData(n int) []byte {
 
 func (t *testRecv) Receive(reader io.Reader) error {
 	var buf [1024]byte
-	//n, err := io.ReadAtLeast(reader, buf[:], 1)
 	n, err := reader.Read(buf[:])
 	if err != nil {
 		return err
@@ -127,22 +127,4 @@ func (t *testRecv) Receive(reader io.Reader) error {
 
 func (t *testRecv) Closing(_ error) {
 	t.closed = true
-}
-
-func writeInChunks(conn *Conn, data []byte, n int) (err error) {
-	l := len(data)
-	remaining := l
-	for remaining > 0 {
-		w := n
-		if remaining < n {
-			w = remaining
-		}
-		o := l - remaining
-		err = conn.WriteBytes(data[o : o+w])
-		if err != nil {
-			return err
-		}
-		remaining -= w
-	}
-	return err
 }
