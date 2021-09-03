@@ -32,13 +32,14 @@ type connPoolConfig struct {
 }
 
 type connPool struct {
-	ctx       context.Context
-	config    connPoolConfig
-	logger    *zap.Logger
-	cancel    context.CancelFunc
-	remaining int32
-	conns     []*ClientConn
-	connsMu   *sync.RWMutex
+	ctx           context.Context
+	config        connPoolConfig
+	logger        *zap.Logger
+	preparedCache PreparedCache
+	cancel        context.CancelFunc
+	remaining     int32
+	conns         []*ClientConn
+	connsMu       *sync.RWMutex
 }
 
 // connectPool establishes a pool of connections to a given endpoint within a downstream cluster. These connection pools will
@@ -47,13 +48,14 @@ func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) 
 	ctx, cancel := context.WithCancel(ctx)
 
 	pool := &connPool{
-		ctx:       ctx,
-		config:    config,
-		logger:    GetOrCreateNopLogger(config.Logger),
-		cancel:    cancel,
-		remaining: int32(config.NumConns),
-		conns:     make([]*ClientConn, config.NumConns),
-		connsMu:   &sync.RWMutex{},
+		ctx:           ctx,
+		config:        config,
+		logger:        GetOrCreateNopLogger(config.Logger),
+		preparedCache: config.PreparedCache,
+		cancel:        cancel,
+		remaining:     int32(config.NumConns),
+		conns:         make([]*ClientConn, config.NumConns),
+		connsMu:       &sync.RWMutex{},
 	}
 
 	errs := make([]error, config.NumConns)
@@ -133,7 +135,9 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	timeout := getOrUseDefault(p.config.ConnectTimeout, DefaultConnectTimeout)
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
-	conn, err = ConnectClient(ctx, p.config.Endpoint)
+	conn, err = ConnectClient(ctx, p.config.Endpoint, ClientConnConfig{
+		PreparedCache: p.preparedCache,
+		Logger:        p.logger})
 	if err != nil {
 		return nil, err
 	}

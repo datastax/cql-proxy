@@ -19,6 +19,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,7 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	const proxyContactPoint = "127.0.0.1:9042"
 
 	cluster := proxycore.NewMockCluster(net.ParseIP("127.0.0.0"), clusterPort)
+	defer cluster.Shutdown()
 
 	cluster.Handlers = proxycore.NewMockRequestHandlers(proxycore.MockRequestHandlers{
 		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
@@ -82,22 +84,25 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	require.NoError(t, err)
 
 	proxy := NewProxy(ctx, Config{
-		Version:         primitive.ProtocolVersion4,
-		Resolver:        proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
-		ReconnectPolicy: proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
-		NumConns:        2,
+		Version:           primitive.ProtocolVersion4,
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
+		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		NumConns:          2,
 		HeartBeatInterval: 30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	})
 
 	err = proxy.Listen(proxyContactPoint)
+	defer func(proxy *Proxy) {
+		_ = proxy.Shutdown()
+	}(proxy)
 	require.NoError(t, err)
 
 	go func() {
 		_ = proxy.Serve()
 	}()
 
-	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint))
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, primitive.ProtocolVersion4, nil)
@@ -126,6 +131,103 @@ func TestProxy_ListenAndServe(t *testing.T) {
 		return len(hosts) == 3
 	})
 	assert.True(t, added)
+}
+
+func TestProxy_Unprepared(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const numNodes = 3
+
+	const clusterContactPoint = "127.0.0.1:8000"
+	const clusterPort = 8000
+
+	const proxyContactPoint = "127.0.0.1:9042"
+	const version = primitive.ProtocolVersion4
+
+	preparedId := []byte("abc")
+
+	cluster := proxycore.NewMockCluster(net.ParseIP("127.0.0.0"), clusterPort)
+	defer cluster.Shutdown()
+
+	var prepared sync.Map
+
+	cluster.Handlers = proxycore.NewMockRequestHandlers(proxycore.MockRequestHandlers{
+		primitive.OpCodePrepare: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			prepared.Store(cl.Local().IP, true)
+			return &message.PreparedResult{
+				PreparedQueryId: preparedId,
+			}
+		},
+		primitive.OpCodeExecute: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			if _, ok := prepared.Load(cl.Local().IP); ok {
+				return &message.RowsResult{
+					Metadata: &message.RowsMetadata{
+						ColumnCount: 0,
+					},
+					Data: message.RowSet{},
+				}
+			} else {
+				ex := frm.Body.Message.(*message.Execute)
+				assert.Equal(t, preparedId, ex.QueryId)
+				return &message.Unprepared{Id: ex.QueryId}
+			}
+		},
+	})
+
+	for i := 1; i <= numNodes; i++ {
+		err := cluster.Add(ctx, i)
+		require.NoError(t, err)
+	}
+
+	proxy := NewProxy(ctx, Config{
+		Version:           version,
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
+		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		NumConns:          2,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	})
+
+	err := proxy.Listen(proxyContactPoint)
+	defer func(proxy *Proxy) {
+		_ = proxy.Shutdown()
+	}(proxy)
+	require.NoError(t, err)
+
+	go func() {
+		_ = proxy.Serve()
+	}()
+
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
+	require.NoError(t, err)
+
+	negotiated, err := cl.Handshake(ctx, version, nil)
+	require.NoError(t, err)
+	assert.Equal(t, version, negotiated)
+
+	// Only prepare on a single node
+	resp, err := cl.SendAndReceive(ctx, frame.NewFrame(version, 0, &message.Prepare{Query: "SELECT * FROM test.test"}))
+	require.NoError(t, err)
+	assert.Equal(t, primitive.OpCodeResult, resp.Header.OpCode)
+	_, ok := resp.Body.Message.(*message.PreparedResult)
+	assert.True(t, ok, "expected prepared result")
+
+	for i := 0; i < numNodes; i++ {
+		resp, err = cl.SendAndReceive(ctx, frame.NewFrame(version, 0, &message.Execute{QueryId: preparedId}))
+		require.NoError(t, err)
+		assert.Equal(t, primitive.OpCodeResult, resp.Header.OpCode)
+		_, ok = resp.Body.Message.(*message.RowsResult)
+		assert.True(t, ok, "expected rows result")
+	}
+
+	// Count the number of unique nodes that were prepared
+	count := 0
+	prepared.Range(func(_, _ interface{}) bool {
+		count++
+		return true
+	})
+	assert.Equal(t, numNodes, count)
 }
 
 func testQueryHosts(ctx context.Context, cl *proxycore.ClientConn) (map[string]struct{}, error) {

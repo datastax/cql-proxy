@@ -157,7 +157,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	conn, err := ConnectClientWithEvents(ctx, endpoint, c)
+	conn, err := ConnectClient(ctx, endpoint, ClientConnConfig{Handler: c, Logger: c.logger})
 	if err != nil {
 		return err
 	}

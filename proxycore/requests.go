@@ -15,13 +15,31 @@
 package proxycore
 
 import (
-	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"sync"
+
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 )
 
+// Request represents the data frame and lifecycle of a CQL native protocol request.
 type Request interface {
+	// Frame returns the frame to be executed as part of the request.
+	// This must be idempotent.
 	Frame() interface{}
+
+	// Execute is called when a request need to be retried.
+	// This is currently only called for executing prepared requests (i.e. `EXECUTE` request frames). If `EXECUTE`
+	// request frames are not expected then the implementation should `panic()`.
+	//
+	// If `next` is false then the request must be retried on the current node; otherwise, it should be retried on
+	// another node which is usually then next node in a query plan.
+	Execute(next bool)
+
+	// OnClose is called when the underlying connection is closed.
+	// No assumptions should be made about whether the request has been successfully sent; it is possible that
+	// the request has been fully sent and no response was received before
 	OnClose(err error)
+
+	// OnResult is called when a response frame has been sent back from the connection.
 	OnResult(raw *frame.RawFrame)
 }
 

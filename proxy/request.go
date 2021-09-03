@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"cql-proxy/proxycore"
+
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"go.uber.org/zap"
@@ -29,26 +30,29 @@ type request struct {
 	session    *proxycore.Session
 	idempotent bool
 	done       bool
+	host       *proxycore.Host
 	stream     int16
 	qp         proxycore.QueryPlan
 	raw        *frame.RawFrame
 	mu         sync.Mutex
 }
 
-func (r *request) execute() {
+func (r *request) Execute(next bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for !r.done {
-		host := r.qp.Next()
-		if host == nil {
+		if next {
+			r.host = r.qp.Next()
+		}
+		if r.host == nil {
 			r.done = true
 			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (exhausted query plan)"})
 		} else {
-			err := r.session.Send(host, r)
+			err := r.session.Send(r.host, r)
 			if err == nil {
 				break
 			} else {
-				r.client.proxy.logger.Debug("failed to send request to host", zap.Stringer("host", host), zap.Error(err))
+				r.client.proxy.logger.Debug("failed to send request to host", zap.Stringer("host", r.host), zap.Error(err))
 			}
 		}
 	}
@@ -73,7 +77,7 @@ func (r *request) Frame() interface{} {
 
 func (r *request) OnClose(_ error) {
 	if r.idempotent {
-		r.execute()
+		r.Execute(true)
 	} else {
 		r.mu.Lock()
 		if !r.done {

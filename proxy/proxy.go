@@ -33,6 +33,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	lru "github.com/hashicorp/golang-lru"
 	"go.uber.org/zap"
 )
 
@@ -50,6 +51,9 @@ type Config struct {
 	Logger            *zap.Logger
 	HeartBeatInterval time.Duration
 	IdleTimeout       time.Duration
+	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
+	// capacity of ~100MB.
+	PreparedCache proxycore.PreparedCache
 }
 
 type Proxy struct {
@@ -59,8 +63,9 @@ type Proxy struct {
 	listener           *net.TCPListener
 	cluster            *proxycore.Cluster
 	sessions           sync.Map
-	sessMu             *sync.Mutex
+	sessMu             sync.Mutex
 	schemaEventClients sync.Map
+	preparedCache      proxycore.PreparedCache
 	clientIdGen        uint64
 	lb                 proxycore.LoadBalancer
 	systemLocalValues  map[string]message.Column
@@ -90,12 +95,9 @@ func (p *Proxy) OnEvent(event interface{}) {
 
 func NewProxy(ctx context.Context, config Config) *Proxy {
 	return &Proxy{
-		ctx:                ctx,
-		config:             config,
-		logger:             proxycore.GetOrCreateNopLogger(config.Logger),
-		sessions:           sync.Map{},
-		sessMu:             &sync.Mutex{},
-		schemaEventClients: sync.Map{},
+		ctx:    ctx,
+		config: config,
+		logger: proxycore.GetOrCreateNopLogger(config.Logger),
 	}
 }
 
@@ -109,6 +111,11 @@ func (p *Proxy) ListenAndServe(address string) error {
 
 func (p *Proxy) Listen(address string) error {
 	var err error
+
+	p.preparedCache, err = getOrCreateDefaultPreparedCache(p.config.PreparedCache)
+	if err != nil {
+		return fmt.Errorf("unable to create prepared cache %w", err)
+	}
 
 	p.cluster, err = proxycore.ConnectCluster(p.ctx, proxycore.ClusterConfig{
 		Version:           p.config.Version,
@@ -141,9 +148,9 @@ func (p *Proxy) Listen(address string) error {
 		NumConns:          p.config.NumConns,
 		Version:           p.cluster.NegotiatedVersion,
 		Auth:              p.config.Auth,
-		Logger:            p.config.Logger,
 		HeartBeatInterval: p.config.HeartBeatInterval,
 		IdleTimeout:       p.config.IdleTimeout,
+		PreparedCache:     p.preparedCache,
 	})
 
 	if err != nil {
@@ -176,6 +183,10 @@ func (p *Proxy) Serve() error {
 	}
 }
 
+func (p *Proxy) Shutdown() error {
+	return p.listener.Close()
+}
+
 func (p *Proxy) handle(conn *net.TCPConn) {
 	if err := conn.SetKeepAlive(false); err != nil {
 		p.logger.Warn("failed to disable keepalive on connection", zap.Error(err))
@@ -205,6 +216,7 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 			NumConns:          p.config.NumConns,
 			Version:           p.cluster.NegotiatedVersion,
 			Auth:              p.config.Auth,
+			PreparedCache:     p.preparedCache,
 			Keyspace:          keyspace,
 			HeartBeatInterval: p.config.HeartBeatInterval,
 			IdleTimeout:       p.config.IdleTimeout,
@@ -316,7 +328,7 @@ func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
 			qp:         c.proxy.newQueryPlan(),
 			raw:        raw,
 		}
-		req.execute()
+		req.Execute(true)
 	} else {
 		c.send(raw.Header, &message.ServerError{ErrorMessage: "Attempted to use invalid keyspace"})
 	}
@@ -497,4 +509,35 @@ func (c *client) send(hdr *frame.Header, msg message.Message) {
 
 func (c *client) Closing(_ error) {
 	c.proxy.schemaEventClients.Delete(c.id)
+}
+
+func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.PreparedCache, error) {
+	if cache == nil {
+		return NewDefaultPreparedCache(1e8 / 256) // ~100MB with an average query size of 256 bytes
+	}
+	return cache, nil
+}
+
+// NewDefaultPreparedCache creates a new default prepared cache capping the max item capacity to `size`.
+func NewDefaultPreparedCache(size int) (proxycore.PreparedCache, error) {
+	cache, err := lru.New(size)
+	if err != nil {
+		return nil, err
+	}
+	return &defaultPreparedCache{cache}, nil
+}
+
+type defaultPreparedCache struct {
+	cache *lru.Cache
+}
+
+func (d defaultPreparedCache) Store(id string, entry *proxycore.PreparedEntry) {
+	d.cache.Add(id, entry)
+}
+
+func (d defaultPreparedCache) Load(id string) (entry *proxycore.PreparedEntry, ok bool) {
+	if val, ok := d.cache.Get(id); ok {
+		return val.(*proxycore.PreparedEntry), true
+	}
+	return nil, false
 }

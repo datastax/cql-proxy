@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"cql-proxy/parser"
+
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -235,6 +236,7 @@ func (c MockClient) Closing(_ error) {
 }
 
 type MockServer struct {
+	wg			sync.WaitGroup
 	cancel      context.CancelFunc
 	clients     sync.Map
 	clientIdGen uint64
@@ -280,6 +282,11 @@ func (s *MockServer) Remove(host MockHost) {
 			Port: int32(host.Port),
 		},
 	})
+}
+
+func (s *MockServer) Shutdown() {
+	s.cancel()
+	s.wg.Wait()
 }
 
 func (s *MockServer) Event(evt message.Event) {
@@ -337,10 +344,13 @@ func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVer
 	copy(s.peers, peers)
 	s.peers = removeHost(s.peers, local)
 
+	s.wg.Add(1)
+
 	go func() {
 		for {
 			c, err := listener.Accept()
 			if err != nil {
+				s.wg.Done()
 				break
 			}
 			id := atomic.AddUint64(&s.clientIdGen, 1)
@@ -364,7 +374,6 @@ func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVer
 			}(cl)
 			s.clients.Store(id, cl)
 			cl.conn.Start()
-
 		}
 	}()
 
@@ -470,6 +479,14 @@ func (c *MockCluster) maybeStop(host MockHost) {
 func (c *MockCluster) Stop(n int) {
 	c.maybeStop(c.generate(n))
 }
+
+func (c *MockCluster) Shutdown() {
+	for _, server := range c.servers {
+		server.Shutdown()
+	}
+}
+
+
 func makeSystemLocalValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
 	ip := net.ParseIP(address)
 	values := makeSystemValues(version, ip, hostID, schemaVersion)

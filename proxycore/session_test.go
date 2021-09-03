@@ -119,6 +119,10 @@ type testSessionRequest struct {
 	wg      *sync.WaitGroup
 }
 
+func (r testSessionRequest) Execute(next bool) {
+	panic("not implemented")
+}
+
 func (r testSessionRequest) Frame() interface{} {
 	return frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{
 		Query: "SELECT * FROM system.local",
