@@ -20,9 +20,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
+
+var codec = frame.NewRawCodec(&partialQueryCodec{}, &partialExecuteCodec{})
 
 type partialQueryCodec struct{}
 

@@ -85,7 +85,7 @@ func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConf
 
 func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) (primitive.ProtocolVersion, error) {
 	for {
-		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup()))
+		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup(message.StartupOptionCompression, "LZ4")))
 		if err != nil {
 			return version, err
 		}
@@ -342,11 +342,18 @@ func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
 			c.logger.Error("failed to decode prepared result response", zap.Error(err))
 			return
 		}
-		msg := frm.Body.Message.(*message.PreparedResult)
-		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId),
-			&PreparedEntry{
-				request.Frame().(*frame.RawFrame), // Store frame so we can re-prepare
-			})
+
+		switch v := frm.Body.Message.(type) {
+		case *message.PreparedResult:
+			msg := frm.Body.Message.(*message.PreparedResult)
+			c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId),
+				&PreparedEntry{
+					request.Frame().(*frame.RawFrame), // Store frame so we can re-prepare
+				})
+		default:
+			c.logger.Warn("should have got PreparedResult but instead got ", zap.Any("type", v))
+		}
+
 	}
 }
 

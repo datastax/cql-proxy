@@ -16,12 +16,14 @@ package proxycore
 
 import (
 	"fmt"
+
+	nativeProtoClient "github.com/datastax/go-cassandra-native-protocol/client"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
-var codec = frame.NewRawCodec()
+var codec = frame.NewRawCodecWithCompression(nativeProtoClient.NewBodyCompressor(primitive.CompressionLz4))
 
 var primitiveCodecs = map[datatype.DataType]datatype.Codec{
 	datatype.Ascii:    &datatype.AsciiCodec{},

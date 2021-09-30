@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -299,8 +300,17 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Options:
 		c.send(raw.Header, &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.0.0"}, "COMPRESSION": {string(primitive.CompressionNone), string(primitive.CompressionSnappy), string(primitive.CompressionLz4)}}})
 	case *message.Startup:
+
+		// sent as lowercase by the driver but needs to be handled internally as uppercase
+		compression := primitive.CompressionNone
+		if strings.ToUpper(string(msg.GetCompression())) == "LZ4"  {
+			compression = primitive.CompressionLz4
+		} else if strings.ToUpper(string(msg.GetCompression())) == "SNAPPY"{
+			compression = primitive.CompressionSnappy
+		}
+
 		// Overwrite the codec in case the client is using compression
-		c.codec = frame.NewRawCodecWithCompression(nativeProtoClient.NewBodyCompressor(msg.GetCompression()), &partialQueryCodec{}, &partialExecuteCodec{})
+		c.codec = frame.NewRawCodecWithCompression(nativeProtoClient.NewBodyCompressor(compression), &partialQueryCodec{}, &partialExecuteCodec{})
 		c.send(raw.Header, &message.Ready{})
 	case *message.Register:
 		for _, t := range msg.EventTypes {
