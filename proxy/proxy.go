@@ -29,6 +29,7 @@ import (
 	"cql-proxy/parser"
 	"cql-proxy/proxycore"
 
+	nativeProtoClient "github.com/datastax/go-cassandra-native-protocol/client"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -78,7 +79,7 @@ func (p *Proxy) OnEvent(event interface{}) {
 		p.schemaEventClients.Range(func(key, value interface{}) bool {
 			cl := value.(*client)
 			err := cl.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-				return codec.EncodeFrame(frm, writer)
+				return cl.codec.EncodeFrame(frm, writer)
 			}))
 			cl.conn.LocalAddr()
 			if err != nil {
@@ -202,6 +203,7 @@ func (p *Proxy) handle(conn *net.TCPConn) {
 		id:                  atomic.AddUint64(&p.clientIdGen, 1),
 		preparedSystemQuery: make(map[[16]byte]interface{}),
 		preparedIdempotence: make(map[[16]byte]bool),
+		codec:               frame.NewRawCodec(&partialQueryCodec{}, &partialExecuteCodec{}),
 	}
 	cl.conn = proxycore.NewConn(conn, cl)
 	cl.conn.Start()
@@ -270,10 +272,11 @@ type client struct {
 	id                  uint64
 	preparedSystemQuery map[[16]byte]interface{}
 	preparedIdempotence map[[16]byte]bool
+	codec               frame.RawCodec
 }
 
 func (c *client) Receive(reader io.Reader) error {
-	raw, err := codec.DecodeRawFrame(reader)
+	raw, err := c.codec.DecodeRawFrame(reader)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			c.proxy.logger.Error("unable to decode frame", zap.Error(err))
@@ -286,7 +289,7 @@ func (c *client) Receive(reader io.Reader) error {
 		return nil
 	}
 
-	body, err := codec.DecodeBody(raw.Header, bytes.NewReader(raw.Body))
+	body, err := c.codec.DecodeBody(raw.Header, bytes.NewReader(raw.Body))
 	if err != nil {
 		c.proxy.logger.Error("unable to decode body", zap.Error(err))
 		return err
@@ -294,8 +297,10 @@ func (c *client) Receive(reader io.Reader) error {
 
 	switch msg := body.Message.(type) {
 	case *message.Options:
-		c.send(raw.Header, &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.0.0"}, "COMPRESSION": {}}})
+		c.send(raw.Header, &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.0.0"}, "COMPRESSION": {string(primitive.CompressionNone), string(primitive.CompressionSnappy), string(primitive.CompressionLz4)}}})
 	case *message.Startup:
+		// Overwrite the codec in case the client is using compression
+		c.codec = frame.NewRawCodecWithCompression(nativeProtoClient.NewBodyCompressor(msg.GetCompression()), &partialQueryCodec{}, &partialExecuteCodec{})
 		c.send(raw.Header, &message.Ready{})
 	case *message.Register:
 		for _, t := range msg.EventTypes {
@@ -503,7 +508,7 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 
 func (c *client) send(hdr *frame.Header, msg message.Message) {
 	_ = c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
+		return c.codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
 	}))
 }
 

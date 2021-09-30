@@ -60,14 +60,14 @@ func (r *request) Execute(next bool) {
 
 func (r *request) send(msg message.Message) {
 	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
+		return r.client.codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
 	}))
 }
 
 func (r *request) sendRaw(raw *frame.RawFrame) {
 	raw.Header.StreamId = r.stream
 	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeRawFrame(raw, writer)
+		return r.client.codec.EncodeRawFrame(raw, writer)
 	}))
 }
 
