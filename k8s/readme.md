@@ -24,7 +24,7 @@ Few things to keep a note of when creating the deployment file in kubernetes for
           configMap:
             name: cql-proxy-configmap        
     
-    **Note** : Keep the volumne name and volumeMount name same.
+    **Note** : Keep the volume name and volumeMount name same.
 
 ### 2. **Create a configmap**
 
@@ -33,7 +33,7 @@ Use the secure bundle zip name as `scb.zip`. Get the secure bundle from the conn
 
       kubectl create configmap cql-proxy-configmap --from-file scb.zip 
 
-    Check the configmap that was created. 
+  Check the configmap that was created. 
 
     $ kubectl describe configmap config
       
@@ -53,4 +53,4 @@ Use the secure bundle zip name as `scb.zip`. Get the secure bundle from the conn
 ### 3. **Create a k8s deployment and check logs**
 
 
-      $ kubectl logs cql-proxy-deployment-1-76fb6dbf9d-9kvc9
+      $ kubectl logs <deployment-name>

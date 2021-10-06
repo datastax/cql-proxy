@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: cql-proxy
-        image: datastax/cql-proxy
+        image: datastax/cql-proxy:v0.0.2
         command: ["./cql-proxy"]
         args: ["--bundle=/tmp/scb.zip","--username=Client ID","--password=Client Secret"]
         volumeMounts:
