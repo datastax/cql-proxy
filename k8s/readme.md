@@ -50,7 +50,7 @@ Use the secure bundle zip name as `scb.zip`. Get the secure bundle from the conn
       scb.zip: 12311 bytes
 
 
-### 3. **Create a k8s deployment and check logs **
+### 3. **Create a k8s deployment and check logs**
 
 
       $ kubectl logs cql-proxy-deployment-1-76fb6dbf9d-9kvc9
