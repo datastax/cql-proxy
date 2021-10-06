@@ -46,6 +46,13 @@ docker run -p 9042:9042 \
   --contact-points <cluster node IPs or DNS names>
 ```
 
+
+or using Kubernetes as below. Check the k8s folder for `config` and `cql-proxy.yaml` and more documentation.
+
+```sh
+kubectl create -f cql-proxy.yaml
+```
+
 ## When to use `cql-proxy`
 
 The main use for `cql-proxy` is to enable unsupported CQL drivers and existing applications to work

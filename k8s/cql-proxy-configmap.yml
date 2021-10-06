@@ -1,0 +1,7 @@
+apiVersion: v1
+binaryData:
+  scb.zip: <placeholder - binary of the zip file>
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2021-09-01T22:15:24Z"
+  name: config
