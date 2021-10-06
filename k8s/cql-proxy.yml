@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cql-proxy-deployment
+  labels:
+    app: cql-proxy
+spec:
+  selector:
+    matchLabels:
+      app: cql-proxy
+  template:
+    metadata:
+      labels:
+        app: cql-proxy
+    spec:
+      containers:
+      - name: cql-proxy
+        image: datastax/cql-proxy
+        command: ["./cql-proxy"]
+        args: ["--bundle=/tmp/scb.zip","--username=Client ID","--password=Client Secret"]
+        volumeMounts:
+        - name: my-cm-vol
+          mountPath: /tmp/
+        ports:
+        - containerPort: 9042
+          name: cql-port
+          protocol: TCP
+      volumes:
+        - name: my-cm-vol
+          configMap:
+            name: cql-proxy-configmap
