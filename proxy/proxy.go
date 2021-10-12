@@ -154,7 +154,7 @@ func (p *Proxy) Listen(address string) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("unable to connect to cluster %w", err)
+		return fmt.Errorf("unable to connect session %w", err)
 	}
 
 	p.sessions.Store("", sess) // No keyspace
