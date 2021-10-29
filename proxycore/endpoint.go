@@ -113,10 +113,17 @@ func (r *defaultEndpointResolver) NewEndpoint(row Row) (Endpoint, error) {
 		return nil, err
 	}
 
-	addr := rpcAddress.(net.IP)
+	var ok bool
+	var addr net.IP
+
+	if addr, ok = rpcAddress.(net.IP); !ok {
+		return nil, errors.New("ignoring host because its `rpc_address` is not set or is invalid")
+	}
 
 	if addr.Equal(net.IPv4zero) || addr.Equal(net.IPv6zero) {
-		addr = peer.(net.IP)
+		if addr, ok = peer.(net.IP); !ok {
+			return nil, errors.New("ignoring host because its `peer` is not set or is invalid")
+		}
 	}
 
 	return &defaultEndpoint{
