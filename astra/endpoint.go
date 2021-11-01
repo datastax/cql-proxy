@@ -109,12 +109,15 @@ func (r *astraResolver) NewEndpoint(row proxycore.Row) (proxycore.Endpoint, erro
 	if err != nil {
 		return nil, err
 	}
-	uuid := hostId.(primitive.UUID)
-	return &astraEndpoint{
-		addr:      sniProxyAddress,
-		key:       fmt.Sprintf("%s:%s", sniProxyAddress, &uuid),
-		tlsConfig: copyTLSConfig(r.bundle, uuid.String()),
-	}, nil
+	if uuid, ok := hostId.(primitive.UUID); !ok {
+		return nil, errors.New("ignoring host because its `host_id` is not set or is invalid")
+	} else {
+		return &astraEndpoint{
+			addr:      sniProxyAddress,
+			key:       fmt.Sprintf("%s:%s", sniProxyAddress, &uuid),
+			tlsConfig: copyTLSConfig(r.bundle, uuid.String()),
+		}, nil
+	}
 }
 
 func (a astraEndpoint) String() string {

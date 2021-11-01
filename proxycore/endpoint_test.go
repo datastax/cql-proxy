@@ -16,9 +16,14 @@ package proxycore
 
 import (
 	"crypto/tls"
+	"net"
+	"testing"
+
+	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestLookupEndpoint(t *testing.T) {
@@ -46,6 +51,149 @@ func TestLookupEndpoint_Invalid(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.err)
 		}
 	}
+}
+
+func TestEndpoint_NewEndpoint(t *testing.T) {
+	resolver := NewResolver("127.0.0.1")
+
+	const rpcAddr = "127.0.0.2"
+
+	rpcAddrBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
+
+	rs := NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "rpc_address",
+					Index:    0,
+					Type:     datatype.Inet,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{rpcAddrBytes},
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.NotNil(t, endpoint)
+	assert.Nil(t, err)
+	assert.Contains(t, endpoint.Key(), rpcAddr)
+}
+
+func TestEndpoint_NewEndpointUnknownRPCAddress(t *testing.T) {
+	resolver := NewResolver("127.0.0.1")
+
+	const rpcAddr = "0.0.0.0"
+	rpcAddrBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
+
+	const peer = "127.0.0.2"
+	peerBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(peer))
+
+	rs := NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "peer",
+					Index:    0,
+					Type:     datatype.Inet,
+				},
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "rpc_address",
+					Index:    1,
+					Type:     datatype.Inet,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{peerBytes, rpcAddrBytes},
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.NotNil(t, endpoint)
+	assert.Nil(t, err)
+	assert.Contains(t, endpoint.Key(), peer)
+}
+
+func TestEndpoint_NewEndpointInvalidRPCAddress(t *testing.T) {
+	resolver := NewResolver("127.0.0.1")
+
+	const peer = "127.0.0.2"
+	peerBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(peer))
+
+	rs := NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "peer",
+					Index:    0,
+					Type:     datatype.Inet,
+				},
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "rpc_address",
+					Index:    1,
+					Type:     datatype.Inet,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{peerBytes, nil}, // Null rpc_address
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.Nil(t, endpoint)
+	assert.Error(t, err, "ignoring host because its `rpc_address` is not set or is invalid")
+}
+
+func TestEndpoint_NewEndpointInvalidPeer(t *testing.T) {
+	resolver := NewResolver("127.0.0.1")
+
+	const rpcAddr = "0.0.0.0"
+	rpcAddrBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
+
+	rs := NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "peer",
+					Index:    0,
+					Type:     datatype.Inet,
+				},
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "rpc_address",
+					Index:    1,
+					Type:     datatype.Inet,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{nil, rpcAddrBytes}, // Null peer
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.Nil(t, endpoint)
+	assert.Error(t, err, "ignoring host because its `peer` is not set or is invalid")
 }
 
 type testEndpoint struct {

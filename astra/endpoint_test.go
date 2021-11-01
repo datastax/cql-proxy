@@ -19,24 +19,107 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net"
 	"net/http"
 	"testing"
+
+	"cql-proxy/proxycore"
+	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+const sniProxyAddr = "localhost:8080"
+
+var contactPoints = []string{
+	"a2e24181-d732-402a-ab06-894a8b2f6094",
+	"ce00ba58-a377-4022-ba09-00394ee66cfb",
+	"9e339fe3-2bf2-45ce-a660-76951f39a8e8",
+}
 
 func TestAstraResolver_Resolve(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	const sniProxyAddr = "localhost:8080"
-	contactPoints := []string{
-		"a2e24181-d732-402a-ab06-894a8b2f6094",
-		"ce00ba58-a377-4022-ba09-00394ee66cfb",
-		"9e339fe3-2bf2-45ce-a660-76951f39a8e8",
-	}
+	resolver := createResolver(t, ctx)
+	endpoints, err := resolver.Resolve()
+	require.NoError(t, err)
 
+	for _, endpoint := range endpoints {
+		assert.False(t, endpoint.IsResolved())
+		assert.Equal(t, sniProxyAddr, endpoint.Addr())
+		assert.Contains(t, contactPoints, endpoint.TlsConfig().ServerName)
+	}
+}
+
+func TestAstraResolver_NewEndpoint(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resolver := createResolver(t, ctx)
+	_, err := resolver.Resolve()
+	require.NoError(t, err)
+
+	const hostId = "a2e24181-d732-402a-ab06-894a8b2f6094"
+
+	rs := proxycore.NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "host_id",
+					Index:    0,
+					Type:     datatype.Uuid,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{makeUUID(hostId)},
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.NotNil(t, endpoint)
+	assert.Nil(t, err)
+	assert.Contains(t, endpoint.Key(), hostId)
+}
+
+func TestAstraResolver_NewEndpointInvalidHostID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resolver := createResolver(t, ctx)
+	_, err := resolver.Resolve()
+	require.NoError(t, err)
+
+	rs := proxycore.NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "host_id",
+					Index:    0,
+					Type:     datatype.Uuid,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{nil}, // Null value
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.Nil(t, endpoint)
+	assert.Error(t, err, "ignoring host because its `host_id` is not set or is invalid")
+}
+
+func createResolver(t *testing.T, ctx context.Context) proxycore.EndpointResolver {
 	err := runTestMetaSvcAsync(ctx, sniProxyAddr, contactPoints)
 	require.NoError(t, err)
 
@@ -46,16 +129,7 @@ func TestAstraResolver_Resolve(t *testing.T) {
 	bundle, err := LoadBundleZipFromPath(path)
 	require.NoError(t, err)
 
-	resolver := NewResolver(bundle)
-
-	endpoints, err := resolver.Resolve()
-	require.NoError(t, err)
-
-	for _, endpoint := range endpoints {
-		assert.False(t, endpoint.IsResolved())
-		assert.Equal(t, sniProxyAddr, endpoint.Addr())
-		assert.Contains(t, contactPoints, endpoint.TlsConfig().ServerName)
-	}
+	return NewResolver(bundle)
 }
 
 func runTestMetaSvcAsync(ctx context.Context, sniProxyAddr string, contactPoints []string) error {
@@ -72,12 +146,9 @@ func runTestMetaSvcAsync(ctx context.Context, sniProxyAddr string, contactPoints
 	listener, err := net.Listen("tcp", sniProxyAddr)
 
 	go func() {
-		serv := &http.Server{
-			Addr:      sniProxyAddr,
-			TLSConfig: tlsConfig,
-		}
 
-		http.HandleFunc("/metadata", func(writer http.ResponseWriter, request *http.Request) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/metadata", func(writer http.ResponseWriter, request *http.Request) {
 			res, err := json.Marshal(astraMetadata{
 				Version: 1,
 				Region:  "us-east1",
@@ -93,9 +164,16 @@ func runTestMetaSvcAsync(ctx context.Context, sniProxyAddr string, contactPoints
 			}
 		})
 
+		serv := &http.Server{
+			Addr:      sniProxyAddr,
+			TLSConfig: tlsConfig,
+			Handler:   mux,
+		}
+
 		go func() {
 			select {
 			case <-ctx.Done():
+				_ = listener.Close()
 				_ = serv.Close()
 			}
 		}()
@@ -151,4 +229,10 @@ func createServerTLSConfig(dnsName string) (*tls.Config, error) {
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 	}, nil
+}
+
+func makeUUID(uuid string) []byte {
+	parsedUuid, _ := primitive.ParseUuid(uuid)
+	bytes, _ := proxycore.EncodeType(datatype.Uuid, primitive.ProtocolVersion4, parsedUuid)
+	return bytes
 }
