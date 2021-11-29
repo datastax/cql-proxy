@@ -18,7 +18,7 @@ import (
 	"io"
 	"sync"
 
-	"cql-proxy/proxycore"
+	"github.com/datastax/cql-proxy/proxycore"
 
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"

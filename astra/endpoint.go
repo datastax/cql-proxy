@@ -27,7 +27,7 @@ import (
 
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 
-	"cql-proxy/proxycore"
+	"github.com/datastax/cql-proxy/proxycore"
 )
 
 type astraResolver struct {

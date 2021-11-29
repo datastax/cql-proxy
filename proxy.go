@@ -21,9 +21,9 @@ import (
 	_ "net/http/pprof"
 	"time"
 
-	"cql-proxy/astra"
-	"cql-proxy/proxy"
-	"cql-proxy/proxycore"
+	"github.com/datastax/cql-proxy/astra"
+	"github.com/datastax/cql-proxy/proxy"
+	"github.com/datastax/cql-proxy/proxycore"
 
 	"github.com/alecthomas/kong"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"

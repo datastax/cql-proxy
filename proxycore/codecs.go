@@ -16,6 +16,8 @@ package proxycore
 
 import (
 	"fmt"
+
+	"github.com/datastax/go-cassandra-native-protocol/datacodec"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -23,71 +25,54 @@ import (
 
 var codec = frame.NewRawCodec()
 
-var primitiveCodecs = map[datatype.DataType]datatype.Codec{
-	datatype.Ascii:    &datatype.AsciiCodec{},
-	datatype.Bigint:   &datatype.BigintCodec{},
-	datatype.Blob:     &datatype.BlobCodec{},
-	datatype.Boolean:  &datatype.BooleanCodec{},
-	datatype.Counter:  &datatype.CounterCodec{},
-	datatype.Decimal:  &datatype.DecimalCodec{},
-	datatype.Double:   &datatype.DoubleCodec{},
-	datatype.Float:    &datatype.FloatCodec{},
-	datatype.Inet:     &datatype.InetCodec{},
-	datatype.Int:      &datatype.IntCodec{},
-	datatype.Smallint: &datatype.SmallintCodec{},
-	datatype.Text:     &datatype.TextCodec{},
-	datatype.Varchar:  &datatype.VarcharCodec{},
-	datatype.Timeuuid: &datatype.TimeuuidCodec{},
-	datatype.Tinyint:  &datatype.TinyintCodec{},
-	datatype.Uuid:     &datatype.UuidCodec{},
-	datatype.Varint:   &datatype.VarintCodec{},
+var primitiveCodecs = map[datatype.DataType]datacodec.Codec{
+	datatype.Ascii:    datacodec.Ascii,
+	datatype.Bigint:   datacodec.Bigint,
+	datatype.Blob:     datacodec.Blob,
+	datatype.Boolean:  datacodec.Boolean,
+	datatype.Counter:  datacodec.Counter,
+	datatype.Decimal:  datacodec.Decimal,
+	datatype.Double:   datacodec.Double,
+	datatype.Float:    datacodec.Float,
+	datatype.Inet:     datacodec.Inet,
+	datatype.Int:      datacodec.Int,
+	datatype.Smallint: datacodec.Smallint,
+	datatype.Varchar:  datacodec.Varchar,
+	datatype.Timeuuid: datacodec.Timeuuid,
+	datatype.Tinyint:  datacodec.Tinyint,
+	datatype.Uuid:     datacodec.Uuid,
+	datatype.Varint:   datacodec.Varint,
 }
 
 func EncodeType(dt datatype.DataType, version primitive.ProtocolVersion, val interface{}) ([]byte, error) {
-	codec, err := codecFromDataType(dt)
+	c, err := codecFromDataType(dt)
 	if err != nil {
 		return nil, err
 	}
-	return codec.Encode(val, version)
+	return c.Encode(val, version)
 }
 
 func DecodeType(dt datatype.DataType, version primitive.ProtocolVersion, bytes []byte) (interface{}, error) {
-	codec, err := codecFromDataType(dt)
+	c, err := codecFromDataType(dt)
 	if err != nil {
 		return nil, err
 	}
-	return codec.Decode(bytes, version)
+	var dest interface{}
+	_, err = c.Decode(bytes, &dest, version)
+	return dest, err
 }
 
-func codecFromDataType(dt datatype.DataType) (datatype.Codec, error) {
+func codecFromDataType(dt datatype.DataType) (datacodec.Codec, error) {
 	switch dt.GetDataTypeCode() {
 	case primitive.DataTypeCodeList:
 		listType := dt.(datatype.ListType)
-		elemCodec, err := codecFromDataType(listType.GetElementType())
-		if err != nil {
-			return nil, err
-		}
-		return datatype.NewListCodec(elemCodec), nil
+		return datacodec.NewList(datatype.NewListType(listType.GetElementType()))
 	case primitive.DataTypeCodeSet:
 		setType := dt.(datatype.SetType)
-		elemCodec, err := codecFromDataType(setType.GetElementType())
-		if err != nil {
-			return nil, err
-		}
-		return datatype.NewSetCodec(elemCodec), nil
+		return datacodec.NewSet(datatype.NewListType(setType.GetElementType()))
 	case primitive.DataTypeCodeMap:
 		mapType := dt.(datatype.MapType)
-		keyCodec, err := codecFromDataType(mapType.GetKeyType())
-		if err != nil {
-			return nil, err
-		}
-		valueCodec, err := codecFromDataType(mapType.GetValueType())
-		if err != nil {
-			return nil, err
-		}
-		return datatype.NewMapCodec(keyCodec, valueCodec), nil
-	case primitive.DataTypeCodeCustom, primitive.DataTypeCodeUdt:
-		return &datatype.NilDecoderCodec{}, nil
+		return datacodec.NewMap(datatype.NewMapType(mapType.GetKeyType(), mapType.GetValueType()))
 	default:
 		codec, ok := primitiveCodecs[dt]
 		if !ok {

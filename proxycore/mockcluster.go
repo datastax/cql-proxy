@@ -27,7 +27,7 @@ import (
 	"syscall"
 	"time"
 
-	"cql-proxy/parser"
+	"github.com/datastax/cql-proxy/parser"
 
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
@@ -236,7 +236,7 @@ func (c MockClient) Closing(_ error) {
 }
 
 type MockServer struct {
-	wg			sync.WaitGroup
+	wg          sync.WaitGroup
 	cancel      context.CancelFunc
 	clients     sync.Map
 	clientIdGen uint64
@@ -485,7 +485,6 @@ func (c *MockCluster) Shutdown() {
 		server.Shutdown()
 	}
 }
-
 
 func makeSystemLocalValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
 	ip := net.ParseIP(address)

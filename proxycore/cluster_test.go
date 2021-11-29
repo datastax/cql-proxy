@@ -43,7 +43,6 @@ func TestConnectCluster(t *testing.T) {
 	err = c.Add(ctx, 3)
 	require.NoError(t, err)
 
-
 	cluster, err := ConnectCluster(ctx, ClusterConfig{
 		Version:           primitive.ProtocolVersion4,
 		Resolver:          NewResolver("127.0.0.1:9042"),
