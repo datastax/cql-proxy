@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"strings"
 
+	parser "github.com/datastax/cql-proxy/proxycore/antlr"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	parser "cql-proxy/proxycore/antlr"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 )

@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"cql-proxy/proxycore"
+	"github.com/datastax/cql-proxy/proxycore"
 
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
@@ -278,6 +278,48 @@ func TestProxy_UseKeyspace(t *testing.T) {
 	res, ok := resp.Body.Message.(*message.SetKeyspaceResult)
 	require.True(t, ok, "expected set keyspace result")
 	assert.Equal(t, "system", res.Keyspace)
+}
+
+func TestProxy_NegotiateProtocolV5(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const clusterContactPoint = "127.0.0.1:8000"
+	const clusterPort = 8000
+
+	const proxyContactPoint = "127.0.0.1:9042"
+
+	cluster := proxycore.NewMockCluster(net.ParseIP("127.0.0.0"), clusterPort)
+	defer cluster.Shutdown()
+
+	err := cluster.Add(ctx, 1)
+	require.NoError(t, err)
+
+	proxy := NewProxy(ctx, Config{
+		Version:           primitive.ProtocolVersion4,
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterContactPoint}, clusterPort),
+		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
+		NumConns:          2,
+		HeartBeatInterval: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	})
+
+	err = proxy.Listen(proxyContactPoint)
+	defer func(proxy *Proxy) {
+		_ = proxy.Shutdown()
+	}(proxy)
+	require.NoError(t, err)
+
+	go func() {
+		_ = proxy.Serve()
+	}()
+
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
+	require.NoError(t, err)
+
+	version, err := cl.Handshake(ctx, primitive.ProtocolVersion5, nil)
+	require.NoError(t, err)
+	assert.Equal(t, primitive.ProtocolVersion4, version) // Expected to be negotiated to v4
 }
 
 func testQueryHosts(ctx context.Context, cl *proxycore.ClientConn) (map[string]struct{}, error) {
