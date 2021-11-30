@@ -95,6 +95,12 @@ func (p *Proxy) OnEvent(event interface{}) {
 }
 
 func NewProxy(ctx context.Context, config Config) *Proxy {
+	if config.Version == 0 {
+		config.Version = primitive.ProtocolVersion4
+	}
+	if config.MaxVersion == 0 {
+		config.MaxVersion = primitive.ProtocolVersion4
+	}
 	return &Proxy{
 		ctx:    ctx,
 		config: config,
