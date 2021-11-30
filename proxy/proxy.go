@@ -44,6 +44,7 @@ var (
 
 type Config struct {
 	Version           primitive.ProtocolVersion
+	MaxVersion        primitive.ProtocolVersion
 	Auth              proxycore.Authenticator
 	Resolver          proxycore.EndpointResolver
 	ReconnectPolicy   proxycore.ReconnectPolicy
@@ -62,7 +63,7 @@ type Proxy struct {
 	logger             *zap.Logger
 	listener           *net.TCPListener
 	cluster            *proxycore.Cluster
-	sessions           sync.Map
+	sessions           [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
 	sessMu             sync.Mutex
 	schemaEventClients sync.Map
 	preparedCache      proxycore.PreparedCache
@@ -157,7 +158,7 @@ func (p *Proxy) Listen(address string) error {
 		return fmt.Errorf("unable to connect session %w", err)
 	}
 
-	p.sessions.Store("", sess) // No keyspace
+	p.sessions[p.cluster.NegotiatedVersion].Store("", sess) // No keyspace
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", address)
 	if err != nil {
@@ -207,14 +208,16 @@ func (p *Proxy) handle(conn *net.TCPConn) {
 	cl.conn.Start()
 }
 
-func (p *Proxy) maybeCreateSession(keyspace string) error {
+func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace string) (*proxycore.Session, error) {
 	p.sessMu.Lock()
 	defer p.sessMu.Unlock()
-	if _, ok := p.sessions.Load(keyspace); !ok {
+	if cachedSession, ok := p.sessions[version].Load(keyspace); ok {
+		return cachedSession.(*proxycore.Session), nil
+	} else {
 		sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
 			ReconnectPolicy:   p.config.ReconnectPolicy,
 			NumConns:          p.config.NumConns,
-			Version:           p.cluster.NegotiatedVersion,
+			Version:           version,
 			Auth:              p.config.Auth,
 			PreparedCache:     p.preparedCache,
 			Keyspace:          keyspace,
@@ -222,11 +225,19 @@ func (p *Proxy) maybeCreateSession(keyspace string) error {
 			IdleTimeout:       p.config.IdleTimeout,
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
-		p.sessions.Store(keyspace, sess)
+		p.sessions[version].Store(keyspace, sess)
+		return sess, nil
 	}
-	return nil
+}
+
+func (p *Proxy) findSession(version primitive.ProtocolVersion, keyspace string) (*proxycore.Session, error) {
+	if s, ok := p.sessions[version].Load(keyspace); ok {
+		return s.(*proxycore.Session), nil
+	} else {
+		return p.maybeCreateSession(version, keyspace)
+	}
 }
 
 func (p *Proxy) newQueryPlan() proxycore.QueryPlan {
@@ -281,8 +292,10 @@ func (c *client) Receive(reader io.Reader) error {
 		return err
 	}
 
-	if raw.Header.Version > primitive.ProtocolVersion4 {
-		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Invalid or unsupported protocol version"})
+	if raw.Header.Version > c.proxy.config.MaxVersion || raw.Header.Version < primitive.ProtocolVersion3 {
+		c.send(raw.Header, &message.ProtocolError{
+			ErrorMessage: fmt.Sprintf("Invalid or unsupported protocol version %d", raw.Header.Version),
+		})
 		return nil
 	}
 
@@ -318,10 +331,10 @@ func (c *client) Receive(reader io.Reader) error {
 }
 
 func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
-	if sess, ok := c.proxy.sessions.Load(c.keyspace); ok {
+	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
 		req := &request{
 			client:     c,
-			session:    sess.(*proxycore.Session),
+			session:    sess,
 			idempotent: idempotent,
 			done:       false,
 			stream:     raw.Header.StreamId,
@@ -346,23 +359,8 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 
 		switch s := stmt.(type) {
 		case *parser.SelectStatement:
-			if s.Table == "local" {
-				if columns, err := parser.FilterColumns(s, parser.SystemLocalColumns); err != nil {
-					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
-				} else {
-					hash := md5.Sum([]byte(msg.Query + keyspace))
-					c.send(hdr, &message.PreparedResult{
-						PreparedQueryId: hash[:],
-						ResultMetadata: &message.RowsMetadata{
-							ColumnCount: int32(len(columns)),
-							Columns:     columns,
-						},
-					})
-					c.preparedSystemQuery[hash] = stmt
-				}
-				c.preparedSystemQuery[md5.Sum([]byte(msg.Query+keyspace))] = stmt
-			} else if s.Table == "peers" {
-				if columns, err := parser.FilterColumns(s, parser.SystemPeersColumns); err != nil {
+			if systemColumns, ok := parser.SystemColumnsByName[s.Table]; ok {
+				if columns, err := parser.FilterColumns(s, systemColumns); err != nil {
 					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 				} else {
 					hash := md5.Sum([]byte(msg.Query + keyspace))
@@ -484,11 +482,18 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 					Data: data,
 				})
 			}
+		} else if columns, ok := parser.SystemColumnsByName[s.Table]; ok {
+			c.send(hdr, &message.RowsResult{
+				Metadata: &message.RowsMetadata{
+					ColumnCount: int32(len(columns)),
+					Columns:     columns,
+				},
+			})
 		} else {
 			c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 		}
 	case *parser.UseStatement:
-		if err := c.proxy.maybeCreateSession(s.Keyspace); err != nil {
+		if _, err := c.proxy.maybeCreateSession(hdr.Version, s.Keyspace); err != nil {
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
 		} else {
 			c.keyspace = s.Keyspace

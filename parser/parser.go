@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"strings"
 
-	parser "github.com/datastax/cql-proxy/proxycore/antlr"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
+	parser "github.com/datastax/cql-proxy/proxycore/antlr"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 )
@@ -29,7 +29,7 @@ const (
 	CountValueName = "count(*)"
 )
 
-var systemTables = []string{"local", "peers", "peers_v2"}
+var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
 
 type AliasSelector struct {
 	Selector interface{}

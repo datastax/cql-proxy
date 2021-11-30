@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"strings"
 	"time"
 
 	"github.com/datastax/cql-proxy/astra"
@@ -31,15 +32,36 @@ import (
 )
 
 var cli struct {
-	Bundle            string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
-	Username          string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
-	Password          string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
-	ContactPoints     []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
-	Bind              string        `help:"Address to use to bind serve" short:"a" env:"BIND"`
-	Debug             bool          `help:"Show debug logging" env:"DEBUG"`
-	Profiling         bool          `help:"Enable profiling" env:"PROFILING"`
-	HeartbeatInterval time.Duration `help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
-	IdleTimeout       time.Duration `help:"Time between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
+	Bundle             string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
+	Username           string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
+	Password           string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
+	ContactPoints      []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
+	ProtocolVersion    string        `help:"Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" short:"n" env:"PROTOCOL_VERSION"`
+	MaxProtocolVersion string        `help:"Max protocol version supported by the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" short:"m" env:"MAX_PROTOCOL_VERSION"`
+	Bind               string        `help:"Address to use to bind serve" short:"a" env:"BIND"`
+	Debug              bool          `help:"Show debug logging" env:"DEBUG"`
+	Profiling          bool          `help:"Enable profiling" env:"PROFILING"`
+	HeartbeatInterval  time.Duration `help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
+	IdleTimeout        time.Duration `help:"Time between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
+}
+
+func parseProtocolVersion(s string) (version primitive.ProtocolVersion, ok bool) {
+	ok = true
+	lowered := strings.ToLower(s)
+	if lowered == "3" || lowered == "v3" {
+		version = primitive.ProtocolVersion3
+	} else if lowered == "4" || lowered == "v4" {
+		version = primitive.ProtocolVersion4
+	} else if lowered == "5" || lowered == "v5" {
+		version = primitive.ProtocolVersion5
+	} else if lowered == "65" || lowered == "dsev1" {
+		version = primitive.ProtocolVersionDse1
+	} else if lowered == "66" || lowered == "dsev2" {
+		version = primitive.ProtocolVersionDse1
+	} else {
+		ok = false
+	}
+	return version, ok
 }
 
 func main() {
@@ -63,6 +85,26 @@ func main() {
 		cliCtx.Fatalf("idle-timeout must be greater than heartbeat-interval")
 	}
 
+	version := primitive.ProtocolVersion4
+	if len(cli.ProtocolVersion) > 0 {
+		var ok bool
+		if version, ok = parseProtocolVersion(cli.ProtocolVersion); !ok {
+			cliCtx.Fatalf("unsupported protocol version: %s", cli.ProtocolVersion)
+		}
+	}
+
+	maxVersion := primitive.ProtocolVersion4
+	if len(cli.MaxProtocolVersion) > 0 {
+		var ok bool
+		if maxVersion, ok = parseProtocolVersion(cli.MaxProtocolVersion); !ok {
+			cliCtx.Fatalf("unsupported max protocol version: %s", cli.ProtocolVersion)
+		}
+	}
+
+	if version > maxVersion {
+		cliCtx.Fatalf("default protocol version is greater than max protocol version")
+	}
+
 	ctx := context.Background()
 
 	var logger *zap.Logger
@@ -83,7 +125,8 @@ func main() {
 	}
 
 	p := proxy.NewProxy(ctx, proxy.Config{
-		Version:           primitive.ProtocolVersion4,
+		Version:           version,
+		MaxVersion:        maxVersion,
 		Resolver:          resolver,
 		ReconnectPolicy:   proxycore.NewReconnectPolicy(),
 		NumConns:          1,
