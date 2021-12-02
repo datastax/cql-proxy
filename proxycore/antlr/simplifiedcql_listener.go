@@ -23,6 +23,21 @@ type SimplifiedCqlListener interface {
 	// EnterUpdateOperation is called when entering the updateOperation production.
 	EnterUpdateOperation(c *UpdateOperationContext)
 
+	// EnterUpdateOperatorAddLeft is called when entering the updateOperatorAddLeft production.
+	EnterUpdateOperatorAddLeft(c *UpdateOperatorAddLeftContext)
+
+	// EnterUpdateOperatorAddRight is called when entering the updateOperatorAddRight production.
+	EnterUpdateOperatorAddRight(c *UpdateOperatorAddRightContext)
+
+	// EnterUpdateOperatorSubtract is called when entering the updateOperatorSubtract production.
+	EnterUpdateOperatorSubtract(c *UpdateOperatorSubtractContext)
+
+	// EnterUpdateOperatorAddAssign is called when entering the updateOperatorAddAssign production.
+	EnterUpdateOperatorAddAssign(c *UpdateOperatorAddAssignContext)
+
+	// EnterUpdateOperatorSubtractAssign is called when entering the updateOperatorSubtractAssign production.
+	EnterUpdateOperatorSubtractAssign(c *UpdateOperatorSubtractAssignContext)
+
 	// EnterDeleteStatement is called when entering the deleteStatement production.
 	EnterDeleteStatement(c *DeleteStatementContext)
 
@@ -31,6 +46,9 @@ type SimplifiedCqlListener interface {
 
 	// EnterDeleteOperation is called when entering the deleteOperation production.
 	EnterDeleteOperation(c *DeleteOperationContext)
+
+	// EnterDeleteOperationElement is called when entering the deleteOperationElement production.
+	EnterDeleteOperationElement(c *DeleteOperationElementContext)
 
 	// EnterBatchStatement is called when entering the batchStatement production.
 	EnterBatchStatement(c *BatchStatementContext)
@@ -224,6 +242,21 @@ type SimplifiedCqlListener interface {
 	// ExitUpdateOperation is called when exiting the updateOperation production.
 	ExitUpdateOperation(c *UpdateOperationContext)
 
+	// ExitUpdateOperatorAddLeft is called when exiting the updateOperatorAddLeft production.
+	ExitUpdateOperatorAddLeft(c *UpdateOperatorAddLeftContext)
+
+	// ExitUpdateOperatorAddRight is called when exiting the updateOperatorAddRight production.
+	ExitUpdateOperatorAddRight(c *UpdateOperatorAddRightContext)
+
+	// ExitUpdateOperatorSubtract is called when exiting the updateOperatorSubtract production.
+	ExitUpdateOperatorSubtract(c *UpdateOperatorSubtractContext)
+
+	// ExitUpdateOperatorAddAssign is called when exiting the updateOperatorAddAssign production.
+	ExitUpdateOperatorAddAssign(c *UpdateOperatorAddAssignContext)
+
+	// ExitUpdateOperatorSubtractAssign is called when exiting the updateOperatorSubtractAssign production.
+	ExitUpdateOperatorSubtractAssign(c *UpdateOperatorSubtractAssignContext)
+
 	// ExitDeleteStatement is called when exiting the deleteStatement production.
 	ExitDeleteStatement(c *DeleteStatementContext)
 
@@ -232,6 +265,9 @@ type SimplifiedCqlListener interface {
 
 	// ExitDeleteOperation is called when exiting the deleteOperation production.
 	ExitDeleteOperation(c *DeleteOperationContext)
+
+	// ExitDeleteOperationElement is called when exiting the deleteOperationElement production.
+	ExitDeleteOperationElement(c *DeleteOperationElementContext)
 
 	// ExitBatchStatement is called when exiting the batchStatement production.
 	ExitBatchStatement(c *BatchStatementContext)

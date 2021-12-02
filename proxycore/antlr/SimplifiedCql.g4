@@ -51,11 +51,34 @@ updateOperations
     ;
 
 updateOperation
-    : identifier '=' term ( '+' identifier )?
-    | identifier '=' identifier ( '+' | '-' ) term
-    | identifier ( '+=' | '-=' ) term
+    : identifier '=' term
+    | updateOperatorAddLeft
+    | updateOperatorAddRight
+    | updateOperatorSubtract
+    | updateOperatorAddAssign
+    | updateOperatorSubtractAssign
     | identifier '[' term ']' '=' term
     | identifier '.' identifier '=' term
+    ;
+
+updateOperatorAddLeft
+    : identifier '=' term '+' identifier
+    ;
+
+updateOperatorAddRight
+    : identifier '=' identifier '+' term
+    ;
+
+updateOperatorSubtract
+    : identifier '=' identifier '-' term
+    ;
+
+updateOperatorAddAssign
+    : identifier '+=' term
+    ;
+
+updateOperatorSubtractAssign
+    : identifier '-=' term
     ;
 
 // DELETE
@@ -74,8 +97,12 @@ deleteOperations
 
 deleteOperation
     : identifier
-    | identifier '[' term ']'
+    | deleteOperationElement
     | identifier '.' identifier
+    ;
+
+deleteOperationElement
+    : identifier '[' term ']'
     ;
 
 // BATCH

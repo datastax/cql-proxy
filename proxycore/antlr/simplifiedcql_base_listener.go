@@ -51,6 +51,40 @@ func (s *BaseSimplifiedCqlListener) EnterUpdateOperation(ctx *UpdateOperationCon
 // ExitUpdateOperation is called when production updateOperation is exited.
 func (s *BaseSimplifiedCqlListener) ExitUpdateOperation(ctx *UpdateOperationContext) {}
 
+// EnterUpdateOperatorAddLeft is called when production updateOperatorAddLeft is entered.
+func (s *BaseSimplifiedCqlListener) EnterUpdateOperatorAddLeft(ctx *UpdateOperatorAddLeftContext) {}
+
+// ExitUpdateOperatorAddLeft is called when production updateOperatorAddLeft is exited.
+func (s *BaseSimplifiedCqlListener) ExitUpdateOperatorAddLeft(ctx *UpdateOperatorAddLeftContext) {}
+
+// EnterUpdateOperatorAddRight is called when production updateOperatorAddRight is entered.
+func (s *BaseSimplifiedCqlListener) EnterUpdateOperatorAddRight(ctx *UpdateOperatorAddRightContext) {}
+
+// ExitUpdateOperatorAddRight is called when production updateOperatorAddRight is exited.
+func (s *BaseSimplifiedCqlListener) ExitUpdateOperatorAddRight(ctx *UpdateOperatorAddRightContext) {}
+
+// EnterUpdateOperatorSubtract is called when production updateOperatorSubtract is entered.
+func (s *BaseSimplifiedCqlListener) EnterUpdateOperatorSubtract(ctx *UpdateOperatorSubtractContext) {}
+
+// ExitUpdateOperatorSubtract is called when production updateOperatorSubtract is exited.
+func (s *BaseSimplifiedCqlListener) ExitUpdateOperatorSubtract(ctx *UpdateOperatorSubtractContext) {}
+
+// EnterUpdateOperatorAddAssign is called when production updateOperatorAddAssign is entered.
+func (s *BaseSimplifiedCqlListener) EnterUpdateOperatorAddAssign(ctx *UpdateOperatorAddAssignContext) {
+}
+
+// ExitUpdateOperatorAddAssign is called when production updateOperatorAddAssign is exited.
+func (s *BaseSimplifiedCqlListener) ExitUpdateOperatorAddAssign(ctx *UpdateOperatorAddAssignContext) {
+}
+
+// EnterUpdateOperatorSubtractAssign is called when production updateOperatorSubtractAssign is entered.
+func (s *BaseSimplifiedCqlListener) EnterUpdateOperatorSubtractAssign(ctx *UpdateOperatorSubtractAssignContext) {
+}
+
+// ExitUpdateOperatorSubtractAssign is called when production updateOperatorSubtractAssign is exited.
+func (s *BaseSimplifiedCqlListener) ExitUpdateOperatorSubtractAssign(ctx *UpdateOperatorSubtractAssignContext) {
+}
+
 // EnterDeleteStatement is called when production deleteStatement is entered.
 func (s *BaseSimplifiedCqlListener) EnterDeleteStatement(ctx *DeleteStatementContext) {}
 
@@ -68,6 +102,12 @@ func (s *BaseSimplifiedCqlListener) EnterDeleteOperation(ctx *DeleteOperationCon
 
 // ExitDeleteOperation is called when production deleteOperation is exited.
 func (s *BaseSimplifiedCqlListener) ExitDeleteOperation(ctx *DeleteOperationContext) {}
+
+// EnterDeleteOperationElement is called when production deleteOperationElement is entered.
+func (s *BaseSimplifiedCqlListener) EnterDeleteOperationElement(ctx *DeleteOperationElementContext) {}
+
+// ExitDeleteOperationElement is called when production deleteOperationElement is exited.
+func (s *BaseSimplifiedCqlListener) ExitDeleteOperationElement(ctx *DeleteOperationElementContext) {}
 
 // EnterBatchStatement is called when production batchStatement is entered.
 func (s *BaseSimplifiedCqlListener) EnterBatchStatement(ctx *BatchStatementContext) {}

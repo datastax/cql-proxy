@@ -29,6 +29,25 @@ const (
 	CountValueName = "count(*)"
 )
 
+type parseContext uint32
+
+const (
+	inSelectStatement parseContext = 1 << iota
+	inSelectCause
+	inInsertStatement
+	inTerms
+	inFunctionName
+	inUpdateStatement
+	inUpdateOperations
+	inUpdateOperationAddLeft
+	inUpdateOperationAddRight
+	inUpdateOperationSubtract
+	inUpdateOperationAddAssign
+	inUpdateOperationSubtractAssign
+	inDeleteStatement
+	inDeleteOperationElement
+)
+
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
 
 type AliasSelector struct {
@@ -173,6 +192,7 @@ type queryListener struct {
 	handled    bool
 	idempotent bool
 	stmt       interface{}
+	parseCtx   parseContext
 }
 
 func isSystemTable(name string) bool {
@@ -236,34 +256,165 @@ func (l *queryListener) EnterUseStatement(ctx *parser.UseStatementContext) {
 	l.stmt = &UseStatement{Keyspace: extractIdentifier(ctx.KeyspaceName().(*parser.KeyspaceNameContext).Identifier().(*parser.IdentifierContext))}
 }
 
-func (l *queryListener) EnterInsertStatement(_ *parser.InsertStatementContext) {
-	// TODO: Check is idempotent
+func (l *queryListener) EnterInsertStatement(ctx *parser.InsertStatementContext) {
+	l.idempotent = true
+	l.parseCtx |= inInsertStatement
+
+	if ctx.K_IF() != nil {
+		l.idempotent = false
+	}
 }
 
-func (l *queryListener) EnterUpdateStatement(_ *parser.UpdateStatementContext) {
-	// TODO: Check is idempotent
+func (l *queryListener) ExitInsertStatement(_ *parser.InsertStatementContext) {
+	l.parseCtx &= ^inInsertStatement
 }
 
-func (l *queryListener) EnterDeleteStatement(_ *parser.DeleteStatementContext) {
-	// TODO: Check is idempotent
+func (l *queryListener) EnterUpdateStatement(ctx *parser.UpdateStatementContext) {
+	l.idempotent = true
+	l.parseCtx |= inUpdateStatement
+
+	if ctx.K_IF() != nil {
+		l.idempotent = false
+	}
 }
 
-func extractUnaliasedSelector(selectorCtx *parser.UnaliasedSelectorContext) (interface{}, error) {
-	if selectorCtx.K_COUNT() != nil {
-		return &CountStarSelector{Name: selectorCtx.GetText()}, nil
-	} else if selectorCtx.Identifier() != nil {
+func (l *queryListener) ExitUpdateStatement(_ *parser.UpdateStatementContext) {
+	l.parseCtx &= ^inUpdateStatement
+}
+
+func (l *queryListener) EnterDeleteStatement(ctx *parser.DeleteStatementContext) {
+	l.idempotent = true
+	l.parseCtx |= inDeleteStatement
+
+	if ctx.K_IF() != nil {
+		l.idempotent = false
+	}
+}
+
+func (l *queryListener) EnterUpdateOperations(_ *parser.UpdateOperationsContext) {
+	l.parseCtx |= inUpdateOperations
+}
+
+func (l *queryListener) ExitUpdateOperations(_ *parser.UpdateOperationsContext) {
+	l.parseCtx &= ^inUpdateOperations
+}
+
+func (l *queryListener) EnterUpdateOperatorAddLeft(_ *parser.UpdateOperatorAddLeftContext) {
+	l.parseCtx |= inUpdateOperationAddLeft
+}
+
+func (l *queryListener) ExitUpdateOperatorAddLeft(_ *parser.UpdateOperatorAddLeftContext) {
+	l.parseCtx &= ^inUpdateOperationAddLeft
+}
+
+func (l *queryListener) EnterUpdateOperatorAddRight(_ *parser.UpdateOperatorAddRightContext) {
+	l.parseCtx |= inUpdateOperationAddRight
+}
+
+func (l *queryListener) ExitUpdateOperatorAddRight(_ *parser.UpdateOperatorAddRightContext) {
+	l.parseCtx &= ^inUpdateOperationAddRight
+}
+
+func (l *queryListener) EnterUpdateOperatorSubtract(_ *parser.UpdateOperatorSubtractContext) {
+	l.parseCtx |= inUpdateOperationSubtract
+}
+
+func (l *queryListener) ExitUpdateOperatorSubtract(_ *parser.UpdateOperatorSubtractContext) {
+	l.parseCtx &= ^inUpdateOperationSubtract
+}
+
+func (l *queryListener) EnterUpdateOperatorAddAssign(_ *parser.UpdateOperatorAddAssignContext) {
+	l.parseCtx |= inUpdateOperationAddAssign
+}
+
+func (l *queryListener) ExitUpdateOperatorAddAssign(_ *parser.UpdateOperatorAddAssignContext) {
+	l.parseCtx &= ^inUpdateOperationAddAssign
+}
+
+func (l *queryListener) EnterUpdateOperatorSubtractAssign(_ *parser.UpdateOperatorSubtractAssignContext) {
+	l.parseCtx |= inUpdateOperationSubtractAssign
+}
+
+func (l *queryListener) ExitUpdateOperatorSubtractAssign(_ *parser.UpdateOperatorSubtractAssignContext) {
+	l.parseCtx &= ^inUpdateOperationSubtractAssign
+}
+
+
+func (l *queryListener) EnterDeleteOperationElement(_ *parser.DeleteOperationElementContext) {
+	l.parseCtx |= inDeleteOperationElement
+}
+
+func (l *queryListener) ExitDeleteOperationElement(_ *parser.DeleteOperationElementContext) {
+	l.parseCtx &= ^inDeleteOperationElement
+}
+
+func (l *queryListener) EnterListLiteral(_ *parser.ListLiteralContext) {
+	// Queries that prepend or append to a list are *NOT* idempotent
+	if l.parseCtx&(inUpdateStatement|inUpdateOperations|inUpdateOperationAddLeft|inUpdateOperationAddRight|inUpdateOperationAddAssign) > 0 {
+		l.idempotent = false
+	}
+}
+
+func (l *queryListener) EnterPrimitiveLiteral(ctx *parser.PrimitiveLiteralContext) {
+	// Queries that modify counters are *NOT* idempotent
+	if ctx.INTEGER() != nil && l.parseCtx&(inUpdateStatement|inUpdateOperations|inUpdateOperationAddLeft|inUpdateOperationAddRight|
+		inUpdateOperationAddAssign|inUpdateOperationSubtract|inUpdateOperationSubtractAssign) > 0 {
+		l.idempotent = false
+	}
+	// Queries that delete from lists are *NOT* idempotent.
+	// TODO: This needs to be disambiguated from `set<int>` deletes
+	if ctx.INTEGER() != nil && l.parseCtx&(inDeleteStatement|inDeleteOperationElement) > 0 {
+		l.idempotent = false
+	}
+}
+
+func (l *queryListener) ExitDeleteStatement(_ *parser.DeleteStatementContext) {
+	l.parseCtx &= ^inDeleteStatement
+}
+
+func (l *queryListener) EnterTerms(_ *parser.TermsContext) {
+	l.parseCtx |= inTerms
+}
+
+func (l *queryListener) ExitTerms(_ *parser.TermsContext) {
+	l.parseCtx &= ^inTerms
+}
+
+func (l *queryListener) EnterFunctionName(_ *parser.FunctionNameContext) {
+	l.parseCtx |= inFunctionName
+}
+
+func (l *queryListener) ExitFunctionName(_ *parser.FunctionNameContext) {
+	l.parseCtx &= ^inFunctionName
+}
+
+func (l *queryListener) EnterIdentifier(ctx *parser.IdentifierContext) {
+	// Queries that use the functions `uuid()` or `now()` in writes are *NOT* idempotent
+	if (l.parseCtx&(inInsertStatement|inTerms|inFunctionName) > 0) ||
+		(l.parseCtx&(inUpdateStatement|inUpdateOperations|inFunctionName) > 0) {
+		funcName := strings.ToLower(extractIdentifier(ctx))
+		if funcName == "uuid" || funcName == "now" {
+			l.idempotent = false
+		}
+	}
+}
+
+func extractUnaliasedSelector(ctx *parser.UnaliasedSelectorContext) (interface{}, error) {
+	if ctx.K_COUNT() != nil {
+		return &CountStarSelector{Name: ctx.GetText()}, nil
+	} else if ctx.Identifier() != nil {
 		return &IDSelector{
-			Name: extractIdentifier(selectorCtx.Identifier().(*parser.IdentifierContext)),
+			Name: extractIdentifier(ctx.Identifier().(*parser.IdentifierContext)),
 		}, nil
 	} else {
 		return nil, errors.New("unsupported select clause for system table")
 	}
 }
 
-func extractIdentifier(identifierCxt *parser.IdentifierContext) string {
-	if unquotedIdentifier := identifierCxt.UNQUOTED_IDENTIFIER(); unquotedIdentifier != nil {
+func extractIdentifier(cxt *parser.IdentifierContext) string {
+	if unquotedIdentifier := cxt.UNQUOTED_IDENTIFIER(); unquotedIdentifier != nil {
 		return strings.ToLower(unquotedIdentifier.GetText())
-	} else if quotedIdentifier := identifierCxt.QUOTED_IDENTIFIER(); quotedIdentifier != nil {
+	} else if quotedIdentifier := cxt.QUOTED_IDENTIFIER(); quotedIdentifier != nil {
 		identifier := quotedIdentifier.GetText()
 		// remove surrounding quotes
 		identifier = identifier[1 : len(identifier)-1]
@@ -271,6 +422,6 @@ func extractIdentifier(identifierCxt *parser.IdentifierContext) string {
 		identifier = strings.ReplaceAll(identifier, "\"\"", "\"")
 		return identifier
 	} else {
-		return strings.ToLower(identifierCxt.UnreservedKeyword().GetText())
+		return strings.ToLower(cxt.UnreservedKeyword().GetText())
 	}
 }

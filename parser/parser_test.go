@@ -16,8 +16,9 @@ package parser
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParser(t *testing.T) {
@@ -86,4 +87,9 @@ func TestParser(t *testing.T) {
 		assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency")
 		assert.Equal(t, tt.stmt, stmt, "invalid parsed statement")
 	}
+}
+
+func TestParser_Idempotent(t *testing.T) {
+	_, idempotent, _ := Parse("", "UPDATE table SET v = v + [1] WHERE k = 1")
+	assert.False(t, idempotent)
 }
