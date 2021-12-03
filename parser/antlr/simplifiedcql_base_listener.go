@@ -33,6 +33,12 @@ func (s *BaseSimplifiedCqlListener) EnterInsertStatement(ctx *InsertStatementCon
 // ExitInsertStatement is called when production insertStatement is exited.
 func (s *BaseSimplifiedCqlListener) ExitInsertStatement(ctx *InsertStatementContext) {}
 
+// EnterInsertTerms is called when production insertTerms is entered.
+func (s *BaseSimplifiedCqlListener) EnterInsertTerms(ctx *InsertTermsContext) {}
+
+// ExitInsertTerms is called when production insertTerms is exited.
+func (s *BaseSimplifiedCqlListener) ExitInsertTerms(ctx *InsertTermsContext) {}
+
 // EnterUpdateStatement is called when production updateStatement is entered.
 func (s *BaseSimplifiedCqlListener) EnterUpdateStatement(ctx *UpdateStatementContext) {}
 

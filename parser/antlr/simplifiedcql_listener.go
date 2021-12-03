@@ -14,6 +14,9 @@ type SimplifiedCqlListener interface {
 	// EnterInsertStatement is called when entering the insertStatement production.
 	EnterInsertStatement(c *InsertStatementContext)
 
+	// EnterInsertTerms is called when entering the insertTerms production.
+	EnterInsertTerms(c *InsertTermsContext)
+
 	// EnterUpdateStatement is called when entering the updateStatement production.
 	EnterUpdateStatement(c *UpdateStatementContext)
 
@@ -232,6 +235,9 @@ type SimplifiedCqlListener interface {
 
 	// ExitInsertStatement is called when exiting the insertStatement production.
 	ExitInsertStatement(c *InsertStatementContext)
+
+	// ExitInsertTerms is called when exiting the insertTerms production.
+	ExitInsertTerms(c *InsertTermsContext)
 
 	// ExitUpdateStatement is called when exiting the updateStatement production.
 	ExitUpdateStatement(c *UpdateStatementContext)

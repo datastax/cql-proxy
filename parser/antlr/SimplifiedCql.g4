@@ -31,9 +31,13 @@ cqlStatement
 // note: JSON INSERT not supported
 insertStatement
     : K_INSERT K_INTO tableName
-      '(' identifiers ')' K_VALUES '(' terms ')'
+      '(' identifiers ')' K_VALUES '(' insertTerms ')'
       ( K_IF K_NOT K_EXISTS )?
       usingClause?
+    ;
+
+insertTerms
+    : terms
     ;
 
 // UPDATE

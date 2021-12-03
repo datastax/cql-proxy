@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	parser "github.com/datastax/cql-proxy/proxycore/antlr"
+	parser "github.com/datastax/cql-proxy/parser/antlr"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 )
@@ -29,23 +29,17 @@ const (
 	CountValueName = "count(*)"
 )
 
-type parseContext uint32
+type parseState uint32
 
 const (
-	inSelectStatement parseContext = 1 << iota
+	inSelectStatement parseState = 1 << iota
 	inSelectCause
 	inInsertStatement
-	inTerms
+	inInsertTerms
 	inFunctionName
 	inUpdateStatement
 	inUpdateOperations
-	inUpdateOperationAddLeft
-	inUpdateOperationAddRight
-	inUpdateOperationSubtract
-	inUpdateOperationAddAssign
-	inUpdateOperationSubtractAssign
 	inDeleteStatement
-	inDeleteOperationElement
 )
 
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
@@ -192,7 +186,7 @@ type queryListener struct {
 	handled    bool
 	idempotent bool
 	stmt       interface{}
-	parseCtx   parseContext
+	parseState parseState
 }
 
 func isSystemTable(name string) bool {
@@ -258,145 +252,160 @@ func (l *queryListener) EnterUseStatement(ctx *parser.UseStatementContext) {
 
 func (l *queryListener) EnterInsertStatement(ctx *parser.InsertStatementContext) {
 	l.idempotent = true
-	l.parseCtx |= inInsertStatement
+	l.parseState |= inInsertStatement
 
-	if ctx.K_IF() != nil {
+	if ctx.K_IF() != nil { // Lightweight transactions are *NOT* idempotent
 		l.idempotent = false
 	}
 }
 
 func (l *queryListener) ExitInsertStatement(_ *parser.InsertStatementContext) {
-	l.parseCtx &= ^inInsertStatement
+	l.parseState &= ^inInsertStatement
 }
 
 func (l *queryListener) EnterUpdateStatement(ctx *parser.UpdateStatementContext) {
 	l.idempotent = true
-	l.parseCtx |= inUpdateStatement
+	l.parseState |= inUpdateStatement
 
-	if ctx.K_IF() != nil {
+	if ctx.K_IF() != nil { // Lightweight transactions are *NOT* idempotent
 		l.idempotent = false
 	}
 }
 
 func (l *queryListener) ExitUpdateStatement(_ *parser.UpdateStatementContext) {
-	l.parseCtx &= ^inUpdateStatement
+	l.parseState &= ^inUpdateStatement
 }
 
 func (l *queryListener) EnterDeleteStatement(ctx *parser.DeleteStatementContext) {
 	l.idempotent = true
-	l.parseCtx |= inDeleteStatement
+	l.parseState |= inDeleteStatement
 
-	if ctx.K_IF() != nil {
+	if ctx.K_IF() != nil { // Lightweight transactions are *NOT* idempotent
 		l.idempotent = false
 	}
 }
 
 func (l *queryListener) EnterUpdateOperations(_ *parser.UpdateOperationsContext) {
-	l.parseCtx |= inUpdateOperations
+	l.parseState |= inUpdateOperations
 }
 
 func (l *queryListener) ExitUpdateOperations(_ *parser.UpdateOperationsContext) {
-	l.parseCtx &= ^inUpdateOperations
+	l.parseState &= ^inUpdateOperations
 }
 
-func (l *queryListener) EnterUpdateOperatorAddLeft(_ *parser.UpdateOperatorAddLeftContext) {
-	l.parseCtx |= inUpdateOperationAddLeft
+func (l *queryListener) EnterUpdateOperatorAddLeft(ctx *parser.UpdateOperatorAddLeftContext) {
+	l.idempotent = isIdempotentUpdateTerm(ctx.Term().(*parser.TermContext))
 }
 
-func (l *queryListener) ExitUpdateOperatorAddLeft(_ *parser.UpdateOperatorAddLeftContext) {
-	l.parseCtx &= ^inUpdateOperationAddLeft
+func (l *queryListener) EnterUpdateOperatorAddRight(ctx *parser.UpdateOperatorAddRightContext) {
+	l.idempotent = isIdempotentUpdateTerm(ctx.Term().(*parser.TermContext))
 }
 
-func (l *queryListener) EnterUpdateOperatorAddRight(_ *parser.UpdateOperatorAddRightContext) {
-	l.parseCtx |= inUpdateOperationAddRight
+func (l *queryListener) EnterUpdateOperatorSubtract(ctx *parser.UpdateOperatorSubtractContext) {
+	l.idempotent = isIdempotentUpdateTerm(ctx.Term().(*parser.TermContext))
 }
 
-func (l *queryListener) ExitUpdateOperatorAddRight(_ *parser.UpdateOperatorAddRightContext) {
-	l.parseCtx &= ^inUpdateOperationAddRight
+func (l *queryListener) EnterUpdateOperatorAddAssign(ctx *parser.UpdateOperatorAddAssignContext) {
+	l.idempotent = isIdempotentUpdateTerm(ctx.Term().(*parser.TermContext))
 }
 
-func (l *queryListener) EnterUpdateOperatorSubtract(_ *parser.UpdateOperatorSubtractContext) {
-	l.parseCtx |= inUpdateOperationSubtract
+func (l *queryListener) EnterUpdateOperatorSubtractAssign(ctx *parser.UpdateOperatorSubtractAssignContext) {
+	l.idempotent = isIdempotentUpdateTerm(ctx.Term().(*parser.TermContext))
 }
 
-func (l *queryListener) ExitUpdateOperatorSubtract(_ *parser.UpdateOperatorSubtractContext) {
-	l.parseCtx &= ^inUpdateOperationSubtract
+func (l *queryListener) EnterDeleteOperationElement(ctx *parser.DeleteOperationElementContext) {
+	// It's not possible to determine if this is a list element being deleted, so it's *NOT* idempotent.
+	l.idempotent = isIdempotentDeleteElementTerm(ctx.Term().(*parser.TermContext))
 }
 
-func (l *queryListener) EnterUpdateOperatorAddAssign(_ *parser.UpdateOperatorAddAssignContext) {
-	l.parseCtx |= inUpdateOperationAddAssign
+func (l *queryListener) EnterInsertTerms(_ *parser.InsertTermsContext) {
+	l.parseState |= inInsertTerms
 }
 
-func (l *queryListener) ExitUpdateOperatorAddAssign(_ *parser.UpdateOperatorAddAssignContext) {
-	l.parseCtx &= ^inUpdateOperationAddAssign
-}
-
-func (l *queryListener) EnterUpdateOperatorSubtractAssign(_ *parser.UpdateOperatorSubtractAssignContext) {
-	l.parseCtx |= inUpdateOperationSubtractAssign
-}
-
-func (l *queryListener) ExitUpdateOperatorSubtractAssign(_ *parser.UpdateOperatorSubtractAssignContext) {
-	l.parseCtx &= ^inUpdateOperationSubtractAssign
-}
-
-
-func (l *queryListener) EnterDeleteOperationElement(_ *parser.DeleteOperationElementContext) {
-	l.parseCtx |= inDeleteOperationElement
-}
-
-func (l *queryListener) ExitDeleteOperationElement(_ *parser.DeleteOperationElementContext) {
-	l.parseCtx &= ^inDeleteOperationElement
-}
-
-func (l *queryListener) EnterListLiteral(_ *parser.ListLiteralContext) {
-	// Queries that prepend or append to a list are *NOT* idempotent
-	if l.parseCtx&(inUpdateStatement|inUpdateOperations|inUpdateOperationAddLeft|inUpdateOperationAddRight|inUpdateOperationAddAssign) > 0 {
-		l.idempotent = false
-	}
-}
-
-func (l *queryListener) EnterPrimitiveLiteral(ctx *parser.PrimitiveLiteralContext) {
-	// Queries that modify counters are *NOT* idempotent
-	if ctx.INTEGER() != nil && l.parseCtx&(inUpdateStatement|inUpdateOperations|inUpdateOperationAddLeft|inUpdateOperationAddRight|
-		inUpdateOperationAddAssign|inUpdateOperationSubtract|inUpdateOperationSubtractAssign) > 0 {
-		l.idempotent = false
-	}
-	// Queries that delete from lists are *NOT* idempotent.
-	// TODO: This needs to be disambiguated from `set<int>` deletes
-	if ctx.INTEGER() != nil && l.parseCtx&(inDeleteStatement|inDeleteOperationElement) > 0 {
-		l.idempotent = false
-	}
-}
-
-func (l *queryListener) ExitDeleteStatement(_ *parser.DeleteStatementContext) {
-	l.parseCtx &= ^inDeleteStatement
-}
-
-func (l *queryListener) EnterTerms(_ *parser.TermsContext) {
-	l.parseCtx |= inTerms
-}
-
-func (l *queryListener) ExitTerms(_ *parser.TermsContext) {
-	l.parseCtx &= ^inTerms
+func (l *queryListener) ExitInsertTerms(_ *parser.InsertTermsContext) {
+	l.parseState &= ^inInsertTerms
 }
 
 func (l *queryListener) EnterFunctionName(_ *parser.FunctionNameContext) {
-	l.parseCtx |= inFunctionName
+	l.parseState |= inFunctionName
 }
 
 func (l *queryListener) ExitFunctionName(_ *parser.FunctionNameContext) {
-	l.parseCtx &= ^inFunctionName
+	l.parseState &= ^inFunctionName
 }
 
 func (l *queryListener) EnterIdentifier(ctx *parser.IdentifierContext) {
 	// Queries that use the functions `uuid()` or `now()` in writes are *NOT* idempotent
-	if (l.parseCtx&(inInsertStatement|inTerms|inFunctionName) > 0) ||
-		(l.parseCtx&(inUpdateStatement|inUpdateOperations|inFunctionName) > 0) {
+	if (l.parseState&(inInsertStatement|inInsertTerms|inFunctionName) > 0) ||
+		(l.parseState&(inUpdateStatement|inUpdateOperations|inFunctionName) > 0) {
 		funcName := strings.ToLower(extractIdentifier(ctx))
 		if funcName == "uuid" || funcName == "now" {
 			l.idempotent = false
 		}
 	}
+}
+
+func isIdempotentUpdateTerm(ctx *parser.TermContext) bool {
+	// Update terms can be one of the following:
+	// * Literal (maybe idempotent)
+	// * Bind marker (ambiguous)
+	// * Function call (ambiguous)
+	// * Type cast (probably not idempotent)
+	return ctx.Literal() != nil && isIdempotentUpdateLiteral(ctx.Literal().(*parser.LiteralContext))
+}
+
+func isIdempotentUpdateLiteral(ctx *parser.LiteralContext) bool {
+	// Update literals can be one of the following:
+	// * Primitive (probably not idempotent)
+	// * Collection (maybe idempotent)
+	// * Tuple (idempotent)
+	// * UDT (idempotent)
+	// * `null` (likely not valid)
+	if ctx.UdtLiteral() != nil || ctx.TupleLiteral() != nil {
+		return true
+	} else if ctx.CollectionLiteral() != nil {
+		return isIdempotentUpdateCollectionLiteral(ctx.CollectionLiteral().(*parser.CollectionLiteralContext))
+	}
+	return false
+}
+
+func isIdempotentUpdateCollectionLiteral(ctx *parser.CollectionLiteralContext) bool {
+	// Update collection literals can be one of the following:
+	// * List (not idempotent)
+	// * Set (idempotent)
+	// * Map (idempotent)
+	return ctx.MapLiteral() != nil || ctx.SetLiteral() != nil
+}
+
+func isIdempotentDeleteElementTerm(ctx *parser.TermContext) bool {
+	// Delete element terms can be one of the following:
+	// * Literal (maybe idempotent)
+	// * Bind marker (ambiguous)
+	// * Function call (ambiguous)
+	// * Type cast (ambiguous)
+	return ctx.Literal() != nil && isIdempotentDeleteElementLiteral(ctx.Literal().(*parser.LiteralContext))
+}
+
+func isIdempotentDeleteElementLiteral(ctx *parser.LiteralContext) bool {
+	// Delete element literals can be one of the following:
+	// * Primitive (maybe idempotent)
+	// * Collection (idempotent)
+	// * Tuple (idempotent)
+	// * UDT (idempotent)
+	// * `null` (idempotent, but maybe it's not valid)
+	if ctx.PrimitiveLiteral() != nil {
+		return isIdempotentDeleteElementPrimitiveLiteral(ctx.PrimitiveLiteral().(*parser.PrimitiveLiteralContext))
+	}
+	return true // All other types would be keys for a map, so they'd be idempotent.
+}
+
+func isIdempotentDeleteElementPrimitiveLiteral(ctx *parser.PrimitiveLiteralContext) bool {
+	// Only integers can be used to index lists so this is potentially *NOT* idempotent.
+
+	// The problem this can also be used to remove elements from `set<int>` or `map<int, ...>` and those
+	// operations *ARE* idempotent, but since we don't know the type of the value being indexed we can't
+	// disambiguate these cases from the list case.
+	return ctx.INTEGER() == nil
 }
 
 func extractUnaliasedSelector(ctx *parser.UnaliasedSelectorContext) (interface{}, error) {
