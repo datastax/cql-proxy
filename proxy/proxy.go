@@ -48,6 +48,7 @@ type Config struct {
 	Auth              proxycore.Authenticator
 	Resolver          proxycore.EndpointResolver
 	ReconnectPolicy   proxycore.ReconnectPolicy
+	RetryPolicy       proxycore.RetryPolicy
 	NumConns          int
 	Logger            *zap.Logger
 	HeartBeatInterval time.Duration
