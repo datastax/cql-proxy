@@ -48,7 +48,7 @@ type Config struct {
 	Auth              proxycore.Authenticator
 	Resolver          proxycore.EndpointResolver
 	ReconnectPolicy   proxycore.ReconnectPolicy
-	RetryPolicy       proxycore.RetryPolicy
+	RetryPolicy       RetryPolicy
 	NumConns          int
 	Logger            *zap.Logger
 	HeartBeatInterval time.Duration
@@ -101,6 +101,9 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 	}
 	if config.MaxVersion == 0 {
 		config.MaxVersion = primitive.ProtocolVersion4
+	}
+	if config.RetryPolicy == nil {
+		config.RetryPolicy = NewDefaultRetryPolicy()
 	}
 	return &Proxy{
 		ctx:    ctx,

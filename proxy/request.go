@@ -110,7 +110,7 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	retried = false
 	logger := r.client.proxy.logger
-	decision := proxycore.ReturnError
+	decision := ReturnError
 
 	frm, err := codec.ConvertFromRawFrame(raw)
 	if err != nil {
@@ -125,41 +125,33 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 		switch msg := frm.Body.Message.(type) {
 		case *message.ReadTimeout:
 			decision = r.client.proxy.config.RetryPolicy.OnReadTimeout(msg, r.retryCount)
-			if decision != proxycore.ReturnError {
+			if decision != ReturnError {
 				logger.Debug("retrying read timeout",
 					zap.Stringer("decision", decision),
-					zap.Stringer("consistency", msg.Consistency),
-					zap.Int32("requiredResponses", msg.BlockFor),
-					zap.Int32("receivedResponses", msg.Received),
-					zap.Bool("dataPresent", msg.DataPresent),
+					zap.Stringer("response", msg),
 					zap.Int("retryCount", r.retryCount),
 				)
 			}
 		case *message.WriteTimeout:
 			decision = r.client.proxy.config.RetryPolicy.OnWriteTimeout(msg, r.retryCount)
-			if decision != proxycore.ReturnError {
+			if decision != ReturnError {
 				logger.Debug("retrying write timeout",
 					zap.Stringer("decision", decision),
-					zap.Stringer("consistency", msg.Consistency),
-					zap.Int32("requiredAcknowledgements", msg.BlockFor),
-					zap.Int32("receivedAcknowledgements", msg.Received),
-					zap.String("writeType", string(msg.WriteType)),
+					zap.Stringer("response", msg),
 					zap.Int("retryCount", r.retryCount),
 				)
 			}
 		case *message.Unavailable:
 			decision = r.client.proxy.config.RetryPolicy.OnUnavailable(msg, r.retryCount)
-			if decision != proxycore.ReturnError {
+			if decision != ReturnError {
 				logger.Debug("retrying on unavailable error",
 					zap.Stringer("decision", decision),
-					zap.Stringer("consistency", msg.Consistency),
-					zap.Int32("aliveReplicas", msg.Alive),
-					zap.Int32("requiredReplicas", msg.Required),
+					zap.Stringer("response", msg),
 					zap.Int("retryCount", r.retryCount),
 				)
 			}
 		case *message.IsBootstrapping:
-			decision = proxycore.RetryNext
+			decision = RetryNext
 			logger.Debug("retrying on bootstrapping error",
 				zap.Stringer("decision", decision),
 				zap.Int("retryCount", r.retryCount),
@@ -167,7 +159,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 		case *message.ServerError, *message.Overloaded, *message.TruncateError,
 			*message.ReadFailure, *message.WriteFailure:
 			decision = r.client.proxy.config.RetryPolicy.OnErrorResponse(errMsg, r.retryCount)
-			if decision != proxycore.ReturnError {
+			if decision != ReturnError {
 				logger.Debug("retrying on error response",
 					zap.Stringer("decision", decision),
 					zap.Int("retryCount", r.retryCount),
@@ -178,11 +170,11 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 		}
 
 		switch decision {
-		case proxycore.RetryNext:
+		case RetryNext:
 			r.retryCount++
 			r.executeInternal(true)
 			retried = true
-		case proxycore.RetrySame:
+		case RetrySame:
 			r.retryCount++
 			r.executeInternal(false)
 			retried = true

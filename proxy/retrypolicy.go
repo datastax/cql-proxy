@@ -1,4 +1,4 @@
-package proxycore
+package proxy
 
 import (
 	"github.com/datastax/go-cassandra-native-protocol/message"
