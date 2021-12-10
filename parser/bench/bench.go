@@ -172,11 +172,9 @@ func BenchmarkSystemAndUseStatement_ParserRagel(b *testing.B) {
 	var r int
 	for n := 0; n < b.N; n++ {
 		for _, query := range queries {
-			if maybeSelectOrUse(query) {
-				_, handled := parser.ParseFast(query)
-				if handled {
-					r++
-				}
+			handled, _ := parser.IsQueryHandled(query)
+			if handled {
+				r++
 			}
 		}
 	}

@@ -1,26 +1,32 @@
 package parser
 
-type Token int
+type token int
 
 const (
-	TkInvalid Token = iota
-	TkEOF
-	TkSelect
-	TkFrom
-	TkUse
-	TkAs
-	TkCount
-	TkCast
-	TkIdentifier
-	TkSystemIdentifier
-	TkLocalIdentifier
-	TkPeersIdentifier
-	TkPeersV2Identifier
-	TkStar
-	TkComma
-	TkDot
-	TkLparen
-	TkRparen
+	tkInvalid token = iota
+	tkEOF
+	tkSelect
+	tkInsert
+	tkUpdate
+	tkDelete
+	tkBegin
+	tkApply
+	tkBatch
+	tkInto
+	tkValues
+	tkSet
+	tkFrom
+	tkUse
+	tkIf
+	tkAs
+	tkCount
+	tkCast
+	tkIdentifier
+	tkStar
+	tkComma
+	tkDot
+	tkLparen
+	tkRparen
 )
 
 %%{
@@ -28,38 +34,38 @@ machine lex;
 write data;
 }%%
 
-type Lexer struct {
+type lexer struct {
 	data string
-	p, pe, mark int
-	current string
+	p, pe, m int
+	c string
 }
 
-func (l *Lexer) Init(data string) {
+func (l *lexer) init(data string) {
     l.p, l.pe = 0, len(data)
     l.data = data
 }
 
-func (l *Lexer) Mark() {
-    l.mark = l.p
+func (l *lexer) mark() {
+    l.m = l.p
 }
 
-func (l *Lexer) Rewind() {
-    l.p = l.mark
+func (l *lexer) rewind() {
+    l.p = l.m
 }
 
-func (l *Lexer) Current() string {
-    return l.current
+func (l *lexer) current() string {
+    return l.c
 }
 
-func (l *Lexer) Next() Token {
+func (l *lexer) next() token {
 	data := l.data
 	p, pe, eof := l.p, l.pe, l.pe
 	act, ts, te, cs := 0, 0, 0, -1
 
-	token := TkInvalid
+	tk := tkInvalid
 
 	if p == eof {
-	    return TkEOF
+	    return tkEOF
     }
 
     %%{
@@ -68,25 +74,31 @@ func (l *Lexer) Next() Token {
         id = ([a-zA-Z][a-zA-Z0-9_]*)|("\"" ([^\r\n\"] | "\\\"")* "\"");
 
         main := |*
-            /select/i => { token = TkSelect; fbreak; };
-            /from/i => { token = TkFrom; fbreak; };
-            /use/i => { token = TkUse; fbreak; };
-            /as/i => { token = TkAs; fbreak; };
-            /count/i => { token = TkCount; fbreak; };
-            /cast/i => { token = TkCast; fbreak; };
-            /system/i|'\"system\"' => { token = TkSystemIdentifier; fbreak; };
-            /local/i|'\"local\"' => { token = TkLocalIdentifier; fbreak; };
-            /peers/i|'\"peers\"' => { token = TkPeersIdentifier; fbreak; };
-            /peers_v2/i|'\"peers_v2\"' => { token = TkPeersV2Identifier; fbreak; };
-            '\*' => { token = TkStar; fbreak; };
-            ',' => { token = TkComma; fbreak; };
-            '\.' => { token = TkDot; fbreak; };
-            '(' => { token = TkLparen; fbreak; };
-            ')' => { token = TkRparen; fbreak; };
-            id => { token = TkIdentifier; l.current = l.data[ts:te]; fbreak; };
+            /select/i => { tk = tkSelect; fbreak; };
+            /insert/i => { tk = tkInsert; fbreak; };
+            /update/i => { tk = tkUpdate; fbreak; };
+            /delete/i => { tk = tkDelete; fbreak; };
+            /batch/i => { tk = tkBatch; fbreak; };
+            /begin/i => { tk = tkBegin; fbreak; };
+            /apply/i => { tk = tkApply; fbreak; };
+            /into/i => { tk = tkInto; fbreak; };
+            /values/i => { tk = tkValues; fbreak; };
+            /set/i => { tk = tkSet; fbreak; };
+            /from/i => { tk = tkFrom; fbreak; };
+            /use/i => { tk = tkUse; fbreak; };
+            /if/i => { tk = tkIf; fbreak; };
+            /as/i => { tk = tkAs; fbreak; };
+            /count/i => { tk = tkCount; fbreak; };
+            /cast/i => { tk = tkCast; fbreak; };
+            '\*' => { tk = tkStar; fbreak; };
+            ',' => { tk = tkComma; fbreak; };
+            '\.' => { tk = tkDot; fbreak; };
+            '(' => { tk = tkLparen; fbreak; };
+            ')' => { tk = tkRparen; fbreak; };
+            id => { tk = tkIdentifier; l.c = l.data[ts:te]; fbreak; };
             nl => { /* Skip */ };
             ws => { /* Skip */ };
-            any => { token = TkInvalid; fbreak; };
+            any => { tk = tkInvalid; fbreak; };
         *|;
 
         write init;
@@ -95,5 +107,5 @@ func (l *Lexer) Next() Token {
 
     l.p = p
 
-    return token
+    return tk
 }

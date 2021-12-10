@@ -45,6 +45,7 @@ const (
 )
 
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
+var nonIdempotentFuncs = []string{"uuid", "now"}
 
 type AliasSelector struct {
 	Selector interface{}
@@ -78,8 +79,8 @@ type ValueLookupFunc func(name string) (value message.Column, err error)
 
 func Parse(keyspace string, query string) (handled bool, idempotent bool, stmt interface{}) {
 	is := antlr.NewInputStream(query)
-	lexer := parser.NewSimplifiedCqlLexer(is)
-	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
+	lex := parser.NewSimplifiedCqlLexer(is)
+	stream := antlr.NewCommonTokenStream(lex, antlr.TokenDefaultChannel)
 	cqlParser := parser.NewSimplifiedCqlParser(stream)
 	listener := &queryListener{keyspace: keyspace}
 	antlr.ParseTreeWalkerDefault.Walk(listener, cqlParser.CqlStatement())
@@ -193,7 +194,16 @@ type queryListener struct {
 
 func isSystemTable(name string) bool {
 	for _, table := range systemTables {
-		if table == name {
+		if strings.EqualFold(table, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNonIdempotentFunc(name string) bool {
+	for _, funcName := range nonIdempotentFuncs {
+		if strings.EqualFold(funcName, name) {
 			return true
 		}
 	}
@@ -437,91 +447,223 @@ func extractIdentifier(cxt *parser.IdentifierContext) string {
 	}
 }
 
-func ParseFast(query string) (interface{}, bool) {
-	var l Lexer
-	var err error
-	l.Init(query)
+func IsQueryHandled(query string) (handled bool, stmt interface{}) {
+	var l lexer
+	l.init(query)
 
-	t := l.Next()
+	t := l.next()
 	switch t {
-	case TkSelect:
-		l.Mark()
-		t = l.Next()
-		for t != TkFrom && t != TkEOF {
-			t = l.Next()
-		}
-		if t != TkFrom {
-			return nil, false
-		}
-
-		t = l.Next()
-		isTable := isLocalPeers(t)
-		if t == TkSystemIdentifier {
-			if l.Next() != TkDot {
-				return nil, false
-			}
-			t = l.Next()
-			if !isLocalPeers(t) {
-				return nil, false
-			}
-		} else if !isTable {
-			return nil, false
-		}
-
-		stmt := &SelectStatement{Table: l.Current()}
-
-		l.Rewind()
-		t = l.Next()
-		for t != TkFrom && t != TkEOF {
-			t, err = ParseSelector(&l, t, stmt)
-			if err != nil {
-				return &ErrorSelectStatement{Err: err}, false
-			}
-			if t == TkComma {
-				t = l.Next()
-			}
-		}
-
-		return nil, true
-	case TkUse:
-		return nil, l.Next() == TkIdentifier
+	case tkSelect:
+		return isHandledSelectStmt(&l)
+	case tkUse:
+		return isHandledUseStmt(&l)
 	}
-	return nil, false
+	return false, nil
 }
 
-func isLocalPeers(t Token) bool {
-	return t == TkLocalIdentifier || t == TkPeersIdentifier
+func IsQueryIdempotent(query string) bool {
+	var l lexer
+	l.init(query)
+	return isIdempotentStmt(&l, l.next())
 }
 
-func ParseSelector(l *Lexer, t Token, stmt *SelectStatement) (Token, error) {
+func isIdempotentStmt(l *lexer, t token) bool {
+	switch t {
+	case tkSelect:
+		return true
+	case tkUse:
+		return false
+	case tkInsert:
+		return isIdempotentInsertStmt(l)
+	case tkUpdate:
+		return isIdempotentUpdateStmt(l)
+	case tkDelete:
+		return isIdempotentDeleteStmt(l)
+	case tkBegin:
+		return isIdempotentBatchStmt(l)
+	}
+	return false
+}
+
+func isIdempotentInsertStmt(l *lexer) bool {
+	if tkInto != l.next() {
+		return false
+	}
+
+	if tkIdentifier != l.next() {
+		return false
+	}
+
+	if tkDot == l.next() {
+		if tkIdentifier != l.next() {
+			return false
+		}
+	}
+
+	if tkLparen != l.next() {
+		return false
+	}
+
+	t := l.next()
+	for t != tkRparen && t != tkEOF {
+		t = l.next()
+	}
+
+	if tkRparen != t {
+		return false
+	}
+
+	if tkValues != l.next() {
+		return false
+	}
+
+	if tkLparen != l.next() {
+		return false
+	}
+
+	t = l.next()
+	for tkRparen != t && tkEOF != t {
+		if !isIdempotentInsertTerm(l, t) {
+			return false
+		}
+		t = l.next()
+		if tkComma == t {
+			t = l.next()
+		}
+	}
+
+	if t != tkRparen {
+		return false
+	}
+
+	if tkIf == l.next() {
+		return false
+	}
+
+	return true
+}
+
+func isIdempotentInsertTerm(l *lexer, t token) bool {
+	switch t {
+	case tkIdentifier:
+		t = l.next()
+		if tkDot == t {
+			t = l.next()
+			if tkIdentifier != t || strings.EqualFold(l.current(), "system") {
+				return false
+			}
+		}
+
+		if tkLparen != l.next() {
+			return false
+		}
+
+		if tkIdentifier != l.next() {
+			return false
+		}
+
+		if isNonIdempotentFunc(l.current()) {
+			return false
+		}
+
+		switch l.next() {
+		case tkDot:
+
+		}
+	}
+	return true
+}
+
+func isIdempotentUpdateStmt(l *lexer) bool {
+	return false
+}
+
+func isIdempotentDeleteStmt(l *lexer) bool {
+	return false
+}
+
+func isIdempotentBatchStmt(l *lexer) bool {
+	return false
+}
+
+func isHandledSelectStmt(l *lexer) (handled bool, stmt interface{}) {
+	l.mark()
+	t := l.next()
+	for t != tkFrom && t != tkEOF {
+		t = l.next()
+	}
+	if t != tkFrom {
+		return false, nil
+	}
+
+	t = l.next()
+	if t == tkIdentifier && strings.EqualFold(l.current(), "system") {
+		if l.next() != tkDot {
+			return false, nil
+		}
+		t = l.next()
+		if !isSystemTable(l.current()) {
+			return false, nil
+		}
+	} else if !isSystemTable(l.current()) {
+		return false, nil
+	}
+
+	selectStmt := &SelectStatement{Table: l.current()}
+
+	l.rewind()
+	t = l.next()
+	for t != tkFrom && t != tkEOF {
+		var err error
+		t, err = parseSelector(l, t, selectStmt)
+		if err != nil {
+			return true, &ErrorSelectStatement{Err: err}
+		}
+		if t == tkComma {
+			t = l.next()
+		}
+	}
+
+	return true, stmt
+}
+
+func isHandledUseStmt(l *lexer) (handled bool, stmt interface{}) {
+	t := l.next()
+	if t != tkIdentifier {
+		return false, nil
+	}
+	return true, &UseStatement{Keyspace: l.current()}
+}
+
+func parseSelector(l *lexer, t token, stmt *SelectStatement) (token, error) {
 	var selector interface{}
 	switch t {
-	case TkIdentifier:
-		selector = &IDSelector{Name: l.Current()}
-	case TkStar:
+	case tkIdentifier:
+		selector = &IDSelector{Name: l.current()}
+	case tkStar:
 		stmt.Selectors = append(stmt.Selectors, &StarSelector{})
-		return l.Next(), nil
-	case TkCount:
-		t = l.Next()
-		if t == TkStar {
+		return l.next(), nil
+	case tkCount:
+		t = l.next()
+		if t == tkStar {
 			selector = &CountStarSelector{Name: "COUNT(*)"}
-		} else if t == TkIdentifier {
-			selector = &CountStarSelector{Name: "COUNT(" + l.Current() + ")"}
+		} else if t == tkIdentifier {
+			selector = &CountStarSelector{Name: "COUNT(" + l.current() + ")"}
 		} else {
-			return TkInvalid, errors.New("expected * or identifier in argument `COUNT(...)`")
+			return tkInvalid, errors.New("expected * or identifier in argument `COUNT(...)`")
 		}
 	default:
-		return TkInvalid, errors.New("unsupported selector type")
+		return tkInvalid, errors.New("unsupported selector type")
 	}
 
-	t = l.Next()
-	if t == TkAs {
-		t = l.Next()
-		if t != TkIdentifier {
-			return TkInvalid, errors.New("expected identifier after `AS`")
+	t = l.next()
+	if t == tkAs {
+		t = l.next()
+		if t != tkIdentifier {
+			return tkInvalid, errors.New("expected identifier after `AS`")
 		}
-		stmt.Selectors = append(stmt.Selectors, &AliasSelector{Selector: selector, Alias: l.Current()})
-		t = l.Next()
+		stmt.Selectors = append(stmt.Selectors, &AliasSelector{Selector: selector, Alias: l.current()})
+		t = l.next()
 	}
 
 	return t, nil
