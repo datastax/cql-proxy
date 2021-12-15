@@ -54,8 +54,6 @@ const (
 	tkRsquare
 	tkLcurly
 	tkRcurly
-	tkLangle
-	tkRangle
 	tkInteger
 	tkFloat
 	tkBool
@@ -68,8 +66,14 @@ const (
 	tkInfinity
 )
 
+const (
+    tkLangle=tkLt
+    tkRangle=tkGt
+)
 
-//line lexer.go:73
+
+
+//line lexer.go:77
 const lex_start int = 90
 const lex_first_final int = 90
 const lex_error int = -1
@@ -77,7 +81,7 @@ const lex_error int = -1
 const lex_en_main int = 90
 
 
-//line lexer.rl:72
+//line lexer.rl:76
 
 
 type lexer struct {
@@ -115,7 +119,7 @@ func (l *lexer) next() token {
     }
 
     
-//line lexer.go:119
+//line lexer.go:123
 	{
 	cs = lex_start
 	ts = 0
@@ -123,7 +127,7 @@ func (l *lexer) next() token {
 	act = 0
 	}
 
-//line lexer.go:127
+//line lexer.go:131
 	{
 	if p == pe {
 		goto _test_eof
@@ -706,241 +710,241 @@ tr0:
 	case 27:
 	{p = (te) - 1
  tk = tkNull;  {p++; cs = 90; goto _out } }
-	case 51:
+	case 49:
 	{p = (te) - 1
  tk = tkNan; {p++; cs = 90; goto _out } }
-	case 52:
+	case 50:
 	{p = (te) - 1
  tk = tkInfinity; {p++; cs = 90; goto _out } }
-	case 53:
+	case 51:
 	{p = (te) - 1
  tk = tkStringLiteral; {p++; cs = 90; goto _out } }
-	case 54:
+	case 52:
 	{p = (te) - 1
  tk = tkInteger; {p++; cs = 90; goto _out } }
-	case 55:
+	case 53:
 	{p = (te) - 1
  tk = tkFloat; {p++; cs = 90; goto _out } }
-	case 57:
+	case 55:
 	{p = (te) - 1
  tk = tkDuration; {p++; cs = 90; goto _out } }
-	case 59:
+	case 57:
 	{p = (te) - 1
  tk = tkIdentifier; l.c = l.data[ts:te]; {p++; cs = 90; goto _out } }
-	case 62:
+	case 60:
 	{p = (te) - 1
  tk = tkInvalid; {p++; cs = 90; goto _out } }
 	}
 	
 	goto st90
 tr2:
-//line lexer.rl:184
+//line lexer.rl:186
 te = p+1
 { tk = tkIdentifier; l.c = l.data[ts:te]; {p++; cs = 90; goto _out } }
 	goto st90
 tr11:
-//line lexer.rl:182
+//line lexer.rl:184
 p = (te) - 1
 { tk = tkDuration; {p++; cs = 90; goto _out } }
 	goto st90
 tr17:
-//line lexer.rl:173
+//line lexer.rl:175
 p = (te) - 1
 { tk = tkSub; {p++; cs = 90; goto _out } }
 	goto st90
 tr24:
-//line lexer.rl:177
+//line lexer.rl:179
 te = p+1
 { tk = tkInfinity; {p++; cs = 90; goto _out } }
 	goto st90
 tr26:
-//line lexer.rl:176
+//line lexer.rl:178
 te = p+1
 { tk = tkNan; {p++; cs = 90; goto _out } }
 	goto st90
 tr30:
-//line lexer.rl:182
+//line lexer.rl:184
 te = p+1
 { tk = tkDuration; {p++; cs = 90; goto _out } }
 	goto st90
 tr82:
-//line lexer.rl:183
+//line lexer.rl:185
 te = p+1
 { tk = tkUuid; {p++; cs = 90; goto _out } }
 	goto st90
 tr84:
-//line lexer.rl:179
+//line lexer.rl:181
 p = (te) - 1
 { tk = tkInteger; {p++; cs = 90; goto _out } }
 	goto st90
 tr109:
-//line lexer.rl:187
+//line lexer.rl:189
 te = p+1
 { tk = tkInvalid; {p++; cs = 90; goto _out } }
 	goto st90
 tr110:
-//line lexer.rl:186
+//line lexer.rl:188
 te = p+1
 { /* Skip */ }
 	goto st90
 tr111:
-//line lexer.rl:185
+//line lexer.rl:187
 te = p+1
 { /* Skip */ }
 	goto st90
 tr117:
-//line lexer.rl:158
+//line lexer.rl:162
 te = p+1
 { tk = tkLparen; {p++; cs = 90; goto _out } }
 	goto st90
 tr118:
-//line lexer.rl:159
+//line lexer.rl:163
 te = p+1
 { tk = tkRparen; {p++; cs = 90; goto _out } }
 	goto st90
 tr119:
-//line lexer.rl:153
+//line lexer.rl:157
 te = p+1
 { tk = tkStar; {p++; cs = 90; goto _out } }
 	goto st90
 tr121:
-//line lexer.rl:154
+//line lexer.rl:158
 te = p+1
 { tk = tkComma; {p++; cs = 90; goto _out } }
 	goto st90
 tr123:
-//line lexer.rl:155
+//line lexer.rl:159
 te = p+1
 { tk = tkDot; {p++; cs = 90; goto _out } }
 	goto st90
 tr126:
-//line lexer.rl:156
+//line lexer.rl:160
 te = p+1
 { tk = tkColon; {p++; cs = 90; goto _out } }
 	goto st90
 tr128:
-//line lexer.rl:166
+//line lexer.rl:168
 te = p+1
 { tk = tkEqual; {p++; cs = 90; goto _out } }
 	goto st90
 tr130:
-//line lexer.rl:157
+//line lexer.rl:161
 te = p+1
 { tk = tkQMark; {p++; cs = 90; goto _out } }
 	goto st90
 tr148:
-//line lexer.rl:160
+//line lexer.rl:164
 te = p+1
 { tk = tkLsquare; {p++; cs = 90; goto _out } }
 	goto st90
 tr149:
-//line lexer.rl:161
+//line lexer.rl:165
 te = p+1
 { tk = tkRsquare; {p++; cs = 90; goto _out } }
 	goto st90
 tr150:
-//line lexer.rl:162
+//line lexer.rl:166
 te = p+1
 { tk = tkLcurly; {p++; cs = 90; goto _out } }
 	goto st90
 tr151:
-//line lexer.rl:163
+//line lexer.rl:167
 te = p+1
 { tk = tkRcurly; {p++; cs = 90; goto _out } }
 	goto st90
 tr152:
-//line lexer.rl:187
+//line lexer.rl:189
 te = p
 p--
 { tk = tkInvalid; {p++; cs = 90; goto _out } }
 	goto st90
 tr153:
-//line lexer.rl:171
+//line lexer.rl:173
 te = p+1
 { tk = tkNotEqual; {p++; cs = 90; goto _out } }
 	goto st90
 tr154:
-//line lexer.rl:178
+//line lexer.rl:180
 te = p
 p--
 { tk = tkStringLiteral; {p++; cs = 90; goto _out } }
 	goto st90
 tr155:
-//line lexer.rl:172
+//line lexer.rl:174
 te = p
 p--
 { tk = tkAdd; {p++; cs = 90; goto _out } }
 	goto st90
 tr156:
-//line lexer.rl:174
+//line lexer.rl:176
 te = p+1
 { tk = tkAddEqual; {p++; cs = 90; goto _out } }
 	goto st90
 tr157:
-//line lexer.rl:173
+//line lexer.rl:175
 te = p
 p--
 { tk = tkSub; {p++; cs = 90; goto _out } }
 	goto st90
 tr159:
-//line lexer.rl:175
+//line lexer.rl:177
 te = p+1
 { tk = tkSubEqual; {p++; cs = 90; goto _out } }
 	goto st90
 tr163:
-//line lexer.rl:179
+//line lexer.rl:181
 te = p
 p--
 { tk = tkInteger; {p++; cs = 90; goto _out } }
 	goto st90
 tr166:
-//line lexer.rl:180
+//line lexer.rl:182
 te = p
 p--
 { tk = tkFloat; {p++; cs = 90; goto _out } }
 	goto st90
 tr167:
-//line lexer.rl:182
+//line lexer.rl:184
 te = p
 p--
 { tk = tkDuration; {p++; cs = 90; goto _out } }
 	goto st90
 tr192:
-//line lexer.rl:181
+//line lexer.rl:183
 te = p
 p--
 { tk = tkHexNumber; {p++; cs = 90; goto _out } }
 	goto st90
 tr193:
-//line lexer.rl:164
+//line lexer.rl:171
 te = p
 p--
-{ tk = tkLangle; {p++; cs = 90; goto _out } }
+{ tk = tkLt; {p++; cs = 90; goto _out } }
 	goto st90
 tr194:
-//line lexer.rl:167
+//line lexer.rl:169
 te = p+1
 { tk = tkLtEqual; {p++; cs = 90; goto _out } }
 	goto st90
 tr195:
-//line lexer.rl:165
+//line lexer.rl:172
 te = p
 p--
-{ tk = tkRangle; {p++; cs = 90; goto _out } }
+{ tk = tkGt; {p++; cs = 90; goto _out } }
 	goto st90
 tr196:
-//line lexer.rl:168
+//line lexer.rl:170
 te = p+1
 { tk = tkGtEqual; {p++; cs = 90; goto _out } }
 	goto st90
 tr197:
-//line lexer.rl:184
+//line lexer.rl:186
 te = p
 p--
 { tk = tkIdentifier; l.c = l.data[ts:te]; {p++; cs = 90; goto _out } }
 	goto st90
 tr248:
-//line lexer.rl:145
+//line lexer.rl:149
 te = p
 p--
 { tk = tkIn; {p++; cs = 90; goto _out } }
@@ -956,7 +960,7 @@ ts = 0
 //line NONE:1
 ts = p
 
-//line lexer.go:960
+//line lexer.go:964
 		switch data[p] {
 		case 9:
 			goto tr110
@@ -1106,22 +1110,22 @@ tr4:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:184
-act = 59;
+//line lexer.rl:186
+act = 57;
 	goto st93
 tr114:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:187
-act = 62;
+//line lexer.rl:189
+act = 60;
 	goto st93
 	st93:
 		if p++; p == pe {
 			goto _test_eof93
 		}
 	st_case_93:
-//line lexer.go:1125
+//line lexer.go:1129
 		switch data[p] {
 		case 10:
 			goto tr0
@@ -1169,15 +1173,15 @@ tr115:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:187
-act = 62;
+//line lexer.rl:189
+act = 60;
 	goto st94
 	st94:
 		if p++; p == pe {
 			goto _test_eof94
 		}
 	st_case_94:
-//line lexer.go:1181
+//line lexer.go:1185
 		if data[p] == 36 {
 			goto tr6
 		}
@@ -1195,15 +1199,15 @@ tr6:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:178
-act = 53;
+//line lexer.rl:180
+act = 51;
 	goto st95
 	st95:
 		if p++; p == pe {
 			goto _test_eof95
 		}
 	st_case_95:
-//line lexer.go:1207
+//line lexer.go:1211
 		if data[p] == 36 {
 			goto st2
 		}
@@ -1212,15 +1216,15 @@ tr116:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:187
-act = 62;
+//line lexer.rl:189
+act = 60;
 	goto st96
 	st96:
 		if p++; p == pe {
 			goto _test_eof96
 		}
 	st_case_96:
-//line lexer.go:1224
+//line lexer.go:1228
 		if data[p] == 39 {
 			goto tr8
 		}
@@ -1238,15 +1242,15 @@ tr8:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:178
-act = 53;
+//line lexer.rl:180
+act = 51;
 	goto st97
 	st97:
 		if p++; p == pe {
 			goto _test_eof97
 		}
 	st_case_97:
-//line lexer.go:1250
+//line lexer.go:1254
 		if data[p] == 39 {
 			goto st3
 		}
@@ -1270,7 +1274,7 @@ te = p+1
 			goto _test_eof99
 		}
 	st_case_99:
-//line lexer.go:1274
+//line lexer.go:1278
 		switch data[p] {
 		case 61:
 			goto tr159
@@ -1293,15 +1297,15 @@ tr158:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st100
 	st100:
 		if p++; p == pe {
 			goto _test_eof100
 		}
 	st_case_100:
-//line lexer.go:1305
+//line lexer.go:1309
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -1352,15 +1356,15 @@ tr164:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st101
 	st101:
 		if p++; p == pe {
 			goto _test_eof101
 		}
 	st_case_101:
-//line lexer.go:1364
+//line lexer.go:1368
 		switch data[p] {
 		case 69:
 			goto st4
@@ -1408,15 +1412,15 @@ tr13:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st103
 	st103:
 		if p++; p == pe {
 			goto _test_eof103
 		}
 	st_case_103:
-//line lexer.go:1420
+//line lexer.go:1424
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st6
 		}
@@ -1470,15 +1474,15 @@ tr14:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st104
 	st104:
 		if p++; p == pe {
 			goto _test_eof104
 		}
 	st_case_104:
-//line lexer.go:1482
+//line lexer.go:1486
 		switch data[p] {
 		case 79:
 			goto tr13
@@ -1626,15 +1630,15 @@ tr162:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st105
 	st105:
 		if p++; p == pe {
 			goto _test_eof105
 		}
 	st_case_105:
-//line lexer.go:1638
+//line lexer.go:1642
 		if data[p] == 84 {
 			goto tr169
 		}
@@ -1884,7 +1888,7 @@ te = p+1
 			goto _test_eof107
 		}
 	st_case_107:
-//line lexer.go:1888
+//line lexer.go:1892
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st37
 		}
@@ -1916,7 +1920,7 @@ te = p+1
 			goto _test_eof108
 		}
 	st_case_108:
-//line lexer.go:1920
+//line lexer.go:1924
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st38
 		}
@@ -1946,7 +1950,7 @@ te = p+1
 			goto _test_eof109
 		}
 	st_case_109:
-//line lexer.go:1950
+//line lexer.go:1954
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st39
 		}
@@ -1973,7 +1977,7 @@ te = p+1
 			goto _test_eof110
 		}
 	st_case_110:
-//line lexer.go:1977
+//line lexer.go:1981
 		if data[p] == 84 {
 			goto tr169
 		}
@@ -2003,7 +2007,7 @@ te = p+1
 			goto _test_eof111
 		}
 	st_case_111:
-//line lexer.go:2007
+//line lexer.go:2011
 		if data[p] == 84 {
 			goto tr169
 		}
@@ -2030,15 +2034,15 @@ tr124:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st112
 	st112:
 		if p++; p == pe {
 			goto _test_eof112
 		}
 	st_case_112:
-//line lexer.go:2042
+//line lexer.go:2046
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2104,15 +2108,15 @@ tr170:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st113
 	st113:
 		if p++; p == pe {
 			goto _test_eof113
 		}
 	st_case_113:
-//line lexer.go:2116
+//line lexer.go:2120
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2172,15 +2176,15 @@ tr175:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st114
 	st114:
 		if p++; p == pe {
 			goto _test_eof114
 		}
 	st_case_114:
-//line lexer.go:2184
+//line lexer.go:2188
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2240,15 +2244,15 @@ tr178:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st115
 	st115:
 		if p++; p == pe {
 			goto _test_eof115
 		}
 	st_case_115:
-//line lexer.go:2252
+//line lexer.go:2256
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2308,15 +2312,15 @@ tr180:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st116
 	st116:
 		if p++; p == pe {
 			goto _test_eof116
 		}
 	st_case_116:
-//line lexer.go:2320
+//line lexer.go:2324
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2376,15 +2380,15 @@ tr182:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st117
 	st117:
 		if p++; p == pe {
 			goto _test_eof117
 		}
 	st_case_117:
-//line lexer.go:2388
+//line lexer.go:2392
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2444,15 +2448,15 @@ tr184:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st118
 	st118:
 		if p++; p == pe {
 			goto _test_eof118
 		}
 	st_case_118:
-//line lexer.go:2456
+//line lexer.go:2460
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -2512,15 +2516,15 @@ tr186:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st119
 	st119:
 		if p++; p == pe {
 			goto _test_eof119
 		}
 	st_case_119:
-//line lexer.go:2524
+//line lexer.go:2528
 		switch data[p] {
 		case 45:
 			goto st42
@@ -3041,15 +3045,15 @@ tr91:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st120
 	st120:
 		if p++; p == pe {
 			goto _test_eof120
 		}
 	st_case_120:
-//line lexer.go:3053
+//line lexer.go:3057
 		if data[p] == 45 {
 			goto st42
 		}
@@ -3094,15 +3098,15 @@ tr86:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st121
 	st121:
 		if p++; p == pe {
 			goto _test_eof121
 		}
 	st_case_121:
-//line lexer.go:3106
+//line lexer.go:3110
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3120,15 +3124,15 @@ tr188:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st122
 	st122:
 		if p++; p == pe {
 			goto _test_eof122
 		}
 	st_case_122:
-//line lexer.go:3132
+//line lexer.go:3136
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3146,15 +3150,15 @@ tr189:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st123
 	st123:
 		if p++; p == pe {
 			goto _test_eof123
 		}
 	st_case_123:
-//line lexer.go:3158
+//line lexer.go:3162
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3172,15 +3176,15 @@ tr190:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st124
 	st124:
 		if p++; p == pe {
 			goto _test_eof124
 		}
 	st_case_124:
-//line lexer.go:3184
+//line lexer.go:3188
 		if data[p] == 45 {
 			goto st47
 		}
@@ -3210,15 +3214,15 @@ tr95:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st125
 	st125:
 		if p++; p == pe {
 			goto _test_eof125
 		}
 	st_case_125:
-//line lexer.go:3222
+//line lexer.go:3226
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3307,15 +3311,15 @@ tr88:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st126
 	st126:
 		if p++; p == pe {
 			goto _test_eof126
 		}
 	st_case_126:
-//line lexer.go:3319
+//line lexer.go:3323
 		if data[p] == 45 {
 			goto st42
 		}
@@ -3345,15 +3349,15 @@ tr99:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st127
 	st127:
 		if p++; p == pe {
 			goto _test_eof127
 		}
 	st_case_127:
-//line lexer.go:3357
+//line lexer.go:3361
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3449,15 +3453,15 @@ tr92:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st128
 	st128:
 		if p++; p == pe {
 			goto _test_eof128
 		}
 	st_case_128:
-//line lexer.go:3461
+//line lexer.go:3465
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3493,15 +3497,15 @@ tr103:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st129
 	st129:
 		if p++; p == pe {
 			goto _test_eof129
 		}
 	st_case_129:
-//line lexer.go:3505
+//line lexer.go:3509
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3597,15 +3601,15 @@ tr96:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st130
 	st130:
 		if p++; p == pe {
 			goto _test_eof130
 		}
 	st_case_130:
-//line lexer.go:3609
+//line lexer.go:3613
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3641,15 +3645,15 @@ tr107:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st131
 	st131:
 		if p++; p == pe {
 			goto _test_eof131
 		}
 	st_case_131:
-//line lexer.go:3653
+//line lexer.go:3657
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3745,15 +3749,15 @@ tr100:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st132
 	st132:
 		if p++; p == pe {
 			goto _test_eof132
 		}
 	st_case_132:
-//line lexer.go:3757
+//line lexer.go:3761
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3789,15 +3793,15 @@ tr176:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st133
 	st133:
 		if p++; p == pe {
 			goto _test_eof133
 		}
 	st_case_133:
-//line lexer.go:3801
+//line lexer.go:3805
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3893,15 +3897,15 @@ tr104:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st134
 	st134:
 		if p++; p == pe {
 			goto _test_eof134
 		}
 	st_case_134:
-//line lexer.go:3905
+//line lexer.go:3909
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3937,15 +3941,15 @@ tr172:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st135
 	st135:
 		if p++; p == pe {
 			goto _test_eof135
 		}
 	st_case_135:
-//line lexer.go:3949
+//line lexer.go:3953
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4041,15 +4045,15 @@ tr108:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:180
-act = 55;
+//line lexer.rl:182
+act = 53;
 	goto st136
 	st136:
 		if p++; p == pe {
 			goto _test_eof136
 		}
 	st_case_136:
-//line lexer.go:4053
+//line lexer.go:4057
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4085,15 +4089,15 @@ tr125:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:179
-act = 54;
+//line lexer.rl:181
+act = 52;
 	goto st138
 	st138:
 		if p++; p == pe {
 			goto _test_eof138
 		}
 	st_case_138:
-//line lexer.go:4097
+//line lexer.go:4101
 		switch data[p] {
 		case 46:
 			goto tr164
@@ -4401,15 +4405,15 @@ tr207:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:184
-act = 59;
+//line lexer.rl:186
+act = 57;
 	goto st148
 	st148:
 		if p++; p == pe {
 			goto _test_eof148
 		}
 	st_case_148:
-//line lexer.go:4413
+//line lexer.go:4417
 		switch data[p] {
 		case 45:
 			goto st42
@@ -4433,210 +4437,210 @@ tr137:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:184
-act = 59;
+//line lexer.rl:186
+act = 57;
 	goto st149
 tr278:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:182
-act = 57;
+//line lexer.rl:184
+act = 55;
 	goto st149
 tr201:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:139
+//line lexer.rl:143
 act = 14;
 	goto st149
 tr208:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:143
+//line lexer.rl:147
 act = 18;
 	goto st149
 tr211:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:132
+//line lexer.rl:136
 act = 7;
 	goto st149
 tr216:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:130
+//line lexer.rl:134
 act = 5;
 	goto st149
 tr219:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:131
+//line lexer.rl:135
 act = 6;
 	goto st149
 tr223:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:141
+//line lexer.rl:145
 act = 16;
 	goto st149
 tr230:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:148
+//line lexer.rl:152
 act = 23;
 	goto st149
 tr232:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:140
+//line lexer.rl:144
 act = 15;
 	goto st149
 tr237:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:129
+//line lexer.rl:133
 act = 4;
 	goto st149
 tr242:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:151
+//line lexer.rl:155
 act = 26;
 	goto st149
 tr244:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:136
+//line lexer.rl:140
 act = 11;
 	goto st149
 tr245:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:138
+//line lexer.rl:142
 act = 13;
 	goto st149
 tr247:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:144
+//line lexer.rl:148
 act = 19;
 	goto st149
 tr256:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:177
-act = 52;
+//line lexer.rl:179
+act = 50;
 	goto st149
 tr259:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:127
+//line lexer.rl:131
 act = 2;
 	goto st149
 tr260:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:133
+//line lexer.rl:137
 act = 8;
 	goto st149
 tr262:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:149
+//line lexer.rl:153
 act = 24;
 	goto st149
 tr265:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:147
+//line lexer.rl:151
 act = 22;
 	goto st149
 tr269:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:176
-act = 51;
+//line lexer.rl:178
+act = 49;
 	goto st149
 tr270:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:146
+//line lexer.rl:150
 act = 21;
 	goto st149
 tr272:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:152
+//line lexer.rl:156
 act = 27;
 	goto st149
 tr292:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:135
+//line lexer.rl:139
 act = 10;
 	goto st149
 tr295:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:126
+//line lexer.rl:130
 act = 1;
 	goto st149
 tr300:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:150
+//line lexer.rl:154
 act = 25;
 	goto st149
 tr306:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:128
+//line lexer.rl:132
 act = 3;
 	goto st149
 tr307:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:137
+//line lexer.rl:141
 act = 12;
 	goto st149
 tr312:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:134
+//line lexer.rl:138
 act = 9;
 	goto st149
 tr316:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:142
+//line lexer.rl:146
 act = 17;
 	goto st149
 	st149:
@@ -4644,7 +4648,7 @@ act = 17;
 			goto _test_eof149
 		}
 	st_case_149:
-//line lexer.go:4648
+//line lexer.go:4652
 		if data[p] == 95 {
 			goto tr137
 		}
@@ -6344,15 +6348,15 @@ tr281:
 //line NONE:1
 te = p+1
 
-//line lexer.rl:184
-act = 59;
+//line lexer.rl:186
+act = 57;
 	goto st209
 	st209:
 		if p++; p == pe {
 			goto _test_eof209
 		}
 	st_case_209:
-//line lexer.go:6356
+//line lexer.go:6360
 		switch data[p] {
 		case 45:
 			goto st22
@@ -8085,7 +8089,7 @@ act = 59;
 	_out: {}
 	}
 
-//line lexer.rl:192
+//line lexer.rl:194
 
 
     l.p = p

@@ -55,6 +55,37 @@ func TestParseTerm(t *testing.T) {
 	}
 }
 
+func TestParseRelation(t *testing.T) {
+	var tests = []struct {
+		relation   string
+		idempotent bool
+		err        error
+		msg        string
+	}{
+		{"id > 0", true, nil, "simple operator relation"},
+		{"token (a, b, c) > (0, 1, 2)", true, nil, "'token' relation"},
+		{"id LIKE 'abc'", true, nil, "'like' relation"},
+		{"id IS NOT NULL", true, nil, "'is not null' relation"},
+		{"id CONTAINS 'abc'", true, nil, "'contains' relation"},
+		{"id CONTAINS KEY 'abc'", true, nil, "'contains key' relation"},
+		{"id[0] > 0", true, nil, "index collection w/ int relation"},
+		{"id['abc'] > 'def'", true, nil, "index collection w/string relation"},
+		{"id IN ?", true, nil, "'IN' w/ position bind marker relation "},
+		{"id IN :column", true, nil, "'IN' w/ named bind marker relation"},
+		{"((((id > 0))))", true, nil, "arbitrary number of parens"},
+		//{"(id1, id2, id3) IN ()", true, nil, "list in empty"}, // TODO: Broken
+	}
+
+	for _, tt := range tests {
+		var l lexer
+		l.init(tt.relation)
+		idempotent, err := parseRelation(&l, l.next())
+		assert.Equal(t, tt.idempotent, idempotent, tt.msg)
+		assert.Equal(t, err, err, tt.msg)
+	}
+
+}
+
 func TestParser(t *testing.T) {
 	var tests = []struct {
 		keyspace   string

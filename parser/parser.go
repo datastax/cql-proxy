@@ -359,13 +359,14 @@ func parseWhereClause(l *lexer) (idempotent bool, err error) {
 func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 	switch t {
 	case tkIdentifier:
+		t = l.next()
 		switch t {
-		case tkEqual, tkLt, tkLtEqual, tkGt, tkGtEqual, tkNotEqual: // identifier operator term
-			if idempotent, _, err = parseTerm(l, t); !idempotent {
+		case tkEqual, tkRangle, tkLtEqual, tkLangle, tkGtEqual, tkNotEqual: // identifier operator term
+			if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 				return idempotent, err
 			}
 		case tkLike: // identifier 'like' term
-			if idempotent, _, err = parseTerm(l, t); !idempotent {
+			if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 				return idempotent, err
 			}
 		case tkIs: // identifier 'is' 'not' 'null'
@@ -376,12 +377,12 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 				return false, errors.New("expected 'null' in relation after 'is not'")
 			}
 		case tkContains: // identifier 'contains' 'key'? term
-			t = skipToken(l, t, tkKey)
+			t = skipToken(l, l.next(), tkKey)
 			if idempotent, _, err = parseTerm(l, t); !idempotent {
 				return idempotent, err
 			}
 		case tkLsquare: // identifier '[' term ']' operator term
-			if idempotent, _, err = parseTerm(l, t); !idempotent {
+			if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 				return idempotent, err
 			}
 			if t = l.next(); tkRsquare != t {
@@ -390,11 +391,12 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 			if t = l.next(); !isOperator(t) {
 				return false, errors.New("expected operator after term in relation")
 			}
-			if idempotent, _, err = parseTerm(l, t); !idempotent {
+			if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 				return idempotent, err
 			}
 		case tkIn: // identifier 'in' ('(' terms? ')' | bindMarker)
-			switch l.next() {
+			t = l.next()
+			switch t {
 			case tkLparen:
 				t = l.next()
 				for tkRparen != t && tkEOF != t {
@@ -408,11 +410,16 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 				if err != nil {
 					return false, err
 				}
+			default:
+				return false, errors.New("unexpected token for 'IN' relation")
 			}
 		case tkComma, tkRparen:
-			err = skipIdentifiers(l, t)
-			if err != nil {
-				return false, err
+			t = l.next()
+			for tkRparen != t && tkEOF != t {
+				if tkIdentifier != t {
+					return false, errors.New("expected identifier")
+				}
+				t = skipToken(l, l.next(), tkComma)
 			}
 			return parseRelationIdentifiers(l)
 		}
@@ -427,11 +434,17 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 		if t = l.next(); !isOperator(t) {
 			return false, errors.New("expected operator after identifier list in relation")
 		}
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 	case tkLparen: // '(' relation ')' | '(' identifiers ')' ...
-		return parseRelation(l, l.next())
+		idempotent, err = parseRelation(l, l.next())
+		if !idempotent {
+			return idempotent, err
+		}
+		if tkRparen != l.next() {
+			return false, errors.New("expected terminating ')' after parenthesized relation or identifier list")
+		}
 	default:
 		return false, errors.New("unexpected token in relation")
 	}
@@ -470,9 +483,12 @@ func parseRelationIdentifiers(l *lexer) (idempotent bool, err error) {
 func parseBindMarker(l *lexer, t token) error {
 	switch t {
 	case tkColon:
-		if tkIdentifier != t {
+		if tkIdentifier != l.next() {
 			return errors.New("expected identifier after")
 		}
+	case tkQMark:
+	default:
+		return errors.New("invalid bind marker")
 	}
 	return nil
 }
@@ -482,7 +498,10 @@ func skipIdentifiers(l *lexer, t token) (err error) {
 		if tkIdentifier != t {
 			return errors.New("expected identifier")
 		}
-		t = skipToken(l, t, tkComma)
+		t = skipToken(l, l.next(), tkComma)
+	}
+	if tkRparen != t {
+		return errors.New("expected terminating ')' for identifiers")
 	}
 	return nil
 }

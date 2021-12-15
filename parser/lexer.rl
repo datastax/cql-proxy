@@ -52,8 +52,6 @@ const (
 	tkRsquare
 	tkLcurly
 	tkRcurly
-	tkLangle
-	tkRangle
 	tkInteger
 	tkFloat
 	tkBool
@@ -65,6 +63,12 @@ const (
 	tkNan
 	tkInfinity
 )
+
+const (
+    tkLangle=tkLt
+    tkRangle=tkGt
+)
+
 
 %%{
 machine lex;
@@ -161,8 +165,6 @@ func (l *lexer) next() token {
             ']' => { tk = tkRsquare; fbreak; };
             '{' => { tk = tkLcurly; fbreak; };
             '}' => { tk = tkRcurly; fbreak; };
-            '<' => { tk = tkLangle; fbreak; };
-            '>' => { tk = tkRangle; fbreak; };
             '=' => { tk = tkEqual; fbreak; };
             '<=' => { tk = tkLtEqual; fbreak; };
             '>=' => { tk = tkGtEqual; fbreak; };
