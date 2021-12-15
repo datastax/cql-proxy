@@ -25,8 +25,28 @@ const (
 	tkStar
 	tkComma
 	tkDot
+	tkColon
+	tkQMark
+	tkEqual
+	tkAdd
+	tkSub
+	tkAddEqual
+	tkSubEqual
 	tkLparen
 	tkRparen
+	tkLsquare
+	tkRsquare
+	tkLcurly
+	tkRcurly
+	tkInteger
+	tkFloat
+	tkBool
+	tkStringLiteral
+	tkHexNumber
+	tkUuid
+	tkDuration
+	tkNan
+	tkInfinity
 )
 
 %%{
@@ -72,7 +92,19 @@ func (l *lexer) next() token {
         ws = [ \t];
         nl = '\r\n' | '\n';
         id = ([a-zA-Z][a-zA-Z0-9_]*)|("\"" ([^\r\n\"] | "\\\"")* "\"");
-
+        integer = '-'? digit+;
+        exponent = [eE] ('+' | '-')? digit+;
+        float = (integer exponent) | (integer '.' digit* exponent?);
+        string = '\'' ([^\'] | '\'\'') '\'';
+        pgstring = '$' ([^\$] | '$$') '$';
+        hex = [a-f] | [A-F] | digit;
+        hexnumber = '0' [xX] hex*;
+        uuid = hex{8} '-' hex{4} '-' hex{4} '-' hex{4} '-' hex{12};
+        durationunit = /y/i | /mo/i | /w/i | /d/i | /h/i | /m/i | /s/i | /ms/i | /µs/i | /us/i | /ns/i;
+        duration = ('-'? digit+ durationunit (digit+ durationunit)*) |
+                   ('-'? 'P' (digit+ 'Y')? (digit+ 'M')? (digit+ 'D')? ('T' (digit+ 'H')? (digit+ 'M')? (digit+ 'S')?)?) |
+                   ('-'? 'P' digit+ 'W') |
+                   '-'? 'P' digit digit digit digit '-' digit digit '-' digit digit 'T' digit digit ':' digit digit ':' digit digit;
         main := |*
             /select/i => { tk = tkSelect; fbreak; };
             /insert/i => { tk = tkInsert; fbreak; };
@@ -90,11 +122,31 @@ func (l *lexer) next() token {
             /as/i => { tk = tkAs; fbreak; };
             /count/i => { tk = tkCount; fbreak; };
             /cast/i => { tk = tkCast; fbreak; };
+            /true/i | /false/i => { tk = tkBool; fbreak; };
             '\*' => { tk = tkStar; fbreak; };
             ',' => { tk = tkComma; fbreak; };
             '\.' => { tk = tkDot; fbreak; };
+            ':' => { tk = tkColon; fbreak; };
+            '?' => { tk = tkQMark; fbreak; };
             '(' => { tk = tkLparen; fbreak; };
             ')' => { tk = tkRparen; fbreak; };
+            '[' => { tk = tkLsquare; fbreak; };
+            ']' => { tk = tkRsquare; fbreak; };
+            '{' => { tk = tkLcurly; fbreak; };
+            '}' => { tk = tkRcurly; fbreak; };
+            '=' => { tk = tkEqual; fbreak; };
+            '+' => { tk = tkAdd; fbreak; };
+            '-' => { tk = tkSub; fbreak; };
+            '+=' => { tk = tkAddEqual; fbreak; };
+            '-=' => { tk = tkSubEqual; fbreak; };
+            '-'? /nan/i => { tk = tkNan; fbreak; };
+            '-'? /infinity/i => { tk = tkInfinity; fbreak; };
+            pgstring | string => { tk = tkStringLiteral; fbreak; };
+            integer => { tk = tkInteger; fbreak; };
+            float => { tk = tkFloat; fbreak; };
+            hexnumber => { tk = tkHexNumber; fbreak; };
+            duration => { tk = tkDuration; fbreak; };
+            uuid => { tk = tkUuid; fbreak; };
             id => { tk = tkIdentifier; l.c = l.data[ts:te]; fbreak; };
             nl => { /* Skip */ };
             ws => { /* Skip */ };
