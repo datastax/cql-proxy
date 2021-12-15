@@ -1,15 +1,3 @@
-package parser
-
-import (
-	"fmt"
-	"strings"
-
-	"github.com/antlr/antlr4/runtime/Go/antlr"
-	parser "github.com/datastax/cql-proxy/parser/antlr"
-	"github.com/datastax/go-cassandra-native-protocol/datatype"
-	"github.com/datastax/go-cassandra-native-protocol/message"
-)
-
 // Copyright (c) DataStax, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,26 +12,15 @@ import (
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:generate ragel -Z -G2 lexer.rl -o lexer.go
-
 package parser
 
 import (
-"errors"
-"fmt"
-"strings"
+	"errors"
+	"strings"
 
-"github.com/antlr/antlr4/runtime/Go/antlr"
-parser "github.com/datastax/cql-proxy/parser/antlr"
-"github.com/datastax/go-cassandra-native-protocol/datatype"
-"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/antlr/antlr4/runtime/Go/antlr"
+	parser "github.com/datastax/cql-proxy/parser/antlr"
 )
-
-const (
-	CountValueName = "count(*)"
-)
-
-type parseState uint32
 
 const (
 	inSelectStatement parseState = 1 << iota
@@ -56,143 +33,14 @@ const (
 	inDeleteStatement
 )
 
-var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
-var nonIdempotentFuncs = []string{"uuid", "now"}
-
-type AliasSelector struct {
-	Selector interface{}
-	Alias    string
-}
-
-type IDSelector struct {
-	Name string
-}
-
-type StarSelector struct{}
-
-type CountStarSelector struct {
-	Name string
-}
-
-type ErrorSelectStatement struct {
-	Err error
-}
-
-type SelectStatement struct {
-	Table     string
-	Selectors []interface{}
-}
-
-type UseStatement struct {
-	Keyspace string
-}
-
-type ValueLookupFunc func(name string) (value message.Column, err error)
-
 func Parse(keyspace string, query string) (handled bool, idempotent bool, stmt interface{}) {
 	is := antlr.NewInputStream(query)
-	lex := parser.NewSimplifiedCqlLexer(is)
-	stream := antlr.NewCommonTokenStream(lex, antlr.TokenDefaultChannel)
+	lexer := parser.NewSimplifiedCqlLexer(is)
+	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
 	cqlParser := parser.NewSimplifiedCqlParser(stream)
 	listener := &queryListener{keyspace: keyspace}
 	antlr.ParseTreeWalkerDefault.Walk(listener, cqlParser.CqlStatement())
 	return listener.handled, listener.idempotent, listener.stmt
-}
-
-func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
-	if _, ok := stmt.Selectors[0].(*StarSelector); ok {
-		for _, column := range columns {
-			var val message.Column
-			val, err = valueFunc(column.Name)
-			if err != nil {
-				return nil, err
-			}
-			filtered = append(filtered, val)
-		}
-	} else {
-		for _, selector := range stmt.Selectors {
-			var val message.Column
-			val, err = valueFromSelector(selector, valueFunc)
-			if err != nil {
-				return nil, err
-			}
-			filtered = append(filtered, val)
-		}
-	}
-	return filtered, nil
-}
-
-func valueFromSelector(selector interface{}, valueFunc ValueLookupFunc) (val message.Column, err error) {
-	switch s := selector.(type) {
-	case *CountStarSelector:
-		return valueFunc(CountValueName)
-	case *IDSelector:
-		return valueFunc(s.Name)
-	case *AliasSelector:
-		return valueFromSelector(s.Selector, valueFunc)
-	default:
-		return nil, errors.New("unhandled selector type")
-	}
-}
-
-func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
-	if _, ok := stmt.Selectors[0].(*StarSelector); ok {
-		filtered = columns
-	} else {
-		for _, selector := range stmt.Selectors {
-			var column *message.ColumnMetadata
-			column, err = columnFromSelector(selector, columns, stmt.Table)
-			if err != nil {
-				return nil, err
-			}
-			filtered = append(filtered, column)
-		}
-	}
-	return filtered, nil
-}
-
-func isCountSelector(selector interface{}) bool {
-	_, ok := selector.(*CountStarSelector)
-	return ok
-}
-
-func IsCountStarQuery(stmt *SelectStatement) bool {
-	if len(stmt.Selectors) == 1 {
-		if isCountSelector(stmt.Selectors[0]) {
-			return true
-		} else if alias, ok := stmt.Selectors[0].(*AliasSelector); ok {
-			return isCountSelector(alias.Selector)
-		}
-	}
-	return false
-}
-
-func columnFromSelector(selector interface{}, columns []*message.ColumnMetadata, table string) (column *message.ColumnMetadata, err error) {
-	switch s := selector.(type) {
-	case *CountStarSelector:
-		return &message.ColumnMetadata{
-			Keyspace: "system",
-			Table:    table,
-			Name:     s.Name,
-			Type:     datatype.Int,
-		}, nil
-	case *IDSelector:
-		if column = FindColumnMetadata(columns, s.Name); column != nil {
-			return column, nil
-		} else {
-			return nil, fmt.Errorf("invalid column %s", s.Name)
-		}
-	case *AliasSelector:
-		column, err = columnFromSelector(s.Selector, columns, table)
-		if err != nil {
-			return nil, err
-		}
-		alias := *column // Make a copy so we can modify the name
-		alias.Name = s.Alias
-		return &alias, nil
-	default:
-		return nil, errors.New("unhandled selector type")
-	}
 }
 
 type queryListener struct {
@@ -202,24 +50,6 @@ type queryListener struct {
 	idempotent bool
 	stmt       interface{}
 	parseState parseState
-}
-
-func isSystemTable(name string) bool {
-	for _, table := range systemTables {
-		if strings.EqualFold(table, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func isNonIdempotentFunc(name string) bool {
-	for _, funcName := range nonIdempotentFuncs {
-		if strings.EqualFold(funcName, name) {
-			return true
-		}
-	}
-	return false
 }
 
 func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext) {
@@ -457,223 +287,4 @@ func extractIdentifier(cxt *parser.IdentifierContext) string {
 	} else {
 		return strings.ToLower(cxt.UnreservedKeyword().GetText())
 	}
-}
-
-func IsQueryHandled(query string) (handled bool, stmt interface{}) {
-	var l lexer
-	l.init(query)
-
-	t := l.next()
-	switch t {
-	case tkSelect:
-		return isHandledSelectStmt(&l)
-	case tkUse:
-		return isHandledUseStmt(&l)
-	}
-	return false, nil
-}
-
-func IsQueryIdempotent(query string) bool {
-	var l lexer
-	l.init(query)
-	return isIdempotentStmt(&l, l.next())
-}
-
-func isIdempotentStmt(l *lexer, t token) bool {
-	switch t {
-	case tkSelect:
-		return true
-	case tkUse:
-		return false
-	case tkInsert:
-		return isIdempotentInsertStmt(l)
-	case tkUpdate:
-		return isIdempotentUpdateStmt(l)
-	case tkDelete:
-		return isIdempotentDeleteStmt(l)
-	case tkBegin:
-		return isIdempotentBatchStmt(l)
-	}
-	return false
-}
-
-func skipToken(l *lexer, toSkip token, t token) token {
-	if t == toSkip {
-		return l.next()
-	}
-	return t
-}
-
-func untilToken(l *lexer, to token) token {
-	var t token
-	for t = l.next(); to != t && tkEOF != t; {
-		// Keep going
-	}
-	return t
-}
-
-func isIdempotentInsertStmt(l *lexer) bool {
-	t := untilToken(l, tkValues)
-
-	if t != tkLparen {
-		return false
-	}
-
-	var result bool
-	result, t = parseInsertTerms(l, t)
-	if !result {
-		return false
-	}
-
-	for t = l.next(); t != tkEOF; {
-		if tkIf == t {
-			return false
-		}
-	}
-
-	return true
-}
-
-func parseInsertTerms(l *lexer, t token) (bool, token) {
-	switch t {
-	case tkLparen:
-		for t = l.next(); tkRparen != t && tkEOF != t; {
-			var result bool
-			result, t = parseInsertTerms(l, t)
-			if !result {
-				return false, tkInvalid
-			}
-			skipToken(l, tkComma, t)
-		}
-		if t != tkRparen {
-			return false, tkInvalid
-		}
-	case tkIdentifier:
-		var target, keyspace string
-		temp := l.current()
-		if t = l.next(); tkDot == t {
-			if t = l.next(); tkIdentifier != t {
-				return false, tkInvalid
-			}
-			keyspace = temp
-			target = l.current()
-			t = l.next()
-		} else {
-			target = temp
-		}
-		if tkLparen == t { // Function
-			t = untilToken(l, tkRparen)
-			if t != tkRparen {
-				return false, tkInvalid
-			}
-			return isNonIdempotentFunc(target) && (len(keyspace) == 0 || strings.EqualFold("system", keyspace)), l.next()
-		}
-	}
-	return true, l.next()
-}
-
-func isIdempotentUpdateStmt(l *lexer) bool {
-	t := untilToken(l, tkSet)
-
-	if t = l.next(); t != tkIdentifier {
-		return false
-	}
-
-	t = l.next()
-	switch t {
-	case tkEqual:
-	case tkAddEqual:
-	case tkSubEqual:
-	}
-}
-
-func isIdempotentDeleteStmt(l *lexer) bool {
-	return false
-}
-
-func isIdempotentBatchStmt(l *lexer) bool {
-	return false
-}
-
-func isHandledSelectStmt(l *lexer) (handled bool, stmt interface{}) {
-	l.mark()
-	t := l.next()
-	for t != tkFrom && t != tkEOF {
-		t = l.next()
-	}
-	if t != tkFrom {
-		return false, nil
-	}
-
-	t = l.next()
-	if t == tkIdentifier && strings.EqualFold(l.current(), "system") {
-		if l.next() != tkDot {
-			return false, nil
-		}
-		t = l.next()
-		if !isSystemTable(l.current()) {
-			return false, nil
-		}
-	} else if !isSystemTable(l.current()) {
-		return false, nil
-	}
-
-	selectStmt := &SelectStatement{Table: l.current()}
-
-	l.rewind()
-	t = l.next()
-	for t != tkFrom && t != tkEOF {
-		var err error
-		t, err = parseSelector(l, t, selectStmt)
-		if err != nil {
-			return true, &ErrorSelectStatement{Err: err}
-		}
-		if t == tkComma {
-			t = l.next()
-		}
-	}
-
-	return true, stmt
-}
-
-func isHandledUseStmt(l *lexer) (handled bool, stmt interface{}) {
-	t := l.next()
-	if t != tkIdentifier {
-		return false, nil
-	}
-	return true, &UseStatement{Keyspace: l.current()}
-}
-
-func parseSelector(l *lexer, t token, stmt *SelectStatement) (token, error) {
-	var selector interface{}
-	switch t {
-	case tkIdentifier:
-		selector = &IDSelector{Name: l.current()}
-	case tkStar:
-		stmt.Selectors = append(stmt.Selectors, &StarSelector{})
-		return l.next(), nil
-	case tkCount:
-		t = l.next()
-		if t == tkStar {
-			selector = &CountStarSelector{Name: "COUNT(*)"}
-		} else if t == tkIdentifier {
-			selector = &CountStarSelector{Name: "COUNT(" + l.current() + ")"}
-		} else {
-			return tkInvalid, errors.New("expected * or identifier in argument `COUNT(...)`")
-		}
-	default:
-		return tkInvalid, errors.New("unsupported selector type")
-	}
-
-	t = l.next()
-	if t == tkAs {
-		t = l.next()
-		if t != tkIdentifier {
-			return tkInvalid, errors.New("expected identifier after `AS`")
-		}
-		stmt.Selectors = append(stmt.Selectors, &AliasSelector{Selector: selector, Alias: l.current()})
-		t = l.next()
-	}
-
-	return t, nil
 }

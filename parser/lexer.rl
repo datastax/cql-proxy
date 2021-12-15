@@ -21,6 +21,15 @@ const (
 	tkAs
 	tkCount
 	tkCast
+	tkWhere
+	tkAnd
+	tkToken
+	tkIs
+	tkIn
+	tkNot
+	tkLike
+	tkContains
+	tkKey
 	tkIdentifier
 	tkStar
 	tkComma
@@ -32,15 +41,23 @@ const (
 	tkSub
 	tkAddEqual
 	tkSubEqual
+	tkNotEqual
+	tkGt
+	tkLt
+	tkLtEqual
+	tkGtEqual
 	tkLparen
 	tkRparen
 	tkLsquare
 	tkRsquare
 	tkLcurly
 	tkRcurly
+	tkLangle
+	tkRangle
 	tkInteger
 	tkFloat
 	tkBool
+	tkNull
 	tkStringLiteral
 	tkHexNumber
 	tkUuid
@@ -95,8 +112,8 @@ func (l *lexer) next() token {
         integer = '-'? digit+;
         exponent = [eE] ('+' | '-')? digit+;
         float = (integer exponent) | (integer '.' digit* exponent?);
-        string = '\'' ([^\'] | '\'\'') '\'';
-        pgstring = '$' ([^\$] | '$$') '$';
+        string = '\'' ([^\'] | '\'\'')* '\'';
+        pgstring = '$' ([^\$] | '$$')* '$';
         hex = [a-f] | [A-F] | digit;
         hexnumber = '0' [xX] hex*;
         uuid = hex{8} '-' hex{4} '-' hex{4} '-' hex{4} '-' hex{12};
@@ -122,7 +139,17 @@ func (l *lexer) next() token {
             /as/i => { tk = tkAs; fbreak; };
             /count/i => { tk = tkCount; fbreak; };
             /cast/i => { tk = tkCast; fbreak; };
+            /where/i => { tk = tkWhere; fbreak; };
+            /and/i => { tk = tkAnd; fbreak; };
+            /is/i => { tk = tkIs; fbreak; };
+            /in/i => { tk = tkIn; fbreak; };
+            /not/i => { tk = tkNot; fbreak; };
+            /like/i => { tk = tkLike; fbreak; };
+            /contains/i => { tk = tkContains; fbreak; };
+            /key/i => { tk = tkKey; fbreak; };
+            /token/i => { tk = tkToken; fbreak; };
             /true/i | /false/i => { tk = tkBool; fbreak; };
+            /null/i => { tk = tkNull;  fbreak; };
             '\*' => { tk = tkStar; fbreak; };
             ',' => { tk = tkComma; fbreak; };
             '\.' => { tk = tkDot; fbreak; };
@@ -134,7 +161,14 @@ func (l *lexer) next() token {
             ']' => { tk = tkRsquare; fbreak; };
             '{' => { tk = tkLcurly; fbreak; };
             '}' => { tk = tkRcurly; fbreak; };
+            '<' => { tk = tkLangle; fbreak; };
+            '>' => { tk = tkRangle; fbreak; };
             '=' => { tk = tkEqual; fbreak; };
+            '<=' => { tk = tkLtEqual; fbreak; };
+            '>=' => { tk = tkGtEqual; fbreak; };
+            '<' => { tk = tkLt; fbreak; };
+            '>' => { tk = tkGt; fbreak; };
+            '!=' => { tk = tkNotEqual; fbreak; };
             '+' => { tk = tkAdd; fbreak; };
             '-' => { tk = tkSub; fbreak; };
             '+=' => { tk = tkAddEqual; fbreak; };
@@ -158,6 +192,10 @@ func (l *lexer) next() token {
     }%%
 
     l.p = p
+
+    if tk == tkInvalid && p == eof {
+        return tkEOF
+    }
 
     return tk
 }
