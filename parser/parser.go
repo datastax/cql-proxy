@@ -29,8 +29,6 @@ const (
 	CountValueName = "count(*)"
 )
 
-type parseState uint32
-
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
 var nonIdempotentFuncs = []string{"uuid", "now"}
 
