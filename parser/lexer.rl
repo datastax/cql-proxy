@@ -13,23 +13,16 @@ const (
 	tkApply
 	tkBatch
 	tkInto
-	tkValues
-	tkSet
 	tkFrom
 	tkUse
+	tkUsing
 	tkIf
-	tkAs
-	tkCount
-	tkCast
 	tkWhere
 	tkAnd
 	tkToken
 	tkIs
 	tkIn
 	tkNot
-	tkLike
-	tkContains
-	tkKey
 	tkIdentifier
 	tkStar
 	tkComma
@@ -135,22 +128,15 @@ func (l *lexer) next() token {
             /begin/i => { tk = tkBegin; fbreak; };
             /apply/i => { tk = tkApply; fbreak; };
             /into/i => { tk = tkInto; fbreak; };
-            /values/i => { tk = tkValues; fbreak; };
-            /set/i => { tk = tkSet; fbreak; };
             /from/i => { tk = tkFrom; fbreak; };
             /use/i => { tk = tkUse; fbreak; };
+            /using/i => { tk = tkUsing; fbreak; };
             /if/i => { tk = tkIf; fbreak; };
-            /as/i => { tk = tkAs; fbreak; };
-            /count/i => { tk = tkCount; fbreak; };
-            /cast/i => { tk = tkCast; fbreak; };
             /where/i => { tk = tkWhere; fbreak; };
             /and/i => { tk = tkAnd; fbreak; };
             /is/i => { tk = tkIs; fbreak; };
             /in/i => { tk = tkIn; fbreak; };
             /not/i => { tk = tkNot; fbreak; };
-            /like/i => { tk = tkLike; fbreak; };
-            /contains/i => { tk = tkContains; fbreak; };
-            /key/i => { tk = tkKey; fbreak; };
             /token/i => { tk = tkToken; fbreak; };
             /true/i | /false/i => { tk = tkBool; fbreak; };
             /null/i => { tk = tkNull;  fbreak; };
