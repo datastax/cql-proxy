@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,8 +22,8 @@ func TestLexerNext(t *testing.T) {
 
 func TestLexerLiterals(t *testing.T) {
 	var tests = []struct {
-		s  string
-		tk token
+		literal string
+		tk      token
 	}{
 		{"0", tkInteger},
 		{"1", tkInteger},
@@ -37,10 +38,9 @@ func TestLexerLiterals(t *testing.T) {
 		{"'a'", tkStringLiteral},
 		{"'abc'", tkStringLiteral},
 		{"''''", tkStringLiteral},
-		{"'", tkInvalid},
 		{"$a$", tkStringLiteral},
+		{"$abc$", tkStringLiteral},
 		{"$$$$", tkStringLiteral},
-		{"$", tkInvalid},
 		{"0x", tkHexNumber},
 		{"0x0", tkHexNumber},
 		{"0xabcdef", tkHexNumber},
@@ -55,8 +55,8 @@ func TestLexerLiterals(t *testing.T) {
 
 	for _, tt := range tests {
 		var l lexer
-		l.init(tt.s)
-		assert.Equal(t, tt.tk, l.next())
+		l.init(tt.literal)
+		assert.Equal(t, tt.tk, l.next(), fmt.Sprintf("failed on literal: %s", tt.literal))
 	}
 }
 
