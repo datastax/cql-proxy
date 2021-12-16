@@ -33,7 +33,13 @@ const (
 	inDeleteStatement
 )
 
-func Parse(keyspace string, query string) (handled bool, idempotent bool, stmt interface{}) {
+type ErrorSelectStatement struct {
+	Err error
+}
+
+func (e ErrorSelectStatement) isStatement() {}
+
+func Parse(keyspace string, query string) (handled bool, idempotent bool, stmt Statement) {
 	is := antlr.NewInputStream(query)
 	lexer := parser.NewSimplifiedCqlLexer(is)
 	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
@@ -48,7 +54,7 @@ type queryListener struct {
 	keyspace   string
 	handled    bool
 	idempotent bool
-	stmt       interface{}
+	stmt       Statement
 	parseState parseState
 }
 
@@ -68,7 +74,7 @@ func (l *queryListener) EnterSelectStatement(ctx *parser.SelectStatementContext)
 
 		selectStmt := &SelectStatement{
 			Table:     table,
-			Selectors: make([]interface{}, 0),
+			Selectors: make([]Selector, 0),
 		}
 
 		selectClauseCtx := ctx.SelectClause().(*parser.SelectClauseContext)
@@ -262,7 +268,7 @@ func isIdempotentDeleteElementPrimitiveLiteral(ctx *parser.PrimitiveLiteralConte
 	return ctx.INTEGER() == nil
 }
 
-func extractUnaliasedSelector(ctx *parser.UnaliasedSelectorContext) (interface{}, error) {
+func extractUnaliasedSelector(ctx *parser.UnaliasedSelectorContext) (Selector, error) {
 	if ctx.K_COUNT() != nil {
 		return &CountStarSelector{Name: ctx.GetText()}, nil
 	} else if ctx.Identifier() != nil {

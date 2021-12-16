@@ -34,33 +34,49 @@ type parseState uint32
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
 var nonIdempotentFuncs = []string{"uuid", "now"}
 
+type Selector interface {
+	isSelector()
+}
+
 type AliasSelector struct {
-	Selector interface{}
+	Selector Selector
 	Alias    string
 }
+
+func (a AliasSelector) isSelector() {}
 
 type IDSelector struct {
 	Name string
 }
 
+func (I IDSelector) isSelector() {}
+
 type StarSelector struct{}
+
+func (s StarSelector) isSelector() {}
 
 type CountStarSelector struct {
 	Name string
 }
 
-type ErrorSelectStatement struct {
-	Err error
+func (c CountStarSelector) isSelector() {}
+
+type Statement interface {
+	isStatement()
 }
 
 type SelectStatement struct {
 	Table     string
-	Selectors []interface{}
+	Selectors []Selector
 }
+
+func (s SelectStatement) isStatement() {}
 
 type UseStatement struct {
 	Keyspace string
 }
+
+func (u UseStatement) isStatement() {}
 
 type ValueLookupFunc func(name string) (value message.Column, err error)
 
@@ -87,7 +103,7 @@ func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valu
 	return filtered, nil
 }
 
-func valueFromSelector(selector interface{}, valueFunc ValueLookupFunc) (val message.Column, err error) {
+func valueFromSelector(selector Selector, valueFunc ValueLookupFunc) (val message.Column, err error) {
 	switch s := selector.(type) {
 	case *CountStarSelector:
 		return valueFunc(CountValueName)
@@ -116,7 +132,7 @@ func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (fi
 	return filtered, nil
 }
 
-func isCountSelector(selector interface{}) bool {
+func isCountSelector(selector Selector) bool {
 	_, ok := selector.(*CountStarSelector)
 	return ok
 }
@@ -132,7 +148,7 @@ func IsCountStarQuery(stmt *SelectStatement) bool {
 	return false
 }
 
-func columnFromSelector(selector interface{}, columns []*message.ColumnMetadata, table string) (column *message.ColumnMetadata, err error) {
+func columnFromSelector(selector Selector, columns []*message.ColumnMetadata, table string) (column *message.ColumnMetadata, err error) {
 	switch s := selector.(type) {
 	case *CountStarSelector:
 		return &message.ColumnMetadata{
@@ -178,7 +194,7 @@ func isNonIdempotentFunc(name string) bool {
 	return false
 }
 
-func IsQueryHandled(keyspace string, query string) (handled bool, stmt interface{}, err error) {
+func IsQueryHandled(keyspace string, query string) (handled bool, stmt Statement, err error) {
 	var l lexer
 	l.init(query)
 
@@ -198,7 +214,7 @@ func IsQueryIdempotent(query string) (idempotent bool, err error) {
 	return isIdempotentStmt(&l, l.next())
 }
 
-func isHandledSelectStmt(l *lexer, keyspace string) (handled bool, stmt interface{}, err error) {
+func isHandledSelectStmt(l *lexer, keyspace string) (handled bool, stmt Statement, err error) {
 	l.mark()
 	t := untilToken(l, tkFrom)
 
@@ -218,11 +234,11 @@ func isHandledSelectStmt(l *lexer, keyspace string) (handled bool, stmt interfac
 		return false, nil, nil
 	}
 
-	selectStmt := &SelectStatement{Table: l.current()}
+	selectStmt := &SelectStatement{Table: table}
 
 	l.rewind()
 	for t = l.next(); tkFrom != t && tkEOF != t; t = skipToken(l, t, tkComma) {
-		var selector interface{}
+		var selector Selector
 		selector, t, err = parseSelector(l, t)
 		if err != nil {
 			return true, nil, err
@@ -233,7 +249,7 @@ func isHandledSelectStmt(l *lexer, keyspace string) (handled bool, stmt interfac
 	return true, selectStmt, nil
 }
 
-func isHandledUseStmt(l *lexer) (handled bool, stmt interface{}, err error) {
+func isHandledUseStmt(l *lexer) (handled bool, stmt Statement, err error) {
 	t := l.next()
 	if tkIdentifier != t {
 		return false, nil, errors.New("expected identifier after 'USE' in use statement")
@@ -245,7 +261,7 @@ func isUnreservedKeyword(l *lexer, t token, keyword string) bool {
 	return tkIdentifier == t && strings.EqualFold(l.current(), keyword)
 }
 
-func parseSelector(l *lexer, t token) (selector interface{}, next token, err error) {
+func parseSelector(l *lexer, t token) (selector Selector, next token, err error) {
 	switch t {
 	case tkIdentifier:
 		if isUnreservedKeyword(l, t, "count") {
@@ -274,12 +290,10 @@ func parseSelector(l *lexer, t token) (selector interface{}, next token, err err
 	}
 
 	if t = l.next(); isUnreservedKeyword(l, t, "as") {
-		t = l.next()
-		if tkIdentifier != t {
+		if tkIdentifier != l.next() {
 			return nil, tkInvalid, errors.New("expected identifier after 'AS' in select statement")
 		}
-		selector = &AliasSelector{Selector: selector, Alias: l.current()}
-		t = l.next()
+		return &AliasSelector{Selector: selector, Alias: l.current()}, l.next(), nil
 	}
 
 	return selector, t, nil
@@ -304,16 +318,21 @@ func isIdempotentStmt(l *lexer, t token) (idempotent bool, err error) {
 }
 
 func isIdempotentInsertStmt(l *lexer) (idempotent bool, err error) {
-	if tkInto != l.next() {
+	t := l.next()
+	if tkInto != t {
 		return false, errors.New("expected 'INTO' after 'INSERT' for insert statement")
 	}
 
-	_, _, t, err := parseQualifiedIdentifier(l)
+	if t = l.next(); tkIdentifier != t {
+		return false, errors.New("expected identifier after 'INTO' in insert statement")
+	}
+
+	_, _, t, err = parseQualifiedIdentifier(l)
 	if err != nil {
 		return false, err
 	}
 
-	if tkLparen != l.next() {
+	if tkLparen != t {
 		return false, errors.New("expected '(' after table name for insert statement")
 	}
 
@@ -326,16 +345,14 @@ func isIdempotentInsertStmt(l *lexer) (idempotent bool, err error) {
 		return false, errors.New("expected 'VALUES' after identifiers in insert statement")
 	}
 
-	if t != tkLparen {
+	if t != l.next() {
 		return false, errors.New("expected '(' after 'VALUES' in insert statement")
 	}
 
-	t = l.next()
-	for tkRparen != t && tkEOF != t {
+	for t = l.next(); tkRparen != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 		if idempotent, _, err = parseTerm(l, t); !idempotent {
 			return idempotent, err
 		}
-		skipToken(l, l.next(), tkComma)
 	}
 
 	if t != tkRparen {
@@ -352,36 +369,39 @@ func isIdempotentInsertStmt(l *lexer) (idempotent bool, err error) {
 }
 
 func isIdempotentUpdateStmt(l *lexer) (idempotent bool, err error) {
-	_, _, t, err := parseQualifiedIdentifier(l)
+	t := l.next()
+	if tkIdentifier != t {
+		return false, errors.New("expected identifier after 'UPDATE' in update statement")
+	}
+
+	_, _, t, err = parseQualifiedIdentifier(l)
 	if err != nil {
 		return false, err
 	}
 
-	t, err = parseUsingClause(l)
+	t, err = parseUsingClause(l, t)
 	if err != nil {
 		return false, err
 	}
 
 	for !isUnreservedKeyword(l, t, "set") {
-		t = l.next()
+		return false, errors.New("expected 'SET' in update statement")
 	}
 
-	for tkIf != t && tkWhere != t && tkEOF != t {
+	for t = l.next(); tkIf != t && tkWhere != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 		idempotent, err = parseUpdateOp(l, t)
 		if !idempotent {
 			return idempotent, err
 		}
-		t = skipToken(l, l.next(), tkComma)
 	}
 
 	if tkWhere == t {
-		idempotent, err = parseWhereClause(l)
+		idempotent, t, err = parseWhereClause(l)
 		if !idempotent {
 			return idempotent, err
 		}
 	}
 
-	t = l.next()
 	for tkIf != t && tkEOF != t {
 		t = l.next()
 	}
@@ -393,8 +413,7 @@ func isIdempotentUpdateStmt(l *lexer) (idempotent bool, err error) {
 	return true, nil
 }
 
-func parseUsingClause(l *lexer) (t token, err error) {
-	t = l.next()
+func parseUsingClause(l *lexer, t token) (next token, err error) {
 	if tkUsing == t {
 		err = parseTtlOrTimestamp(l)
 		if err != nil {
@@ -415,8 +434,7 @@ func parseTtlOrTimestamp(l *lexer) error {
 	if t = l.next(); !isUnreservedKeyword(l, t, "ttl") && !isUnreservedKeyword(l, t, "timestamp") {
 		return errors.New("expected 'TTL' or 'TIMESTAMP' after 'USING'")
 	}
-	t = l.next()
-	switch t {
+	switch t = l.next(); t {
 	case tkInteger:
 		return nil
 	case tkColon, tkQMark:
@@ -425,23 +443,23 @@ func parseTtlOrTimestamp(l *lexer) error {
 	return errors.New("expected integer or bind marker after 'TTL' or 'TIMESTAMP'")
 }
 
-func parseWhereClause(l *lexer) (idempotent bool, err error) {
-	t := l.next()
-	for tkIf != t && tkEOF != t {
+func parseWhereClause(l *lexer) (idempotent bool, t token, err error) {
+	for t = l.next(); tkIf != t && tkEOF != t; t = skipToken(l, l.next(), tkAnd) {
 		idempotent, err = parseRelation(l, t)
-		t = skipToken(l, l.next(), tkAnd)
+		if !idempotent {
+			return idempotent, tkInvalid, err
+		}
 	}
-	return false, nil
+	return true, t, nil
 }
 
 func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 	switch t {
 	case tkIdentifier:
-		t = l.next()
-		switch t {
+		switch t = l.next(); t {
 		case tkIdentifier:
 			if isUnreservedKeyword(l, t, "contains") { // identifier 'contains' 'key'? term
-				if isUnreservedKeyword(l, l.next(), "key") {
+				if t = l.next(); isUnreservedKeyword(l, t, "key") {
 					t = l.next()
 				}
 				if idempotent, _, err = parseTerm(l, t); !idempotent {
@@ -480,15 +498,12 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 				return idempotent, err
 			}
 		case tkIn: // identifier 'in' ('(' terms? ')' | bindMarker)
-			t = l.next()
-			switch t {
+			switch t = l.next(); t {
 			case tkLparen:
-				t = l.next()
-				for tkRparen != t && tkEOF != t {
+				for t = l.next(); tkRparen != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 					if idempotent, _, err = parseTerm(l, t); !idempotent {
 						return idempotent, err
 					}
-					t = skipToken(l, l.next(), tkComma)
 				}
 			case tkColon, tkQMark:
 				err = parseBindMarker(l, t)
@@ -542,23 +557,19 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 }
 
 func parseIdentifiersRelation(l *lexer) (idempotent bool, err error) {
-	t := l.next()
-	switch t {
+	switch t := l.next(); t {
 	case tkIn, tkEqual, tkLt, tkLtEqual, tkGt, tkGtEqual, tkNotEqual: // '(' identifiers ')' 'in' ... | '(' identifiers ')' operator ...
-		t = l.next()
-		switch t {
+		switch t = l.next(); t {
 		case tkColon, tkQMark:
 			err = parseBindMarker(l, t)
 			if err != nil {
 				return false, err
 			}
 		case tkLparen:
-			t = l.next()
-			for tkRparen != t && tkEOF != t {
+			for t = l.next(); tkRparen != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 				if idempotent, _, err = parseTerm(l, t); !idempotent {
 					return idempotent, err
 				}
-				t = skipToken(l, l.next(), tkComma)
 			}
 			if tkRparen != t {
 				return false, errors.New("expected closing ')' in identifiers relation")
@@ -609,25 +620,36 @@ func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 
 	var typ termType
 
-	switch l.next() {
+	switch t = l.next(); t {
 	case tkEqual:
-		if t = l.next(); tkIdentifier == t { // identifier = identifier + term | identifier = identifier - term
-			if t = l.next(); tkAdd != t && tkSub != t {
-				return false, errors.New("unexpected infix operator in update operations")
-			}
+		l.mark()
+		maybeId, maybeAddOrSub := l.next(), l.next()
+		if tkIdentifier == maybeId && (tkAdd == maybeAddOrSub || tkSub == maybeAddOrSub) { // identifier = identifier + term | identifier = identifier - term
+			t = l.next()
 			if idempotent, typ, err = parseTerm(l, t); !idempotent {
 				return idempotent, err
 			}
 			return isIdempotentUpdateOpTermType(typ), nil
-		} else if idempotent, typ, err = parseTerm(l, t); idempotent { // identifier = term | identifier = term + identifier
-			if t = l.next(); tkAdd == t {
-				if t = l.next(); tkIdentifier != t {
-					return false, errors.New("expected identifier after '+' operator in update operation")
+
+		} else {
+			l.rewind()
+			t = l.next()
+			if idempotent, typ, err = parseTerm(l, t); idempotent { // identifier = term | identifier = term + identifier
+				l.mark()
+				if t = l.next(); tkAdd == t {
+					if tkIdentifier != l.next() {
+						return false, errors.New("expected identifier after '+' operator in update operation")
+					}
+					return isIdempotentUpdateOpTermType(typ), nil
+				} else {
+					l.rewind()
 				}
-				return isIdempotentUpdateOpTermType(typ), nil
+			} else {
+				return idempotent, err
 			}
 		}
 	case tkAddEqual, tkSubEqual: // identifier += term | identifier -= term
+		t = l.next()
 		if idempotent, typ, err = parseTerm(l, t); !idempotent {
 			return idempotent, err
 		}
@@ -668,41 +690,54 @@ func isIdempotentUpdateOpTermType(typ termType) bool {
 	return typ == termSetMapUdtLiteral || typ == termTupleLiteral
 }
 
+func isIdempotentDeleteElementTermType(typ termType) bool {
+	// Delete element terms can be one of the following:
+	// * Literal (idempotent, if not an integer literal)
+	// * Bind marker (ambiguous, so not idempotent)
+	// * Function call (ambiguous, so not idempotent)
+	// * Type cast (ambiguous)
+	return typ != termIntegerLiteral && typ != termBindMarker && typ != termFunctionCall && typ != termCast
+}
+
 func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
-	t := l.next()
-	if tkIdentifier != t {
-		return false, errors.New("expected an identifier at the start of a delete statement")
+	var t token
+	for t = l.next(); tkFrom != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+		if tkIdentifier != t {
+			return false, errors.New("unexpected token after 'DELETE' in delete statement")
+		}
+
+		l.mark()
+		switch t = l.next(); t {
+		case tkLsquare:
+			var typ termType
+			t = l.next()
+			if idempotent, typ, err = parseTerm(l, t); !idempotent {
+				return idempotent, err
+			}
+			if tkRsquare != l.next() {
+				return false, errors.New("expected closing ']' for the delete operation")
+			}
+			return isIdempotentDeleteElementTermType(typ), nil
+		case tkDot:
+			if tkIdentifier != l.next() {
+				return false, errors.New("expected another identifier after '.' for delete operation")
+			}
+		default:
+			l.rewind()
+		}
 	}
 
-	if t = l.next(); tkLsquare == t {
-		var typ termType
-		if idempotent, typ, err = parseTerm(l, t); !idempotent {
-			return idempotent, err
-		}
-		if t = l.next(); tkRsquare == t {
-			return false, errors.New("expected closing ']' for the delete operation")
-		}
-		// Delete element terms can be one of the following:
-		// * Literal (idempotent, if not an integer literal)
-		// * Bind marker (ambiguous, so not idempotent)
-		// * Function call (ambiguous, so not idempotent)
-		// * Type cast (ambiguous)
-		return typ != termIntegerLiteral && typ != termBindMarker && typ != termFunctionCall && typ != termCast, nil
-	}
-
-	t = l.next()
 	for tkIf != t && tkWhere != t && tkEOF != t {
 		t = l.next()
 	}
 
 	if tkWhere == t {
-		idempotent, err = parseWhereClause(l)
+		idempotent, t, err = parseWhereClause(l)
 		if !idempotent {
 			return idempotent, err
 		}
 	}
 
-	t = l.next()
 	for tkIf != t && tkEOF != t {
 		t = l.next()
 	}
@@ -746,12 +781,10 @@ func parseQualifiedIdentifier(l *lexer) (keyspace, target string, t token, err e
 
 func parseType(l *lexer) (t token, err error) {
 	if t = l.next(); tkLangle == t {
-		t = l.next()
-		for tkRangle != t && tkEOF != t {
+		for t = l.next(); tkRangle != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 			if t != tkIdentifier {
 				return tkInvalid, errors.New("expected sub-type in type parameter")
 			}
-			t = skipToken(l, l.next(), tkComma)
 		}
 		if tkRangle != t {
 			return tkInvalid, errors.New("expected closing '>' bracket for type")
@@ -768,12 +801,10 @@ func parseTerm(l *lexer, t token) (idempotent bool, typ termType, err error) {
 	case tkFloat, tkBool, tkNull, tkStringLiteral, tkHexNumber, tkUuid, tkDuration, tkNan, tkInfinity: // Literal
 		return true, termPrimitiveLiteral, nil
 	case tkLsquare: // List literal
-		t = l.next()
-		for t != tkRsquare && t != tkEOF {
+		for t = l.next(); t != tkRsquare && t != tkEOF; t = skipToken(l, l.next(), tkComma) {
 			if idempotent, _, err = parseTerm(l, t); !idempotent {
 				return idempotent, termInvalid, err
 			}
-			t = skipToken(l, l.next(), tkComma)
 		}
 		if t != tkRsquare {
 			return false, termInvalid, errors.New("expected closing ']' bracket for list literal")
@@ -851,12 +882,10 @@ func parseTerm(l *lexer, t token) (idempotent bool, typ termType, err error) {
 		if tkLparen != t {
 			return false, termInvalid, errors.New("invalid term, was expecting function call")
 		}
-		t = l.next()
-		for t != tkRparen && t != tkEOF {
+		for t = l.next(); t != tkRparen && t != tkEOF; t = skipToken(l, l.next(), tkComma) {
 			if idempotent, _, err = parseTerm(l, t); !idempotent {
 				return idempotent, termInvalid, err
 			}
-			t = skipToken(l, l.next(), tkComma)
 		}
 		if t != tkRparen {
 			return false, termInvalid, errors.New("expected closing ')' for function call")
