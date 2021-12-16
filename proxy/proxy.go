@@ -533,8 +533,6 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 			c.keyspace = s.Keyspace
 			c.send(hdr, &message.SetKeyspaceResult{Keyspace: s.Keyspace})
 		}
-	case *parser.ErrorSelectStatement:
-		c.send(hdr, &message.Invalid{ErrorMessage: s.Err.Error()})
 	default:
 		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 	}
