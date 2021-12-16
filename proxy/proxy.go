@@ -212,7 +212,7 @@ func (p *Proxy) handle(conn *net.TCPConn) {
 		proxy:               p,
 		id:                  atomic.AddUint64(&p.clientIdGen, 1),
 		preparedSystemQuery: make(map[[16]byte]interface{}),
-		preparedIdempotence: make(map[[16]byte]bool),
+		preparedIdempotence: make(map[[16]byte]idempotenceState),
 	}
 	cl.conn = proxycore.NewConn(conn, cl)
 	cl.conn.Start()
@@ -290,7 +290,7 @@ type client struct {
 	keyspace            string
 	id                  uint64
 	preparedSystemQuery map[[16]byte]interface{}
-	preparedIdempotence map[[16]byte]bool
+	preparedIdempotence map[[16]byte]idempotenceState
 }
 
 func (c *client) Receive(reader io.Reader) error {
@@ -340,16 +340,17 @@ func (c *client) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *client) execute(raw *frame.RawFrame, idempotent bool) {
+func (c *client) execute(raw *frame.RawFrame, state idempotenceState, query string) {
 	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
 		req := &request{
-			client:     c,
-			session:    sess,
-			idempotent: idempotent,
-			done:       false,
-			stream:     raw.Header.StreamId,
-			qp:         c.proxy.newQueryPlan(),
-			raw:        raw,
+			client:  c,
+			session: sess,
+			state:   state,
+			query:   query,
+			done:    false,
+			stream:  raw.Header.StreamId,
+			qp:      c.proxy.newQueryPlan(),
+			raw:     raw,
 		}
 		req.Execute(true)
 	} else {
@@ -362,44 +363,59 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	if len(msg.Keyspace) != 0 {
 		keyspace = msg.Keyspace
 	}
-	handled, idempotent, stmt := parser.Parse(keyspace, msg.Query)
+	handled, stmt, err := parser.IsQueryHandled(keyspace, msg.Query)
+
+	if err != nil {
+		c.proxy.logger.Debug("error parsing query", zap.String("query", msg.Query), zap.Error(err))
+	}
 
 	if handled {
 		hdr := raw.Header
 
-		switch s := stmt.(type) {
-		case *parser.SelectStatement:
-			if systemColumns, ok := parser.SystemColumnsByName[s.Table]; ok {
-				if columns, err := parser.FilterColumns(s, systemColumns); err != nil {
-					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+		if err != nil {
+			c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+		} else {
+			switch s := stmt.(type) {
+			case *parser.SelectStatement:
+				if systemColumns, ok := parser.SystemColumnsByName[s.Table]; ok {
+					if columns, err := parser.FilterColumns(s, systemColumns); err != nil {
+						c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+					} else {
+						hash := md5.Sum([]byte(msg.Query + keyspace))
+						c.send(hdr, &message.PreparedResult{
+							PreparedQueryId: hash[:],
+							ResultMetadata: &message.RowsMetadata{
+								ColumnCount: int32(len(columns)),
+								Columns:     columns,
+							},
+						})
+						c.preparedSystemQuery[hash] = stmt
+					}
 				} else {
-					hash := md5.Sum([]byte(msg.Query + keyspace))
-					c.send(hdr, &message.PreparedResult{
-						PreparedQueryId: hash[:],
-						ResultMetadata: &message.RowsMetadata{
-							ColumnCount: int32(len(columns)),
-							Columns:     columns,
-						},
-					})
-					c.preparedSystemQuery[hash] = stmt
+					c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 				}
-			} else {
-				c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
+			case *parser.UseStatement:
+				hash := md5.Sum([]byte(msg.Query))
+				c.preparedSystemQuery[hash] = stmt
+				c.send(hdr, &message.PreparedResult{
+					PreparedQueryId: hash[:],
+				})
+			default:
+				c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 			}
-		case *parser.UseStatement:
-			hash := md5.Sum([]byte(msg.Query))
-			c.preparedSystemQuery[hash] = stmt
-			c.send(hdr, &message.PreparedResult{
-				PreparedQueryId: hash[:],
-			})
-		case *parser.ErrorSelectStatement:
-			c.send(hdr, &message.Invalid{ErrorMessage: s.Err.Error()})
-		default:
-			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
 		}
+
 	} else {
-		c.preparedIdempotence[md5.Sum([]byte(msg.Query))] = idempotent
-		c.execute(raw, true) // Prepared statements can be retried themselves
+		idempotent, err := parser.IsQueryIdempotent(msg.Query)
+		if err != nil {
+			c.proxy.logger.Debug("error parsing query for idempotence", zap.String("query", msg.Query), zap.Error(err))
+		}
+		state := notIdempotent
+		if idempotent {
+			state = isIdempotent
+		}
+		c.preparedIdempotence[md5.Sum([]byte(keyspace+msg.Query))] = state
+		c.execute(raw, isIdempotent, "") // Prepared statements can be retried themselves
 	}
 }
 
@@ -410,19 +426,27 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
 	if stmt, ok := c.preparedSystemQuery[hash]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
-		c.execute(raw, c.preparedIdempotence[hash])
+		c.execute(raw, c.preparedIdempotence[hash], "")
 	}
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
-	handled, idempotent, stmt := parser.Parse(c.keyspace, msg.query)
-
 	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 
+	handled, stmt, err := parser.IsQueryHandled(c.keyspace, msg.query)
+
+	if err != nil {
+		c.proxy.logger.Debug("error parsing query", zap.String("query", msg.query), zap.Error(err))
+	}
+
 	if handled {
-		c.interceptSystemQuery(raw.Header, stmt)
+		if err != nil {
+			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
+		} else {
+			c.interceptSystemQuery(raw.Header, stmt)
+		}
 	} else {
-		c.execute(raw, idempotent)
+		c.execute(raw, notDetermined, msg.query)
 	}
 }
 

@@ -33,9 +33,9 @@ func TestProxy_Retries(t *testing.T) {
 		{ // Bootstrapping error w/ non-idempotent query
 			nonIdempotentQuery,
 			&message.IsBootstrapping{ErrorMessage: "Bootstrapping"},
-			"cql error: ERROR IS BOOTSTRAPPING (code=ErrorCode IsBootstrapping [0x00001002], msg=Bootstrapping)",
-			1,
-			0,
+			"cql error: ERROR UNAVAILABLE (code=ErrorCode Unavailable [0x00001000], msg=No more hosts available (exhausted query plan), cl=ConsistencyLevel ANY [0x0000], required=0, alive=0)",
+			3,
+			2,
 		},
 		{ // Error response (truncate), retry until succeeds or exhausts query plan
 			idempotentQuery,
@@ -90,7 +90,7 @@ func TestProxy_Retries(t *testing.T) {
 			2,
 			1,
 		},
-		{ // Unavailable error w/ non-idempotent query, don't retry
+		{ // Unavailable error w/ non-idempotent query, retry on the next node (same)
 			nonIdempotentQuery,
 			&message.Unavailable{
 				ErrorMessage: "Unavailable",
@@ -99,8 +99,8 @@ func TestProxy_Retries(t *testing.T) {
 				Alive:        1,
 			},
 			"cql error: ERROR UNAVAILABLE (code=ErrorCode Unavailable [0x00001000], msg=Unavailable, cl=ConsistencyLevel QUORUM [0x0004], required=2, alive=1)",
+			2,
 			1,
-			0,
 		},
 		{ // Read timeout error, retry once on the same node
 			idempotentQuery,
@@ -115,7 +115,7 @@ func TestProxy_Retries(t *testing.T) {
 			1,
 			1,
 		},
-		{ // Read timeout error w/ non-idempotent query, don't retry
+		{ // Read timeout error w/ non-idempotent query, retry once on the same node (same)
 			nonIdempotentQuery,
 			&message.ReadTimeout{
 				ErrorMessage: "ReadTimeout",
@@ -126,7 +126,7 @@ func TestProxy_Retries(t *testing.T) {
 			},
 			"cql error: ERROR READ TIMEOUT (code=ErrorCode ReadTimeout [0x00001200], msg=ReadTimeout, cl=ConsistencyLevel QUORUM [0x0004], received=3, blockfor=2, data=false)",
 			1,
-			0,
+			1,
 		},
 		{ // Read timeout error w/ unmet conditions, don't retry
 			idempotentQuery,

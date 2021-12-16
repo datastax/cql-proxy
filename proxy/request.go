@@ -18,6 +18,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/datastax/cql-proxy/parser"
 	"github.com/datastax/cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 
@@ -26,10 +27,19 @@ import (
 	"go.uber.org/zap"
 )
 
+type idempotenceState int
+
+const (
+	notDetermined idempotenceState = iota
+	notIdempotent
+	isIdempotent
+)
+
 type request struct {
 	client     *client
 	session    *proxycore.Session
-	idempotent bool
+	state      idempotenceState
+	query      string
 	done       bool
 	retryCount int
 	host       *proxycore.Host
@@ -82,10 +92,23 @@ func (r *request) Frame() interface{} {
 	return r.raw
 }
 
+func (r *request) checkIdempotent() bool {
+	idempotent := false
+	if r.state == notDetermined {
+		var err error
+		idempotent, err = parser.IsQueryIdempotent(r.query)
+		if err != nil {
+			r.client.proxy.logger.Debug("error parsing query for idempotence", zap.String("query", r.query), zap.Error(err))
+		}
+	}
+	return idempotent
+}
+
 func (r *request) OnClose(_ error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.idempotent {
+
+	if r.checkIdempotent() {
 		r.executeInternal(true)
 	} else {
 		if !r.done {
@@ -115,7 +138,9 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	frm, err := codec.ConvertFromRawFrame(raw)
 	if err != nil {
 		logger.Error("unable to decode error frame for retry decision", zap.Error(err))
-	} else if r.idempotent {
+	} else {
+		idempotent := r.checkIdempotent()
+
 		errMsg := frm.Body.Message.(message.Error)
 		logger.Debug("received error response",
 			zap.Stringer("host", r.host),
@@ -133,13 +158,15 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 				)
 			}
 		case *message.WriteTimeout:
-			decision = r.client.proxy.config.RetryPolicy.OnWriteTimeout(msg, r.retryCount)
-			if decision != ReturnError {
-				logger.Debug("retrying write timeout",
-					zap.Stringer("decision", decision),
-					zap.Stringer("response", msg),
-					zap.Int("retryCount", r.retryCount),
-				)
+			if idempotent {
+				decision = r.client.proxy.config.RetryPolicy.OnWriteTimeout(msg, r.retryCount)
+				if decision != ReturnError {
+					logger.Debug("retrying write timeout",
+						zap.Stringer("decision", decision),
+						zap.Stringer("response", msg),
+						zap.Int("retryCount", r.retryCount),
+					)
+				}
 			}
 		case *message.Unavailable:
 			decision = r.client.proxy.config.RetryPolicy.OnUnavailable(msg, r.retryCount)
@@ -158,12 +185,14 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 			)
 		case *message.ServerError, *message.Overloaded, *message.TruncateError,
 			*message.ReadFailure, *message.WriteFailure:
-			decision = r.client.proxy.config.RetryPolicy.OnErrorResponse(errMsg, r.retryCount)
-			if decision != ReturnError {
-				logger.Debug("retrying on error response",
-					zap.Stringer("decision", decision),
-					zap.Int("retryCount", r.retryCount),
-				)
+			if idempotent {
+				decision = r.client.proxy.config.RetryPolicy.OnErrorResponse(errMsg, r.retryCount)
+				if decision != ReturnError {
+					logger.Debug("retrying on error response",
+						zap.Stringer("decision", decision),
+						zap.Int("retryCount", r.retryCount),
+					)
+				}
 			}
 		default:
 			// Do nothing, return the error
