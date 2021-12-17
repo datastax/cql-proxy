@@ -19,7 +19,7 @@ import (
 )
 
 func isHandledSelectStmt(l *lexer, keyspace Identifier) (handled bool, stmt Statement, err error) {
-	l.mark()
+	l.mark() // Mark here because we might come back to parse the selector
 	t := untilToken(l, tkFrom)
 
 	if tkFrom != t {
@@ -37,7 +37,9 @@ func isHandledSelectStmt(l *lexer, keyspace Identifier) (handled bool, stmt Stat
 
 	selectStmt := &SelectStatement{Table: table.id}
 
-	l.rewind()
+	// This only parses the selectors if this is a query handled by the proxy
+
+	l.rewind() // Rewind to the selectors
 	for t = l.next(); tkFrom != t && tkEOF != t; t = skipToken(l, t, tkComma) {
 		var selector Selector
 		selector, t, err = parseSelector(l, t)
