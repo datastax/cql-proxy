@@ -16,8 +16,9 @@ package parser
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParser(t *testing.T) {
@@ -26,64 +27,84 @@ func TestParser(t *testing.T) {
 		query      string
 		handled    bool
 		idempotent bool
-		stmt       interface{}
+		stmt       Statement
+		err        error
 	}{
 		{"", "SELECT key, rpc_address AS address, count(*) FROM system.local", true, true, &SelectStatement{
 			Table: "local",
-			Selectors: []interface{}{
+			Selectors: []Selector{
 				&IDSelector{Name: "key"},
 				&AliasSelector{Alias: "address", Selector: &IDSelector{Name: "rpc_address"}},
 				&CountStarSelector{Name: "count(*)"},
 			},
-		}},
+		}, nil},
 		{"system", "SELECT count(*) FROM local", true, true, &SelectStatement{
 			Table: "local",
-			Selectors: []interface{}{
+			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
-		}},
+		}, nil},
+		{"system", "SELECT count(*) FROM \"local\"", true, true, &SelectStatement{
+			Table: "local",
+			Selectors: []Selector{
+				&CountStarSelector{Name: "count(*)"},
+			},
+		}, nil},
 		{"", "SELECT count(*) FROM system.peers", true, true, &SelectStatement{
 			Table: "peers",
-			Selectors: []interface{}{
+			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
-		}},
+		}, nil},
+		{"", "SELECT count(*) FROM \"system\".\"peers\"", true, true, &SelectStatement{
+			Table: "peers",
+			Selectors: []Selector{
+				&CountStarSelector{Name: "count(*)"},
+			},
+		}, nil},
 		{"system", "SELECT count(*) FROM peers", true, true, &SelectStatement{
 			Table: "peers",
-			Selectors: []interface{}{
+			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
-		}},
+		}, nil},
 		{"", "SELECT count(*) FROM system.peers_v2", true, true, &SelectStatement{
 			Table: "peers_v2",
-			Selectors: []interface{}{
+			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
-		}},
+		}, nil},
 		{"system", "SELECT count(*) FROM peers_v2", true, true, &SelectStatement{
 			Table: "peers_v2",
-			Selectors: []interface{}{
+			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
-		}},
-		{"", "SELECT func(key) FROM system.local", true, true, &ErrorSelectStatement{
-			Err: errors.New("unsupported select clause for system table"),
-		}},
+		}, nil},
+		{"", "SELECT func(key) FROM system.local", true, true, nil,
+			errors.New("unsupported select clause for system table")},
 		{"", "USE system", true, false, &UseStatement{
 			Keyspace: "system",
-		}},
-		{"", "SELECT count(*) FROM local", false, true, nil},
-		{"", "SELECT count(*) FROM peers", false, true, nil},
-		{"", "SELECT count(*) FROM peers_v2", false, true, nil},
-		{"", "INSERT INTO system.local (key, rpc_address) VALUES ('local1', '127.0.0.1')", false, false, nil},
-		{"", "UPDATE system.local SET rpc_address = '127.0.0.1' WHERE key = 'local'", false, false, nil},
-		{"", "DELETE rpc_address FROM system.local WHERE key = 'local'", false, false, nil},
+		}, nil},
+		// Reads from tables named similarly to system tables (not handled)
+		{"", "SELECT count(*) FROM local", false, true, nil, nil},
+		{"", "SELECT count(*) FROM peers", false, true, nil, nil},
+		{"", "SELECT count(*) FROM peers_v2", false, true, nil, nil},
+
+		// Mutations to system tables (not handled)
+		{"", "INSERT INTO system.local (key, rpc_address) VALUES ('local1', '127.0.0.1')", false, false, nil, nil},
+		{"", "UPDATE system.local SET rpc_address = '127.0.0.1' WHERE key = 'local'", false, false, nil, nil},
+		{"", "DELETE rpc_address FROM system.local WHERE key = 'local'", false, false, nil, nil},
 	}
 
 	for _, tt := range tests {
-		handled, idempotent, stmt := Parse(tt.keyspace, tt.query)
-		assert.Equal(t, tt.handled, handled, "invalid handled")
-		assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency")
-		assert.Equal(t, tt.stmt, stmt, "invalid parsed statement")
+		handled, stmt, err := IsQueryHandled(IdentifierFromString(tt.keyspace), tt.query)
+		assert.Equal(t, tt.err, err, tt.query)
+
+		idempotent, err := IsQueryIdempotent(tt.query)
+		assert.Nil(t, err, tt.query)
+
+		assert.Equal(t, tt.handled, handled, "invalid handled", tt.query)
+		assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency", tt.query)
+		assert.Equal(t, tt.stmt, stmt, "invalid parsed statement", tt.query)
 	}
 }
