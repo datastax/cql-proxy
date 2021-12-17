@@ -28,6 +28,8 @@ const (
 
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
 
+var nonIdempotentFuncs = []string{"uuid", "now"}
+
 type ValueLookupFunc func(name string) (value message.Column, err error)
 
 func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
@@ -129,6 +131,15 @@ func columnFromSelector(selector Selector, columns []*message.ColumnMetadata, ta
 func isSystemTable(name Identifier) bool {
 	for _, table := range systemTables {
 		if name.equal(table) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNonIdempotentFunc(name Identifier) bool {
+	for _, funcName := range nonIdempotentFuncs {
+		if name.equal(funcName) {
 			return true
 		}
 	}

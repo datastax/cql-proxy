@@ -91,9 +91,66 @@ func TestParser(t *testing.T) {
 		{"", "SELECT count(*) FROM peers_v2", false, true, nil, nil},
 
 		// Mutations to system tables (not handled)
-		{"", "INSERT INTO system.local (key, rpc_address) VALUES ('local1', '127.0.0.1')", false, false, nil, nil},
-		{"", "UPDATE system.local SET rpc_address = '127.0.0.1' WHERE key = 'local'", false, false, nil, nil},
-		{"", "DELETE rpc_address FROM system.local WHERE key = 'local'", false, false, nil, nil},
+		{"", "INSERT INTO system.local (key, rpc_address) VALUES ('local1', '127.0.0.1')", false, true, nil, nil},
+		{"", "UPDATE system.local SET rpc_address = '127.0.0.1' WHERE key = 'local'", false, true, nil, nil},
+		{"", "DELETE rpc_address FROM system.local WHERE key = 'local'", false, true, nil, nil},
+
+		// Mutations that use the functions whose values change e.g. uuid(), now() (not idempotent)
+		{"", "INSERT INTO ks.table (key, value) VALUES ('k1', uuid())", false, false, nil, nil},
+		{"", "INSERT INTO ks.table (key, value) VALUES ('k1', now())", false, false, nil, nil},
+		{"", "INSERT INTO ks.table (key, value) VALUES ('k1', nested(now()))", false, false, nil, nil},
+		{"", "INSERT INTO ks.table (key, value) VALUES ('k1', nested(uuid()))", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = uuid() WHERE k = 1", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = now() WHERE k = 1", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = nested(uuid()) WHERE k = 1", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = nested(now()) WHERE k = 1", false, false, nil, nil},
+
+		// Updates that prepend/append to a list (not idempotent)
+		{"", "UPDATE ks.table SET v = v + [1] WHERE k = 1", false, false, nil, nil}, // Append
+		{"", "UPDATE ks.table SET v = [1] + v WHERE k = 1", false, false, nil, nil}, // Prepend
+		{"", "UPDATE ks.table SET v += [1] WHERE k = 1", false, false, nil, nil},    // Append assign
+		{"", "UPDATE ks.table SET v -= [1] WHERE k = 1", false, false, nil, nil},    // Remove assign
+
+		// Updates to counter values (not idempotent)
+		{"", "UPDATE ks.table SET v = v + 1 WHERE k = 1", false, false, nil, nil}, // Left add
+		{"", "UPDATE ks.table SET v = 1 + v WHERE k = 1", false, false, nil, nil}, // Right add
+		{"", "UPDATE ks.table SET v += 1 WHERE k = 1", false, false, nil, nil},    // Add assign
+		{"", "UPDATE ks.table SET v = v - 1 WHERE k = 1", false, false, nil, nil}, // Left subtract
+		{"", "UPDATE ks.table SET v -= 1 WHERE k = 1", false, false, nil, nil},    // Subtract assign
+
+		// Update set/map (idempotent)
+		{"", "UPDATE ks.table SET v = v + { 1 } WHERE k = 1", false, true, nil, nil},        // Add to set (right)
+		{"", "UPDATE ks.table SET v = { 1 } + v WHERE k = 1", false, true, nil, nil},        // Add to set (left)
+		{"", "UPDATE ks.table SET v = v + { 'a': 1 } WHERE k = 1", false, true, nil, nil},   // Add to map (right)
+		{"", "UPDATE ks.table SET v =  { 'a': 1 } +  v WHERE k = 1", false, true, nil, nil}, // Add to map (left)
+
+		// Deletes to elements of a collection (not idempotent)
+		{"", "DELETE v[0] FROM ks.table WHERE k = 1", false, false, nil, nil},
+
+		// Deletes to elements of a collection (idempotent)
+		{"", "DELETE v['a'] FROM ks.table WHERE k = 1", false, true, nil, nil},                                  // String
+		{"", "DELETE v[0.0] FROM ks.table WHERE k = 1", false, true, nil, nil},                                  // Float
+		{"", "DELETE v[0x1] FROM ks.table WHERE k = 1", false, true, nil, nil},                                  // Hex (which is different from int)
+		{"", "DELETE v[true] FROM ks.table WHERE k = 1", false, true, nil, nil},                                 // Boolean true
+		{"", "DELETE v[false] FROM ks.table WHERE k = 1", false, true, nil, nil},                                // Boolean false
+		{"", "DELETE v[(1,2,3)] FROM ks.table WHERE k = 1", false, true, nil, nil},                              // Tuple
+		{"", "DELETE v[{field1: 1, field2: 'a'}] FROM ks.table WHERE k = 1", false, true, nil, nil},             // UDT
+		{"", "DELETE v[[1,2,3]] FROM ks.table WHERE k = 1", false, true, nil, nil},                              // List
+		{"", "DELETE v[{1,2,3}] FROM ks.table WHERE k = 1", false, true, nil, nil},                              // Set
+		{"", "DELETE v[{'a': 1}] FROM ks.table WHERE k = 1", false, true, nil, nil},                             // Map
+		{"", "DELETE v[Nan] FROM ks.table WHERE k = 1", false, true, nil, nil},                                  // Nan (float)
+		{"", "DELETE v[Infinity] FROM ks.table WHERE k = 1", false, true, nil, nil},                             // Infinity (float)
+		{"", "DELETE v[null] FROM ks.table WHERE k = 1", false, true, nil, nil},                                 // Null
+		{"", "DELETE v[2021Y12M03D] FROM ks.table WHERE k = 1", false, true, nil, nil},                          // Duration
+		{"", "DELETE v[123e4567-e89b-12d3-a456-426614174000] FROM ks.table WHERE k = 1", false, true, nil, nil}, // UUID
+
+		// Lightweight transactions (LWTs are not idempotent)
+		{"", "INSERT INTO ks.table (k, v) VALUES ('a', 1) IF NOT EXISTS", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = 1 WHERE k = 'a' IF v > 2", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = 1 WHERE k = 'a' IF EXISTS", false, false, nil, nil},
+		{"", "UPDATE ks.table SET v = 1 WHERE k = 'a' IF NOT EXISTS", false, false, nil, nil},
+		{"", "DELETE FROM ks.table WHERE k = 'a' IF EXISTS", false, false, nil, nil},
+		{"", "DELETE a.b, c.d FROM ks.table WHERE k = 'a' IF EXISTS", false, false, nil, nil},
 	}
 
 	for _, tt := range tests {

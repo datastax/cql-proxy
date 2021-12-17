@@ -14,6 +14,79 @@
 
 package parser
 
+import "errors"
+
 func isIdempotentUpdateStmt(l *lexer) (idempotent bool, err error) {
-	return false, nil
+	t := l.next()
+	if tkIdentifier != t {
+		return false, errors.New("expected identifier after 'UPDATE' in update statement")
+	}
+
+	_, _, t, err = parseQualifiedIdentifier(l)
+	if err != nil {
+		return false, err
+	}
+
+	t, err = parseUsingClause(l, t)
+	if err != nil {
+		return false, err
+	}
+
+	for !isUnreservedKeyword(l, t, "set") {
+		return false, errors.New("expected 'SET' in update statement")
+	}
+
+	for t = l.next(); tkIf != t && tkWhere != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+		idempotent, err = parseUpdateOp(l, t)
+		if !idempotent {
+			return idempotent, err
+		}
+	}
+
+	if tkWhere == t {
+		idempotent, t, err = parseWhereClause(l)
+		if !idempotent {
+			return idempotent, err
+		}
+	}
+
+	for tkIf != t && tkEOF != t {
+		t = l.next()
+	}
+
+	if tkIf == t {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func parseUsingClause(l *lexer, t token) (next token, err error) {
+	if tkUsing == t {
+		err = parseTtlOrTimestamp(l)
+		if err != nil {
+			return tkInvalid, err
+		}
+		if t = l.next(); tkAnd == t {
+			err = parseTtlOrTimestamp(l)
+			if err != nil {
+				return tkInvalid, err
+			}
+		}
+	}
+	return t, nil
+}
+
+func parseTtlOrTimestamp(l *lexer) error {
+	var t token
+	if t = l.next(); !isUnreservedKeyword(l, t, "ttl") && !isUnreservedKeyword(l, t, "timestamp") {
+		return errors.New("expected 'TTL' or 'TIMESTAMP' after 'USING'")
+	}
+	switch t = l.next(); t {
+	case tkInteger:
+		return nil
+	case tkColon, tkQMark:
+		return parseBindMarker(l, t)
+	}
+	return errors.New("expected integer or bind marker after 'TTL' or 'TIMESTAMP'")
 }

@@ -14,6 +14,54 @@
 
 package parser
 
+import "errors"
+
 func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
-	return false, nil
+	var t token
+	for t = l.next(); tkFrom != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+		if tkIdentifier != t {
+			return false, errors.New("unexpected token after 'DELETE' in delete statement")
+		}
+
+		l.mark()
+		switch t = l.next(); t {
+		case tkLsquare:
+			var typ termType
+			t = l.next()
+			if idempotent, typ, err = parseTerm(l, t); !idempotent {
+				return idempotent, err
+			}
+			if tkRsquare != l.next() {
+				return false, errors.New("expected closing ']' for the delete operation")
+			}
+			return isIdempotentDeleteElementTermType(typ), nil
+		case tkDot:
+			if tkIdentifier != l.next() {
+				return false, errors.New("expected another identifier after '.' for delete operation")
+			}
+		default:
+			l.rewind()
+		}
+	}
+
+	for tkIf != t && tkWhere != t && tkEOF != t {
+		t = l.next()
+	}
+
+	if tkWhere == t {
+		idempotent, t, err = parseWhereClause(l)
+		if !idempotent {
+			return idempotent, err
+		}
+	}
+
+	for tkIf != t && tkEOF != t {
+		t = l.next()
+	}
+
+	if tkIf == t {
+		return false, nil
+	}
+
+	return true, nil
 }
