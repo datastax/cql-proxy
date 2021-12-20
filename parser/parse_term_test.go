@@ -28,11 +28,8 @@ func TestParseTerm(t *testing.T) {
 		err        error
 		msg        string
 	}{
-		{"system.now()", false, termFunctionCall, nil, "qualified 'now()' function"},
-		{"system.uuid()", false, termFunctionCall, nil, "qualified 'uuid()' function "},
 		{"system.someOtherFunc()", true, termFunctionCall, nil, "qualified idempotent function"},
 		{"[1, 2, 3]", true, termListLiteral, nil, "list literal"},
-		{"[now(), 2, 3]", false, termInvalid, nil, "list literal with 'now()' function"},
 		{"123", true, termIntegerLiteral, nil, "integer literal"},
 		{"{1, 2, 3}", true, termSetMapUdtLiteral, nil, "set literal"},
 		{"{ a: 1, a.b: 2, c: 3}", true, termSetMapUdtLiteral, nil, "UDT literal"},
@@ -41,7 +38,14 @@ func TestParseTerm(t *testing.T) {
 		{":abc", true, termBindMarker, nil, "named bind marker"},
 		{"?", true, termBindMarker, nil, "positional bind marker"},
 		{"(map<int, text>)1", true, termCast, nil, "cast to a complex type"},
-		{"(uuid)now()", false, termInvalid, nil, "cast of the 'now()' function"},
+		{"func(a, b, c)", true, termFunctionCall, nil, "function with identifier args"},
+		// Not idempotent
+		{"system.now()", false, termFunctionCall, nil, "qualified 'now()' function"},
+		{"system.uuid()", false, termFunctionCall, nil, "qualified 'uuid()' function "},
+		{"(uuid)now()", false, termCast, nil, "cast of the 'now()' function"},
+		{"now(a, b, c, '1', 0)", false, termFunctionCall, nil, "'now()' function w/ args"},
+		{"[now(), 2, 3]", false, termListLiteral, nil, "list literal with 'now()' function"},
+		{"{now():'a'}", false, termSetMapUdtLiteral, nil, "map literal with 'now()' function"},
 	}
 
 	for _, tt := range tests {

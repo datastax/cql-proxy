@@ -176,3 +176,16 @@ func parseQualifiedIdentifier(l *lexer) (keyspace, target Identifier, t token, e
 		return Identifier{}, temp, t, nil
 	}
 }
+
+func parseIdentifiers(l *lexer, t token) (err error) {
+	for tkRparen != t && tkEOF != t {
+		if tkIdentifier != t {
+			return errors.New("expected identifier")
+		}
+		t = skipToken(l, l.next(), tkComma)
+	}
+	if tkRparen != t {
+		return errors.New("expected closing ')' for identifiers")
+	}
+	return nil
+}
