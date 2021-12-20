@@ -82,6 +82,10 @@ func TestParser(t *testing.T) {
 		}, nil},
 		{"", "SELECT func(key) FROM system.local", true, true, nil,
 			errors.New("unsupported select clause for system table")},
+		{"", "SELECT JSON * FROM system.local", true, true, nil,
+			errors.New("proxy is unable to do 'JSON' or 'DISTINCT' for handled system queries")},
+		{"", "SELECT DISTINCT * FROM system.local", true, true, nil,
+			errors.New("proxy is unable to do 'JSON' or 'DISTINCT' for handled system queries")},
 		{"", "USE system", true, false, &UseStatement{
 			Keyspace: "system",
 		}, nil},
