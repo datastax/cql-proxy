@@ -70,7 +70,7 @@ func isIdempotentInsertStmt(l *lexer) (idempotent bool, err error) {
 		}
 	}
 
-	for t = l.next(); t != tkEOF; {
+	for t = l.next(); t != tkEOF; t = l.next() {
 		if tkIf == t {
 			return false, nil
 		}

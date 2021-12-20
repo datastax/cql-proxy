@@ -26,11 +26,13 @@ func TestIsIdempotentInsertStmt(t *testing.T) {
 		{"INSERT INTO table (a, b, c) VALUES 1, 'a', 0.1)", false, true, "missing opening paren. on values"},
 		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1", false, true, "missing closing paren. on values"},
 		{"INSERT INTO table () VALUES ()", true, false, "no identifier of values"},
+		{"INSERT INTO table JSON '{}'", true, false, "JSON"},
 		// Not idempotent
 		{"INSERT INTO table (a, b, c) VALUES (now(), 'a', 0.1)", false, false, "simple w/ 'now()'"},
 		{"INSERT INTO table (a, b, c) VALUES (0, uuid(), 0.1)", false, false, "simple w/ 'uuid()'"},
 		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1) IF NOT EXISTS", false, false, "simple w/ LWT"},
 		{"INSERT INTO table () VALUES () IF NOT EXIST", false, false, "no identifier of values w/ LWT"},
+		{"INSERT INTO table JSON '{}' IF NOT EXIST", false, false, "'JSON' w/ LWT"},
 	}
 
 	for _, tt := range tests {
