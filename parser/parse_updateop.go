@@ -16,6 +16,25 @@ package parser
 
 import "errors"
 
+// Determines if an update operation is idempotent.
+//
+// Non-idempotent update operations include:
+// * Using a non-idempotent function e.g. now(), uuid()
+// * Prepends or appends to a list type
+// * Increments or decrements a counter
+//
+// Important: There are currently some ambiguous cases where if the type is not known we cannot correctly
+// determine if an operation is idempotent. These include:
+// * Using a bind marker (this could be fixed for prepared statements using the prepared metadata)
+// * Function calls
+//
+// updateOperation
+//    : identifier '=' term ( '+' identifier )?
+//    | identifier '=' identifier ( '+' | '-' ) term
+//    | identifier ( '+=' | '-=' ) term
+//    | identifier '[' term ']' '=' term
+//    | identifier '.' identifier '=' term
+//
 func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 	if tkIdentifier != t {
 		return false, errors.New("expected identifier after 'SET' in update statement")
@@ -91,13 +110,4 @@ func isIdempotentUpdateOpTermType(typ termType) bool {
 	// * Function call (ambiguous, so not idempotent)
 	// * Type cast (probably not idempotent)
 	return typ == termSetMapUdtLiteral || typ == termTupleLiteral
-}
-
-func isIdempotentDeleteElementTermType(typ termType) bool {
-	// Delete element terms can be one of the following:
-	// * Literal (idempotent, if not an integer literal)
-	// * Bind marker (ambiguous, so not idempotent)
-	// * Function call (ambiguous, so not idempotent)
-	// * Type cast (ambiguous)
-	return typ != termIntegerLiteral && typ != termBindMarker && typ != termFunctionCall && typ != termCast
 }

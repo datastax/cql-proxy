@@ -47,6 +47,14 @@ func TestParseRelation(t *testing.T) {
 		{"(id1, id2, id3) < :named", true, nil, "list in named bind marker"},
 		{"(id1, id2, id3) >= (?, ?, :named)", true, nil, "list in list of bind markers"},
 		{"(id1, id2, id3) <= (('a', ?, 0), ('b', :named, 1))", true, nil, "list in list of tuples"},
+		// Not idempotent
+		{"id > now()", false, nil, "simple operator relation w/ 'now()'"},
+		{"id LIKE now()", false, nil, "'like' relation w/ 'now()'"},
+		{"id CONTAINS now()", false, nil, "'contains' relation w/ 'now()'"},
+		{"id CONTAINS KEY now()", false, nil, "'contains key' relation w/ 'now()'"},
+		{"id1 IN (now(), uuid())", false, nil, "'in' relation w/ 'now()'"},
+		{"(id1, id2) IN (now(), uuid())", false, nil, "list 'IN' relation w/ 'now()'"},
+		{"(id1, id2) < (now(), uuid())", false, nil, "list operator reation w/ 'now()'"},
 	}
 
 	for _, tt := range tests {

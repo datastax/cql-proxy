@@ -16,6 +16,9 @@ package parser
 
 import "errors"
 
+// Determine if where clause is idempotent for an UPDATE or DELETE mutation.
+//
+// whereClause: 'WHERE' relation ( 'AND' relation )*
 func parseWhereClause(l *lexer) (idempotent bool, t token, err error) {
 	for t = l.next(); tkIf != t && tkEOF != t; t = skipToken(l, l.next(), tkAnd) {
 		idempotent, err = parseRelation(l, t)
@@ -26,6 +29,20 @@ func parseWhereClause(l *lexer) (idempotent bool, t token, err error) {
 	return true, t, nil
 }
 
+// Determine if a relation is idempotent for an UPDATE or DELETE mutation.
+//
+// relation
+// : identifier operator term
+// | 'TOKEN' '(' identifiers ')' operator term
+// | identifier 'LIKE' term
+// | identifier 'IS' 'NOT' 'NULL'
+// | identifier 'CONTAINS' 'KEY'? term
+// | identifier '[' term ']' operator term
+// | identifier 'IN' ( '(' terms? ')' | bindMarker )
+// | '(' identifiers ')' 'IN' ( '(' terms? ')' | bindMarker )
+// | '(' identifiers ')' operator ( '(' terms? ')' | bindMarker )
+// | '(' relation ')'
+//
 func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 	switch t {
 	case tkIdentifier:
@@ -131,7 +148,7 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 
 func parseIdentifiersRelation(l *lexer) (idempotent bool, err error) {
 	switch t := l.next(); t {
-	case tkIn, tkEqual, tkLt, tkLtEqual, tkGt, tkGtEqual, tkNotEqual: // '(' identifiers ')' 'in' ... | '(' identifiers ')' operator ...
+	case tkIn, tkEqual, tkLt, tkLtEqual, tkGt, tkGtEqual, tkNotEqual: // '(' identifiers ')' 'IN' ... | '(' identifiers ')' operator ...
 		switch t = l.next(); t {
 		case tkColon, tkQMark:
 			err = parseBindMarker(l, t)

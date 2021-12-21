@@ -65,3 +65,12 @@ func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
 
 	return true, nil
 }
+
+func isIdempotentDeleteElementTermType(typ termType) bool {
+	// Delete element terms can be one of the following:
+	// * Literal (idempotent, if not an integer literal)
+	// * Bind marker (ambiguous, so not idempotent)
+	// * Function call (ambiguous, so not idempotent)
+	// * Type cast (ambiguous)
+	return typ != termIntegerLiteral && typ != termBindMarker && typ != termFunctionCall && typ != termCast
+}
