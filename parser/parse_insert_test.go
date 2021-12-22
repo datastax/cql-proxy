@@ -15,6 +15,9 @@ func TestIsIdempotentInsertStmt(t *testing.T) {
 	}{
 		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1)", true, false, "simple"},
 		{"INSERT INTO ks.table (a, b, c) VALUES (1, 'a', 0.1)", true, false, "simple qualified table name"},
+		{"INSERT INTO table () VALUES ()", true, false, "no identifier of values"},
+		{"INSERT INTO table JSON '{}'", true, false, "JSON"},
+
 		// Invalid
 		{"INSERT table (a, b, c) VALUES (1, 'a', 0.1)", false, true, "missing 'INTO'"},
 		{"INSERT INTO (a, b, c) VALUES (1, 'a', 0.1)", false, true, "missing table name"},
@@ -25,8 +28,7 @@ func TestIsIdempotentInsertStmt(t *testing.T) {
 		{"INSERT INTO table (a, b, c) VALUES (invalid, 'a', 0.1)", false, true, "invalid value"},
 		{"INSERT INTO table (a, b, c) VALUES 1, 'a', 0.1)", false, true, "missing opening paren. on values"},
 		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1", false, true, "missing closing paren. on values"},
-		{"INSERT INTO table () VALUES ()", true, false, "no identifier of values"},
-		{"INSERT INTO table JSON '{}'", true, false, "JSON"},
+
 		// Not idempotent
 		{"INSERT INTO table (a, b, c) VALUES (now(), 'a', 0.1)", false, false, "simple w/ 'now()'"},
 		{"INSERT INTO table (a, b, c) VALUES (0, uuid(), 0.1)", false, false, "simple w/ 'uuid()'"},

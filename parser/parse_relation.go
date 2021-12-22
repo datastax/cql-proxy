@@ -19,6 +19,7 @@ import "errors"
 // Determine if where clause is idempotent for an UPDATE or DELETE mutation.
 //
 // whereClause: 'WHERE' relation ( 'AND' relation )*
+//
 func parseWhereClause(l *lexer) (idempotent bool, t token, err error) {
 	for t = l.next(); tkIf != t && tkEOF != t; t = skipToken(l, l.next(), tkAnd) {
 		idempotent, err = parseRelation(l, t)
@@ -95,6 +96,9 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 						return idempotent, err
 					}
 				}
+				if tkRparen != t {
+					return false, errors.New("expected closing ')' after terms")
+				}
 			case tkColon, tkQMark:
 				err = parseBindMarker(l, t)
 				if err != nil {
@@ -146,9 +150,14 @@ func parseRelation(l *lexer, t token) (idempotent bool, err error) {
 	return true, nil
 }
 
+// Determines if identifiers relation is idempotent.
+//
+//  ... 'IN' ( '(' terms? ')' | bindMarker )
+//  ... operator ( '(' terms? ')' | bindMarker )
+//
 func parseIdentifiersRelation(l *lexer) (idempotent bool, err error) {
 	switch t := l.next(); t {
-	case tkIn, tkEqual, tkLt, tkLtEqual, tkGt, tkGtEqual, tkNotEqual: // '(' identifiers ')' 'IN' ... | '(' identifiers ')' operator ...
+	case tkIn, tkEqual, tkLt, tkLtEqual, tkGt, tkGtEqual, tkNotEqual:
 		switch t = l.next(); t {
 		case tkColon, tkQMark:
 			err = parseBindMarker(l, t)
@@ -164,6 +173,8 @@ func parseIdentifiersRelation(l *lexer) (idempotent bool, err error) {
 			if tkRparen != t {
 				return false, errors.New("expected closing ')' in identifiers relation")
 			}
+		default:
+			return false, errors.New("unexpected term token in identifiers relation")
 		}
 	default:
 		return false, errors.New("unexpected token in identifiers relation")
@@ -172,10 +183,11 @@ func parseIdentifiersRelation(l *lexer) (idempotent bool, err error) {
 	return true, nil
 }
 
-func isOperator(t token) bool {
-	return tkEqual == t || tkLt == t || tkLtEqual == t || tkGt == t || tkGtEqual == t || tkNotEqual == t
-}
-
+// Parses the remainder of a bind marker.
+//
+// bindMarker
+// : ':' identifier
+// | '?'
 func parseBindMarker(l *lexer, t token) error {
 	switch t {
 	case tkColon:
@@ -188,4 +200,8 @@ func parseBindMarker(l *lexer, t token) error {
 		return errors.New("invalid bind marker")
 	}
 	return nil
+}
+
+func isOperator(t token) bool {
+	return tkEqual == t || tkLt == t || tkLtEqual == t || tkGt == t || tkGtEqual == t || tkNotEqual == t
 }

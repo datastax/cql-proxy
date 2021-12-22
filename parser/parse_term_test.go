@@ -25,27 +25,37 @@ func TestParseTerm(t *testing.T) {
 		term       string
 		idempotent bool
 		typ        termType
-		err        error
+		hasError   bool
 		msg        string
 	}{
-		{"system.someOtherFunc()", true, termFunctionCall, nil, "qualified idempotent function"},
-		{"[1, 2, 3]", true, termListLiteral, nil, "list literal"},
-		{"123", true, termIntegerLiteral, nil, "integer literal"},
-		{"{1, 2, 3}", true, termSetMapUdtLiteral, nil, "set literal"},
-		{"{ a: 1, a.b: 2, c: 3}", true, termSetMapUdtLiteral, nil, "UDT literal"},
-		{"{ 'a': 1, 'b': 2, 'c': 3}", true, termSetMapUdtLiteral, nil, "map literal"},
-		{"(1, 'a', [])", true, termTupleLiteral, nil, "tuple literal"},
-		{":abc", true, termBindMarker, nil, "named bind marker"},
-		{"?", true, termBindMarker, nil, "positional bind marker"},
-		{"(map<int, text>)1", true, termCast, nil, "cast to a complex type"},
-		{"func(a, b, c)", true, termFunctionCall, nil, "function with identifier args"},
+		{"system.someOtherFunc()", true, termFunctionCall, false, "qualified idempotent function"},
+		{"[1, 2, 3]", true, termListLiteral, false, "list literal"},
+		{"123", true, termIntegerLiteral, false, "integer literal"},
+		{"{1, 2, 3}", true, termSetMapUdtLiteral, false, "set literal"},
+		{"{ a: 1, a.b: 2, c: 3}", true, termSetMapUdtLiteral, false, "UDT literal"},
+		{"{ 'a': 1, 'b': 2, 'c': 3}", true, termSetMapUdtLiteral, false, "map literal"},
+		{"(1, 'a', [])", true, termTupleLiteral, false, "tuple literal"},
+		{":abc", true, termBindMarker, false, "named bind marker"},
+		{"?", true, termBindMarker, false, "positional bind marker"},
+		{"(map<int, text>)1", true, termCast, false, "cast to a complex type"},
+		{"func(a, b, c)", true, termFunctionCall, false, "function with identifier args"},
+
+		// Invalid
+		{"system.someOtherFunc", false, termFunctionCall, true, "invalid qualified function"},
+		{"func", false, termFunctionCall, true, "invalid function"},
+		{"[1, 2, 3", false, termListLiteral, true, "invalid list literal"},
+		{"{1, 2, 3", false, termSetMapUdtLiteral, true, "invalid set literal"},
+		{"{ a: 1, a.b: 2, c: 3", false, termSetMapUdtLiteral, true, "invalid UDT literal"},
+		{"{ 'a': 1, 'b': 2, 'c': 3", false, termSetMapUdtLiteral, true, "invalid map literal"},
+		{"+123", false, termInvalid, true, "invalid term"},
+
 		// Not idempotent
-		{"system.now()", false, termFunctionCall, nil, "qualified 'now()' function"},
-		{"system.uuid()", false, termFunctionCall, nil, "qualified 'uuid()' function "},
-		{"(uuid)now()", false, termCast, nil, "cast of the 'now()' function"},
-		{"now(a, b, c, '1', 0)", false, termFunctionCall, nil, "'now()' function w/ args"},
-		{"[now(), 2, 3]", false, termListLiteral, nil, "list literal with 'now()' function"},
-		{"{now():'a'}", false, termSetMapUdtLiteral, nil, "map literal with 'now()' function"},
+		{"system.now()", false, termFunctionCall, false, "qualified 'now()' function"},
+		{"system.uuid()", false, termFunctionCall, false, "qualified 'uuid()' function "},
+		{"(uuid)now()", false, termCast, false, "cast of the 'now()' function"},
+		{"now(a, b, c, '1', 0)", false, termFunctionCall, false, "'now()' function w/ args"},
+		{"[now(), 2, 3]", false, termListLiteral, false, "list literal with 'now()' function"},
+		{"{now():'a'}", false, termSetMapUdtLiteral, false, "map literal with 'now()' function"},
 	}
 
 	for _, tt := range tests {
@@ -54,6 +64,6 @@ func TestParseTerm(t *testing.T) {
 		idempotent, typ, err := parseTerm(&l, l.next())
 		assert.Equal(t, tt.idempotent, idempotent, tt.msg)
 		assert.Equal(t, tt.typ, typ, tt.msg)
-		assert.Equal(t, err, err, tt.msg)
+		assert.True(t, (err != nil) == tt.hasError, tt.msg)
 	}
 }
