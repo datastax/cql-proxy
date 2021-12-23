@@ -77,7 +77,7 @@ func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 		}
 		return isIdempotentUpdateOpTermType(typ), nil
 	case tkLsquare: // identifier '[' term ']' = term
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 		if tkRsquare != l.next() {
@@ -86,14 +86,17 @@ func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 		if tkEqual != l.next() {
 			return false, errors.New("expected '=' in update operation")
 		}
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 	case tkDot: // identifier '.' identifier '=' term
-		if t = l.next(); tkIdentifier != t {
-			return false, errors.New("expected identifier after '+' operator in update operation")
+		if tkIdentifier != l.next() {
+			return false, errors.New("expected identifier after '.' in update operation")
 		}
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if tkEqual != l.next() {
+			return false, errors.New("expected '=' in update operation")
+		}
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 	default:

@@ -18,6 +18,11 @@ import "errors"
 
 // Determines if an update statement is idempotent.
 //
+// An update statement not idempotent if:
+// * it contains an update operation that appends/prepends to a list or updates a counter
+// * uses a lightweight transaction (LWT) e.g. 'IF EXISTS' or 'IF a > 0'
+// * has an update operation or relation that uses a non-idempotent function e.g. now() or uuid()
+//
 // updateStatement: 'UPDATE' tableName usingClause? 'SET' updateOperations whereClause( 'IF' ( 'EXISTS' | conditions ))?
 // tableName: ( identifier '.' )? identifier
 //
@@ -85,6 +90,7 @@ func parseUsingClause(l *lexer, t token) (next token, err error) {
 			if err != nil {
 				return tkInvalid, err
 			}
+			return l.next(), nil
 		}
 	}
 	return t, nil

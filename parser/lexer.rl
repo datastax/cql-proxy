@@ -187,6 +187,7 @@ func (l *lexer) next() token {
             '-=' => { tk = tkSubEqual; fbreak; };
             '-'? /nan/i => { tk = tkNan; fbreak; };
             '-'? /infinity/i => { tk = tkInfinity; fbreak; };
+            ';' => { tk = tkEOF; fbreak; };
             pgstring | string => { tk = tkStringLiteral; fbreak; };
             integer => { tk = tkInteger; fbreak; };
             float => { tk = tkFloat; fbreak; };

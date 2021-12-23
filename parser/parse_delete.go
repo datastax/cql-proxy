@@ -16,9 +16,21 @@ package parser
 
 import "errors"
 
+// Determines if a delete statement is idempotent.
+//
+// A delete statement not idempotent if:
+// * removes an element from a list
+// * uses a lightweight transaction (LWT) e.g. 'IF EXISTS' or 'IF a > 0'
+// * has a relation that uses a non-idempotent function e.g. now() or uuid()
+//
+// deleteStatement: 'DELETE'  deleteOperations? 'FROM' tableName ( 'USING' timestamp )? whereClause ( 'IF' ( 'EXISTS' | conditions ) )?
+// deleteOperations: deleteOperation ( ',' deleteOperation )*
+// deleteOperation: identifier | identifier '[' term ']'| identifier '.' identifier
+// tableName: ( identifier '.' )? identifier
+//
 func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
-	var t token
-	for t = l.next(); tkFrom != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+	t := l.next()
+	for ; tkFrom != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 		if tkIdentifier != t {
 			return false, errors.New("unexpected token after 'DELETE' in delete statement")
 		}
@@ -27,8 +39,7 @@ func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
 		switch t = l.next(); t {
 		case tkLsquare:
 			var typ termType
-			t = l.next()
-			if idempotent, typ, err = parseTerm(l, t); !idempotent {
+			if idempotent, typ, err = parseTerm(l, l.next()); !idempotent {
 				return idempotent, err
 			}
 			if tkRsquare != l.next() {
