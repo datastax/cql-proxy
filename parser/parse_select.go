@@ -20,6 +20,9 @@ import (
 
 // Determines is the proxy handles the select statement.
 //
+// Currently, the only handled 'SELECT' queries are for tables in the 'system' keyspace and are matched by the
+// `isSystemTable()` function. This includes 'system.local' 'system.peers/peers_v2', and legacy schema tables.
+//
 // selectStmt: 'SELECT' 'JSON'? 'DISTINCT'? 'FROM' selectClause ...
 // selectClause: '*' | selectors
 //
@@ -41,7 +44,7 @@ func isHandledSelectStmt(l *lexer, keyspace Identifier) (handled bool, stmt Stat
 		return false, nil, err
 	}
 
-	selectStmt := &SelectStatement{Table: table.id}
+	selectStmt := &SelectStatement{Keyspace: "system", Table: table.id}
 
 	// This only parses the selectors if this is a query handled by the proxy
 

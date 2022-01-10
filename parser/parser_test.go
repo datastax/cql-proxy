@@ -30,7 +30,8 @@ func TestParser(t *testing.T) {
 		hasError   bool
 	}{
 		{"", "SELECT key, rpc_address AS address, count(*) FROM system.local", true, true, &SelectStatement{
-			Table: "local",
+			Keyspace: "system",
+			Table:    "local",
 			Selectors: []Selector{
 				&IDSelector{Name: "key"},
 				&AliasSelector{Alias: "address", Selector: &IDSelector{Name: "rpc_address"}},
@@ -38,43 +39,50 @@ func TestParser(t *testing.T) {
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM local", true, true, &SelectStatement{
-			Table: "local",
+			Keyspace: "system",
+			Table:    "local",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM \"local\"", true, true, &SelectStatement{
-			Table: "local",
+			Keyspace: "system",
+			Table:    "local",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
 		}, false},
 		{"", "SELECT count(*) FROM system.peers", true, true, &SelectStatement{
-			Table: "peers",
+			Keyspace: "system",
+			Table:    "peers",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
 		}, false},
 		{"", "SELECT count(*) FROM \"system\".\"peers\"", true, true, &SelectStatement{
-			Table: "peers",
+			Keyspace: "system",
+			Table:    "peers",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM peers", true, true, &SelectStatement{
-			Table: "peers",
+			Keyspace: "system",
+			Table:    "peers",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
 		}, false},
 		{"", "SELECT count(*) FROM system.peers_v2", true, true, &SelectStatement{
-			Table: "peers_v2",
+			Keyspace: "system",
+			Table:    "peers_v2",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM peers_v2", true, true, &SelectStatement{
-			Table: "peers_v2",
+			Keyspace: "system",
+			Table:    "peers_v2",
 			Selectors: []Selector{
 				&CountStarSelector{Name: "count(*)"},
 			},
