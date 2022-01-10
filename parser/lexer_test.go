@@ -73,12 +73,3 @@ func TestLexerLiterals(t *testing.T) {
 		assert.Equal(t, tt.tk, l.next(), fmt.Sprintf("failed on literal: %s", tt.literal))
 	}
 }
-
-func TestLexerFloat(t *testing.T) {
-	var tests = []string{"0", "1", "-1", "-99999"}
-	for _, tt := range tests {
-		var l lexer
-		l.init(tt)
-		assert.Equal(t, tkInteger, l.next())
-	}
-}

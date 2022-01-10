@@ -49,6 +49,7 @@ type Statement interface {
 }
 
 type SelectStatement struct {
+	Keyspace  string
 	Table     string
 	Selectors []Selector
 }
