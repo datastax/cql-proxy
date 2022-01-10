@@ -15,21 +15,35 @@
 package proxy
 
 import (
+	"crypto/md5"
 	"io"
 	"sync"
 
+	"github.com/datastax/cql-proxy/parser"
 	"github.com/datastax/cql-proxy/proxycore"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"go.uber.org/zap"
 )
 
+type idempotentState int
+
+const (
+	notDetermined idempotentState = iota
+	notIdempotent
+	isIdempotent
+)
+
 type request struct {
 	client     *client
 	session    *proxycore.Session
-	idempotent bool
+	state      idempotentState
+	keyspace   string
+	query      string
 	done       bool
+	retryCount int
 	host       *proxycore.Host
 	stream     int16
 	qp         proxycore.QueryPlan
@@ -39,7 +53,12 @@ type request struct {
 
 func (r *request) Execute(next bool) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.executeInternal(next)
+	r.mu.Unlock()
+}
+
+// lock before using
+func (r *request) executeInternal(next bool) {
 	for !r.done {
 		if next {
 			r.host = r.qp.Next()
@@ -75,16 +94,29 @@ func (r *request) Frame() interface{} {
 	return r.raw
 }
 
+func (r *request) checkIdempotent() bool {
+	idempotent := false
+	if r.state == notDetermined {
+		var err error
+		idempotent, err = parser.IsQueryIdempotent(r.query)
+		if err != nil {
+			r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+		}
+	}
+	return idempotent
+}
+
 func (r *request) OnClose(_ error) {
-	if r.idempotent {
-		r.Execute(true)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.checkIdempotent() {
+		r.executeInternal(true)
 	} else {
-		r.mu.Lock()
 		if !r.done {
 			r.done = true
 			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (cluster connection closed and request is not idempotent)"})
 		}
-		r.mu.Unlock()
 	}
 }
 
@@ -92,6 +124,22 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 	r.mu.Lock()
 	if !r.done {
 		r.done = true
+		if r.raw.Header.OpCode == primitive.OpCodePrepare && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
+			frm, err := codec.ConvertFromRawFrame(raw)
+			if err != nil {
+				r.client.proxy.logger.Error("error attempting to decode prepared result message")
+			} else if _, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
+				r.client.proxy.logger.Error("expected prepared result message, but got something else")
+			} else {
+				idempotent, err := parser.IsQueryIdempotent(r.query)
+				if err != nil {
+					r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+				} else {
+					// TODO: Make sure this hash matches server-side impl.
+					r.client.preparedIdempotence.Store(md5.Sum([]byte(r.keyspace+r.query)), idempotent)
+				}
+			}
+		}
 		r.sendRaw(raw)
 	}
 	r.mu.Unlock()

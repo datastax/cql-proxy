@@ -168,9 +168,13 @@ func (c MockClient) filterValues(version primitive.ProtocolVersion, stmt *parser
 }
 
 func (c *MockClient) InterceptQuery(hdr *frame.Header, msg *message.Query) message.Message {
-	handled, _, stmt := parser.Parse(c.keyspace, msg.Query)
+	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.Query)
 
 	if handled {
+		if err != nil {
+			return &message.Invalid{ErrorMessage: err.Error()}
+		}
+
 		switch s := stmt.(type) {
 		case *parser.SelectStatement:
 			if s.Table == "local" {
@@ -216,8 +220,6 @@ func (c *MockClient) InterceptQuery(hdr *frame.Header, msg *message.Query) messa
 		case *parser.UseStatement:
 			c.keyspace = s.Keyspace
 			return &message.SetKeyspaceResult{Keyspace: s.Keyspace}
-		case *parser.ErrorSelectStatement:
-			return &message.Invalid{ErrorMessage: s.Err.Error()}
 		default:
 			return &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"}
 		}

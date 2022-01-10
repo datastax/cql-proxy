@@ -207,7 +207,7 @@ func TestConnectPool_InvalidKeyspace(t *testing.T) {
 		Handlers: NewMockRequestHandlers(MockRequestHandlers{
 			primitive.OpCodeQuery: func(cl *MockClient, frm *frame.Frame) message.Message {
 				msg := frm.Body.Message.(*message.Query)
-				handled, _, stmt := parser.Parse(cl.keyspace, msg.Query)
+				handled, stmt, _ := parser.IsQueryHandled(parser.IdentifierFromString(cl.keyspace), msg.Query)
 
 				if handled {
 					switch stmt.(type) {
