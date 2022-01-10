@@ -28,6 +28,8 @@ const (
 
 var systemTables = []string{"local", "peers", "peers_v2", "schema_keyspaces", "schema_columnfamilies", "schema_columns", "schema_usertypes"}
 
+var nonIdempotentFuncs = []string{"uuid", "now"}
+
 type ValueLookupFunc func(name string) (value message.Column, err error)
 
 func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
@@ -135,6 +137,15 @@ func isSystemTable(name Identifier) bool {
 	return false
 }
 
+func isNonIdempotentFunc(name Identifier) bool {
+	for _, funcName := range nonIdempotentFuncs {
+		if name.equal(funcName) {
+			return true
+		}
+	}
+	return false
+}
+
 func isUnreservedKeyword(l *lexer, t token, keyword string) bool {
 	return tkIdentifier == t && l.identifier().equal(keyword)
 }
@@ -164,4 +175,17 @@ func parseQualifiedIdentifier(l *lexer) (keyspace, target Identifier, t token, e
 	} else {
 		return Identifier{}, temp, t, nil
 	}
+}
+
+func parseIdentifiers(l *lexer, t token) (err error) {
+	for tkRparen != t && tkEOF != t {
+		if tkIdentifier != t {
+			return errors.New("expected identifier")
+		}
+		t = skipToken(l, l.next(), tkComma)
+	}
+	if tkRparen != t {
+		return errors.New("expected closing ')' for identifiers")
+	}
+	return nil
 }

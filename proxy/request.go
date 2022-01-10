@@ -95,15 +95,18 @@ func (r *request) Frame() interface{} {
 }
 
 func (r *request) checkIdempotent() bool {
-	idempotent := false
-	if r.state == notDetermined {
-		var err error
-		idempotent, err = parser.IsQueryIdempotent(r.query)
+	if notDetermined == r.state {
+		idempotent, err := parser.IsQueryIdempotent(r.query)
 		if err != nil {
 			r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
 		}
+		if idempotent {
+			r.state = isIdempotent
+		} else {
+			r.state = notIdempotent
+		}
 	}
-	return idempotent
+	return isIdempotent == r.state
 }
 
 func (r *request) OnClose(_ error) {

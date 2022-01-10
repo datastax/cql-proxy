@@ -14,6 +14,67 @@
 
 package parser
 
+import "errors"
+
+// Determines if an insert statement is idempotent.
+//
+// An insert statement is not idempotent if it contains a non-idempotent term e.g. 'now()' or 'uuid()' or if it uses
+// lightweight transactions (LWTs) e.g. using 'IF NOT EXISTS'.
+//
+// insertStatement: 'INSERT' 'INTO' tableName ( namedValues | jsonClause ) ( 'IF' 'NOT' 'EXISTS' )?
+// tableName: ( identifier '.' )? identifier
+// namedValues: '(' identifiers ')' 'VALUES' '(' terms ')'
+// jsonClause: 'JSON' stringLiteral ( 'DEFAULT' ( 'NULL' | 'UNSET' ) )?
+//
 func isIdempotentInsertStmt(l *lexer) (idempotent bool, err error) {
-	return false, nil
+	t := l.next()
+	if tkInto != t {
+		return false, errors.New("expected 'INTO' after 'INSERT' for insert statement")
+	}
+
+	if t = l.next(); tkIdentifier != t {
+		return false, errors.New("expected identifier after 'INTO' in insert statement")
+	}
+
+	_, _, t, err = parseQualifiedIdentifier(l)
+	if err != nil {
+		return false, err
+	}
+
+	if !isUnreservedKeyword(l, t, "json") {
+		if tkLparen != t {
+			return false, errors.New("expected '(' after table name for insert statement")
+		}
+
+		err = parseIdentifiers(l, l.next())
+		if err != nil {
+			return false, err
+		}
+
+		if !isUnreservedKeyword(l, l.next(), "values") {
+			return false, errors.New("expected 'VALUES' after identifiers in insert statement")
+		}
+
+		if t != l.next() {
+			return false, errors.New("expected '(' after 'VALUES' in insert statement")
+		}
+
+		for t = l.next(); tkRparen != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+			if idempotent, _, err = parseTerm(l, t); !idempotent {
+				return idempotent, err
+			}
+		}
+
+		if t != tkRparen {
+			return false, errors.New("expected closing ')' for 'VALUES' list in insert statement")
+		}
+	}
+
+	for t = l.next(); t != tkEOF; t = l.next() {
+		if tkIf == t {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

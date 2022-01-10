@@ -14,6 +14,74 @@
 
 package parser
 
+import "errors"
+
+// Determines if a delete statement is idempotent.
+//
+// A delete statement not idempotent if:
+// * removes an element from a list
+// * uses a lightweight transaction (LWT) e.g. 'IF EXISTS' or 'IF a > 0'
+// * has a relation that uses a non-idempotent function e.g. now() or uuid()
+//
+// deleteStatement: 'DELETE'  deleteOperations? 'FROM' tableName ( 'USING' timestamp )? whereClause ( 'IF' ( 'EXISTS' | conditions ) )?
+// deleteOperations: deleteOperation ( ',' deleteOperation )*
+// deleteOperation: identifier | identifier '[' term ']'| identifier '.' identifier
+// tableName: ( identifier '.' )? identifier
+//
 func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
-	return false, nil
+	t := l.next()
+	for ; tkFrom != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+		if tkIdentifier != t {
+			return false, errors.New("unexpected token after 'DELETE' in delete statement")
+		}
+
+		l.mark()
+		switch t = l.next(); t {
+		case tkLsquare:
+			var typ termType
+			if idempotent, typ, err = parseTerm(l, l.next()); !idempotent {
+				return idempotent, err
+			}
+			if tkRsquare != l.next() {
+				return false, errors.New("expected closing ']' for the delete operation")
+			}
+			return isIdempotentDeleteElementTermType(typ), nil
+		case tkDot:
+			if tkIdentifier != l.next() {
+				return false, errors.New("expected another identifier after '.' for delete operation")
+			}
+		default:
+			l.rewind()
+		}
+	}
+
+	for tkIf != t && tkWhere != t && tkEOF != t {
+		t = l.next()
+	}
+
+	if tkWhere == t {
+		idempotent, t, err = parseWhereClause(l)
+		if !idempotent {
+			return idempotent, err
+		}
+	}
+
+	for tkIf != t && tkEOF != t {
+		t = l.next()
+	}
+
+	if tkIf == t {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// Delete element terms can be one of the following:
+// * Literal (idempotent, if not an integer literal)
+// * Bind marker (ambiguous, so not idempotent)
+// * Function call (ambiguous, so not idempotent)
+// * Type cast (ambiguous)
+func isIdempotentDeleteElementTermType(typ termType) bool {
+	return typ != termIntegerLiteral && typ != termBindMarker && typ != termFunctionCall && typ != termCast
 }
