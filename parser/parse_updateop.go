@@ -16,6 +16,25 @@ package parser
 
 import "errors"
 
+// Determines if an update operation is idempotent.
+//
+// Non-idempotent update operations include:
+// * Using a non-idempotent function e.g. now(), uuid()
+// * Prepends or appends to a list type
+// * Increments or decrements a counter
+//
+// Important: There are currently some ambiguous cases where if the type is not known we cannot correctly
+// determine if an operation is idempotent. These include:
+// * Using a bind marker (this could be fixed for prepared statements using the prepared metadata)
+// * Function calls
+//
+// updateOperation
+//    : identifier '=' term ( '+' identifier )?
+//    | identifier '=' identifier ( '+' | '-' ) term
+//    | identifier ( '+=' | '-=' ) term
+//    | identifier '[' term ']' '=' term
+//    | identifier '.' identifier '=' term
+//
 func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 	if tkIdentifier != t {
 		return false, errors.New("expected identifier after 'SET' in update statement")
@@ -58,7 +77,7 @@ func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 		}
 		return isIdempotentUpdateOpTermType(typ), nil
 	case tkLsquare: // identifier '[' term ']' = term
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 		if tkRsquare != l.next() {
@@ -67,14 +86,17 @@ func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 		if tkEqual != l.next() {
 			return false, errors.New("expected '=' in update operation")
 		}
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 	case tkDot: // identifier '.' identifier '=' term
-		if t = l.next(); tkIdentifier != t {
-			return false, errors.New("expected identifier after '+' operator in update operation")
+		if tkIdentifier != l.next() {
+			return false, errors.New("expected identifier after '.' in update operation")
 		}
-		if idempotent, _, err = parseTerm(l, t); !idempotent {
+		if tkEqual != l.next() {
+			return false, errors.New("expected '=' in update operation")
+		}
+		if idempotent, _, err = parseTerm(l, l.next()); !idempotent {
 			return idempotent, err
 		}
 	default:
@@ -84,20 +106,11 @@ func parseUpdateOp(l *lexer, t token) (idempotent bool, err error) {
 	return true, nil
 }
 
+// Update terms can be one of the following:
+// * Literal (idempotent, if not a list)
+// * Bind marker (ambiguous, so not idempotent)
+// * Function call (ambiguous, so not idempotent)
+// * Type cast (probably not idempotent)
 func isIdempotentUpdateOpTermType(typ termType) bool {
-	// Update terms can be one of the following:
-	// * Literal (idempotent, if not a list)
-	// * Bind marker (ambiguous, so not idempotent)
-	// * Function call (ambiguous, so not idempotent)
-	// * Type cast (probably not idempotent)
 	return typ == termSetMapUdtLiteral || typ == termTupleLiteral
-}
-
-func isIdempotentDeleteElementTermType(typ termType) bool {
-	// Delete element terms can be one of the following:
-	// * Literal (idempotent, if not an integer literal)
-	// * Bind marker (ambiguous, so not idempotent)
-	// * Function call (ambiguous, so not idempotent)
-	// * Type cast (ambiguous)
-	return typ != termIntegerLiteral && typ != termBindMarker && typ != termFunctionCall && typ != termCast
 }

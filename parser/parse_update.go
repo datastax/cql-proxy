@@ -16,6 +16,16 @@ package parser
 
 import "errors"
 
+// Determines if an update statement is idempotent.
+//
+// An update statement not idempotent if:
+// * it contains an update operation that appends/prepends to a list or updates a counter
+// * uses a lightweight transaction (LWT) e.g. 'IF EXISTS' or 'IF a > 0'
+// * has an update operation or relation that uses a non-idempotent function e.g. now() or uuid()
+//
+// updateStatement: 'UPDATE' tableName usingClause? 'SET' updateOperations whereClause( 'IF' ( 'EXISTS' | conditions ))?
+// tableName: ( identifier '.' )? identifier
+//
 func isIdempotentUpdateStmt(l *lexer) (idempotent bool, err error) {
 	t := l.next()
 	if tkIdentifier != t {
@@ -61,6 +71,14 @@ func isIdempotentUpdateStmt(l *lexer) (idempotent bool, err error) {
 	return true, nil
 }
 
+// Parse over using clause.
+//
+// usingClause
+//	  : 'USING' timestamp
+//    | 'USING' ttl
+//    | 'USING' timestamp 'AND' ttl
+//    | 'USING' ttl 'AND' timestamp
+//
 func parseUsingClause(l *lexer, t token) (next token, err error) {
 	if tkUsing == t {
 		err = parseTtlOrTimestamp(l)
@@ -72,11 +90,17 @@ func parseUsingClause(l *lexer, t token) (next token, err error) {
 			if err != nil {
 				return tkInvalid, err
 			}
+			return l.next(), nil
 		}
 	}
 	return t, nil
 }
 
+// Parse over TTL or timestamp
+//
+// timestamp: 'TIMESTAMP' ( INTEGER | bindMarker )
+// ttl: 'TTL' ( INTEGER | bindMarker )
+//
 func parseTtlOrTimestamp(l *lexer) error {
 	var t token
 	if t = l.next(); !isUnreservedKeyword(l, t, "ttl") && !isUnreservedKeyword(l, t, "timestamp") {

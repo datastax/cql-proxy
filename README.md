@@ -26,7 +26,7 @@ or using Docker as
 
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
-  --rm datastax/cql-proxy:v0.0.2 \
+  --rm datastax/cql-proxy:v0.0.4 \
   --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 
@@ -42,7 +42,7 @@ or using Docker as
 
 ```sh
 docker run -p 9042:9042 \
-  --rm datastax/cql-proxy:v0.0.2 \
+  --rm datastax/cql-proxy:v0.0.4 \
   --contact-points <cluster node IPs or DNS names>
 ```
 

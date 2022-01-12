@@ -367,14 +367,11 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	}
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(keyspace), msg.Query)
 
-	if err != nil {
-		c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
-	}
-
 	if handled {
 		hdr := raw.Header
 
 		if err != nil {
+			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 		} else {
 			switch s := stmt.(type) {
@@ -433,12 +430,9 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
 
-	if err != nil {
-		c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
-	}
-
 	if handled {
 		if err != nil {
+			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
 		} else {
 			c.interceptSystemQuery(raw.Header, stmt)

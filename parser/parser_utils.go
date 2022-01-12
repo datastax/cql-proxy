@@ -74,7 +74,7 @@ func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (fi
 	} else {
 		for _, selector := range stmt.Selectors {
 			var column *message.ColumnMetadata
-			column, err = columnFromSelector(selector, columns, stmt.Table)
+			column, err = columnFromSelector(selector, columns, stmt.Keyspace, stmt.Table)
 			if err != nil {
 				return nil, err
 			}
@@ -100,11 +100,11 @@ func IsCountStarQuery(stmt *SelectStatement) bool {
 	return false
 }
 
-func columnFromSelector(selector Selector, columns []*message.ColumnMetadata, table string) (column *message.ColumnMetadata, err error) {
+func columnFromSelector(selector Selector, columns []*message.ColumnMetadata, keyspace string, table string) (column *message.ColumnMetadata, err error) {
 	switch s := selector.(type) {
 	case *CountStarSelector:
 		return &message.ColumnMetadata{
-			Keyspace: "system",
+			Keyspace: keyspace,
 			Table:    table,
 			Name:     s.Name,
 			Type:     datatype.Int,
@@ -116,7 +116,7 @@ func columnFromSelector(selector Selector, columns []*message.ColumnMetadata, ta
 			return nil, fmt.Errorf("invalid column %s", s.Name)
 		}
 	case *AliasSelector:
-		column, err = columnFromSelector(s.Selector, columns, table)
+		column, err = columnFromSelector(s.Selector, columns, keyspace, table)
 		if err != nil {
 			return nil, err
 		}
@@ -175,4 +175,17 @@ func parseQualifiedIdentifier(l *lexer) (keyspace, target Identifier, t token, e
 	} else {
 		return Identifier{}, temp, t, nil
 	}
+}
+
+func parseIdentifiers(l *lexer, t token) (err error) {
+	for tkRparen != t && tkEOF != t {
+		if tkIdentifier != t {
+			return errors.New("expected identifier")
+		}
+		t = skipToken(l, l.next(), tkComma)
+	}
+	if tkRparen != t {
+		return errors.New("expected closing ')' for identifiers")
+	}
+	return nil
 }

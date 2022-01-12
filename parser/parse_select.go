@@ -18,6 +18,15 @@ import (
 	"errors"
 )
 
+// Determines is the proxy handles the select statement.
+//
+// Currently, the only handled 'SELECT' queries are for tables in the 'system' keyspace and are matched by the
+// `isSystemTable()` function. This includes 'system.local' 'system.peers/peers_v2', and legacy schema tables.
+//
+// selectStmt: 'SELECT' 'JSON'? 'DISTINCT'? 'FROM' selectClause ...
+// selectClause: '*' | selectors
+//
+// Note: Exclusiveness of '*' not enforced
 func isHandledSelectStmt(l *lexer, keyspace Identifier) (handled bool, stmt Statement, err error) {
 	l.mark() // Mark here because we might come back to parse the selector
 	t := untilToken(l, tkFrom)
@@ -35,12 +44,15 @@ func isHandledSelectStmt(l *lexer, keyspace Identifier) (handled bool, stmt Stat
 		return false, nil, err
 	}
 
-	selectStmt := &SelectStatement{Table: table.id}
+	selectStmt := &SelectStatement{Keyspace: "system", Table: table.id}
 
 	// This only parses the selectors if this is a query handled by the proxy
 
 	l.rewind() // Rewind to the selectors
 	for t = l.next(); tkFrom != t && tkEOF != t; t = skipToken(l, t, tkComma) {
+		if tkIdentifier == t && (isUnreservedKeyword(l, t, "json") || isUnreservedKeyword(l, t, "distinct")) {
+			return true, nil, errors.New("proxy is unable to do 'JSON' or 'DISTINCT' for handled system queries")
+		}
 		var selector Selector
 		selector, t, err = parseSelector(l, t)
 		if err != nil {
@@ -60,6 +72,17 @@ func isHandledUseStmt(l *lexer) (handled bool, stmt Statement, err error) {
 	return true, &UseStatement{Keyspace: l.identifierStr()}, nil
 }
 
+// Parses selectors in the select clause of a select statement.
+//
+// selectors: selector ( ',' selector )*
+// selector: unaliasedSelector ( 'AS' identifier )
+// unaliasedSelector:
+//   identifier
+//   'COUNT(*)'
+//   term
+//   'CAST' '(' unaliasedSelector 'AS' primitiveType ')'
+//
+// Note: Doesn't handle term or cast
 func parseSelector(l *lexer, t token) (selector Selector, next token, err error) {
 	switch t {
 	case tkIdentifier:
