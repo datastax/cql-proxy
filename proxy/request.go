@@ -65,7 +65,7 @@ func (r *request) executeInternal(next bool) {
 		}
 		if r.host == nil {
 			r.done = true
-			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (exhausted query plan)"})
+			r.send(&message.ServerError{ErrorMessage: "Proxy exhausted query plan and there are no more hosts available to try"})
 		} else {
 			err := r.session.Send(r.host, r)
 			if err == nil {
@@ -118,7 +118,7 @@ func (r *request) OnClose(_ error) {
 	} else {
 		if !r.done {
 			r.done = true
-			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (cluster connection closed and request is not idempotent)"})
+			r.send(&message.ServerError{ErrorMessage: "Proxy is unable to retry non-idempotent query after connection to backend cluster closed"})
 		}
 	}
 }
