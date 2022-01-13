@@ -16,7 +16,9 @@ package proxy
 
 import (
 	"crypto/md5"
+	"errors"
 	"io"
+	"reflect"
 	"sync"
 
 	"github.com/datastax/cql-proxy/parser"
@@ -41,7 +43,7 @@ type request struct {
 	session    *proxycore.Session
 	state      idempotentState
 	keyspace   string
-	query      string
+	msg        message.Message
 	done       bool
 	retryCount int
 	host       *proxycore.Host
@@ -96,9 +98,23 @@ func (r *request) Frame() interface{} {
 
 func (r *request) checkIdempotent() bool {
 	if notDetermined == r.state {
-		idempotent, err := parser.IsQueryIdempotent(r.query)
+		idempotent := false
+		var err error
+		if r.msg != nil {
+			switch msg := r.msg.(type) {
+			case *partialQuery:
+				idempotent, err = parser.IsQueryIdempotent(msg.query)
+			case *partialBatch:
+				idempotent, err = r.isBatchIdempotent(msg)
+			default:
+				r.client.proxy.logger.Error("invalid message type encountered when checking for idempotence",
+					zap.Stringer("type", reflect.TypeOf(msg)))
+			}
+		}
 		if err != nil {
-			r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+			r.client.proxy.logger.Error("error parsing query for idempotence",
+				zap.Error(err),
+				zap.Stringer("type", reflect.TypeOf(r.msg)))
 		}
 		if idempotent {
 			r.state = isIdempotent
@@ -133,17 +149,41 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 				r.client.proxy.logger.Error("error attempting to decode prepared result message")
 			} else if _, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
 				r.client.proxy.logger.Error("expected prepared result message, but got something else")
+			} else if msg, ok := r.msg.(*message.Prepare); !ok {
+				r.client.proxy.logger.Error("expected the request to be a prepare request")
 			} else {
-				idempotent, err := parser.IsQueryIdempotent(r.query)
+				idempotent, err := parser.IsQueryIdempotent(msg.Query)
 				if err != nil {
 					r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
 				} else {
 					// TODO: Make sure this hash matches server-side impl.
-					r.client.preparedIdempotence.Store(md5.Sum([]byte(r.keyspace+r.query)), idempotent)
+					r.client.preparedIdempotence.Store(md5.Sum([]byte(r.keyspace+msg.Query)), idempotent)
 				}
 			}
 		}
 		r.sendRaw(raw)
 	}
 	r.mu.Unlock()
+}
+
+func (r *request) isBatchIdempotent(batch *partialBatch) (idempotent bool, err error) {
+	for _, queryOrId := range batch.queryOrIds {
+		switch q := queryOrId.(type) {
+		case string:
+			if idempotent, err = parser.IsQueryIdempotent(q); !idempotent {
+				return idempotent, err
+			}
+		case []byte:
+			var hash [16]byte
+			copy(hash[:], q)
+			if maybeIdempotent, ok := r.client.preparedIdempotence.Load(hash); !ok {
+				return false, errors.New("unable to determine if prepared statement in batch is idempotent")
+			} else if !maybeIdempotent.(bool) {
+				return false, nil
+			}
+		default:
+			return false, errors.New("unhandled query type in batch")
+		}
+	}
+	return true, nil
 }

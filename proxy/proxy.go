@@ -328,6 +328,7 @@ func (c *client) Receive(reader io.Reader) error {
 		c.handleExecute(raw, msg)
 	case *partialQuery:
 		c.handleQuery(raw, msg)
+	case *partialBatch:
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
@@ -335,13 +336,13 @@ func (c *client) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, query string) {
+func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, msg message.Message) {
 	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
 		req := &request{
 			client:   c,
 			session:  sess,
 			state:    state,
-			query:    query,
+			msg:      msg,
 			keyspace: keyspace,
 			done:     false,
 			stream:   raw.Header.StreamId,
@@ -401,7 +402,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		}
 
 	} else {
-		c.execute(raw, isIdempotent, keyspace, msg.Query) // Prepared statements can be retried themselves
+		c.execute(raw, isIdempotent, keyspace, msg) // Prepared statements can be retried themselves
 	}
 }
 
@@ -417,7 +418,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
 		if ok && idempotent.(bool) {
 			state = isIdempotent
 		}
-		c.execute(raw, state, "", "")
+		c.execute(raw, state, "", nil)
 	}
 }
 
@@ -434,7 +435,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
-		c.execute(raw, notDetermined, c.keyspace, msg.query)
+		c.execute(raw, notDetermined, c.keyspace, msg)
 	}
 }
 
