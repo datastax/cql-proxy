@@ -203,7 +203,7 @@ func (c *ClientConn) Inflight() int32 {
 	return atomic.LoadInt32(&c.inflight)
 }
 
-func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersion, query *message.Query) (*ResultSet, error) {
+func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersion, query message.Message) (*ResultSet, error) {
 	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, query))
 	if err != nil {
 		return nil, err

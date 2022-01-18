@@ -17,10 +17,11 @@ package proxycore
 import (
 	"errors"
 	"fmt"
-	"github.com/datastax/go-cassandra-native-protocol/message"
 	"io"
 	"strings"
 	"syscall"
+
+	"github.com/datastax/go-cassandra-native-protocol/message"
 )
 
 var (
@@ -39,7 +40,7 @@ func (e *UnexpectedResponse) Error() string {
 }
 
 type CqlError struct {
-	message.Message
+	Message message.Error
 }
 
 func (e CqlError) Error() string {
