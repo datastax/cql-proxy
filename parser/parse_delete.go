@@ -28,11 +28,11 @@ import "errors"
 // deleteOperation: identifier | identifier '[' term ']'| identifier '.' identifier
 // tableName: ( identifier '.' )? identifier
 //
-func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
-	t := l.next()
+func isIdempotentDeleteStmt(l *lexer) (idempotent bool, t token, err error) {
+	t = l.next()
 	for ; tkFrom != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
 		if tkIdentifier != t {
-			return false, errors.New("unexpected token after 'DELETE' in delete statement")
+			return false, tkInvalid, errors.New("unexpected token after 'DELETE' in delete statement")
 		}
 
 		l.mark()
@@ -40,41 +40,54 @@ func isIdempotentDeleteStmt(l *lexer) (idempotent bool, err error) {
 		case tkLsquare:
 			var typ termType
 			if idempotent, typ, err = parseTerm(l, l.next()); !idempotent {
-				return idempotent, err
+				return idempotent, tkInvalid, err
 			}
 			if tkRsquare != l.next() {
-				return false, errors.New("expected closing ']' for the delete operation")
+				return false, tkInvalid, errors.New("expected closing ']' for the delete operation")
 			}
-			return isIdempotentDeleteElementTermType(typ), nil
+			if !isIdempotentDeleteElementTermType(typ) {
+				return false, tkInvalid, nil
+			}
 		case tkDot:
 			if tkIdentifier != l.next() {
-				return false, errors.New("expected another identifier after '.' for delete operation")
+				return false, tkInvalid, errors.New("expected another identifier after '.' for delete operation")
 			}
 		default:
 			l.rewind()
 		}
 	}
 
-	for tkIf != t && tkWhere != t && tkEOF != t {
-		t = l.next()
+	if tkFrom != t {
+		return false, tkInvalid, errors.New("expected 'FROM' after delete operation(s) in delete statement")
+	}
+
+	if tkIdentifier != l.next() {
+		return false, tkInvalid, errors.New("expected identifier after 'FROM' in delete statement")
+	}
+
+	_, _, t, err = parseQualifiedIdentifier(l)
+	if err != nil {
+		return false, tkInvalid, err
+	}
+
+	t, err = parseUsingClause(l, t)
+	if err != nil {
+		return false, tkInvalid, err
 	}
 
 	if tkWhere == t {
 		idempotent, t, err = parseWhereClause(l)
 		if !idempotent {
-			return idempotent, err
+			return idempotent, tkInvalid, err
 		}
 	}
 
-	for tkIf != t && tkEOF != t {
-		t = l.next()
+	for ; !isDMLTerminator(t); t = l.next() {
+		if tkIf == t {
+			return false, tkInvalid, nil
+		}
 	}
-
-	if tkIf == t {
-		return false, nil
-	}
-
-	return true, nil
+	return true, t, nil
 }
 
 // Delete element terms can be one of the following:

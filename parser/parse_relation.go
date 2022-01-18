@@ -21,7 +21,7 @@ import "errors"
 // whereClause: 'WHERE' relation ( 'AND' relation )*
 //
 func parseWhereClause(l *lexer) (idempotent bool, t token, err error) {
-	for t = l.next(); tkIf != t && tkEOF != t; t = skipToken(l, l.next(), tkAnd) {
+	for t = l.next(); tkIf != t && !isDMLTerminator(t); t = skipToken(l, l.next(), tkAnd) {
 		idempotent, err = parseRelation(l, t)
 		if !idempotent {
 			return idempotent, tkInvalid, err

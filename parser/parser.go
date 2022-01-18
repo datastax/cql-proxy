@@ -17,6 +17,8 @@
 
 package parser
 
+import "errors"
+
 type Selector interface {
 	isSelector()
 }
@@ -91,13 +93,15 @@ func isIdempotentStmt(l *lexer, t token) (idempotent bool, err error) {
 	case tkUse:
 		return false, nil
 	case tkInsert:
-		return isIdempotentInsertStmt(l)
+		idempotent, t, err = isIdempotentInsertStmt(l)
 	case tkUpdate:
-		return isIdempotentUpdateStmt(l)
+		idempotent, t, err = isIdempotentUpdateStmt(l)
 	case tkDelete:
-		return isIdempotentDeleteStmt(l)
+		idempotent, t, err = isIdempotentDeleteStmt(l)
 	case tkBegin:
 		return isIdempotentBatchStmt(l)
+	default:
+		return false, errors.New("invalid statement type")
 	}
-	return false, nil
+	return idempotent && t == tkEOF, err
 }

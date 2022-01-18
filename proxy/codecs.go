@@ -127,8 +127,9 @@ func (p partialBatch) GetOpCode() primitive.OpCode {
 }
 
 func (p partialBatch) Clone() message.Message {
-	// TODO
-	return nil
+	queryOrIds := make([]interface{}, len(p.queryOrIds))
+	copy(queryOrIds, p.queryOrIds)
+	return &partialBatch{queryOrIds}
 }
 
 type partialBatchCodec struct{}
@@ -158,7 +159,7 @@ func (p partialBatchCodec) Decode(source io.Reader, version primitive.ProtocolVe
 	for i := 0; i < int(count); i++ {
 		var queryTyp uint8
 		if queryTyp, err = primitive.ReadByte(source); err != nil {
-			return nil, fmt.Errorf("cannot read BATCH child type for child #%d: %w", i, err)
+			return nil, fmt.Errorf("cannot read BATCH query type for child #%d: %w", i, err)
 		}
 		var queryOrId interface{}
 		switch primitive.BatchChildType(queryTyp) {
