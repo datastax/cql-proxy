@@ -41,29 +41,29 @@ func TestProxy_Retries(t *testing.T) {
 			"bootstrapping error",
 			idempotentQuery,
 			&message.IsBootstrapping{ErrorMessage: "Bootstrapping"},
-			3,
-			2,
+			3, // Ran the query on all nodes
+			2, // Retried on all remaining nodes
 		},
 		{
 			"bootstrapping w/ non-idempotent query",
 			nonIdempotentQuery,
 			&message.IsBootstrapping{ErrorMessage: "Bootstrapping"},
-			3,
-			2,
+			3, // Ran the query on all nodes
+			2, // Retried on all remaining nodes
 		},
 		{
 			"error response (truncate), retry until succeeds or exhausts query plan",
 			idempotentQuery,
 			&message.TruncateError{ErrorMessage: "Truncate"},
-			3,
-			2,
+			3, // Ran the query on all nodes
+			2, // Retried on all remaining nodes
 		},
 		{
 			"error response (truncate) w/ non-idempotent query, retry until succeeds or exhausts query plan",
 			nonIdempotentQuery,
 			&message.TruncateError{ErrorMessage: "Truncate"},
-			1,
-			0,
+			1, // Tried the queried on the first node and it failed
+			0, // Did not retry
 		},
 		{
 			"error response (read failure), don't retry",
@@ -75,8 +75,8 @@ func TestProxy_Retries(t *testing.T) {
 				BlockFor:     2,
 				NumFailures:  1,
 			},
-			1,
-			0,
+			1, // Tried the query on the first node and it failed
+			0, // Did not retry
 		},
 		{
 			"error response (write failure), don't retry",
@@ -89,8 +89,8 @@ func TestProxy_Retries(t *testing.T) {
 				NumFailures:  1,
 				WriteType:    primitive.WriteTypeSimple,
 			},
-			1,
-			0,
+			1, // Tried the query on the first node and it failed
+			0, // Did not retry
 		},
 		{
 			"unavailable error, retry on the next node",
@@ -101,8 +101,8 @@ func TestProxy_Retries(t *testing.T) {
 				Required:     2,
 				Alive:        1,
 			},
-			2,
-			1,
+			2, // Tried and failed on the first node, then retried on the next node
+			1, // Retried on the next node
 		},
 		{
 			"unavailable error w/ non-idempotent query, retry on the next node (same)",
@@ -113,8 +113,8 @@ func TestProxy_Retries(t *testing.T) {
 				Required:     2,
 				Alive:        1,
 			},
-			2,
-			1,
+			2, // Tried and failed on the first node, then retried on the next node
+			1, // Retried on the next node
 		},
 		{
 			"read timeout error, retry once on the same node",
@@ -126,8 +126,8 @@ func TestProxy_Retries(t *testing.T) {
 				BlockFor:     2,
 				DataPresent:  false, // Data wasn't present, read repair, retry
 			},
-			1,
-			1,
+			1, // Tried and retried on a single node
+			1, // Retried on the same node
 		},
 		{
 			"read timeout error w/ non-idempotent query, retry once on the same node (same)",
@@ -139,8 +139,8 @@ func TestProxy_Retries(t *testing.T) {
 				BlockFor:     2,
 				DataPresent:  false, // Data wasn't present, read repair, retry
 			},
-			1,
-			1,
+			1, // Tried and retried on a single node
+			1, // Retried on the same node
 		},
 		{
 			"read timeout error w/ unmet conditions, don't retry",
@@ -152,12 +152,14 @@ func TestProxy_Retries(t *testing.T) {
 				BlockFor:     2,
 				DataPresent:  true, // Data was present don't retry
 			},
-			1,
-			0,
+			1, // Tried the query on the first node and it failed
+			0, // Did not retry
 		},
 		{
 			"write timeout error, retry once if logged batch",
-			idempotentQuery, // Not a logged batch, but it doesn't matter for this test
+			// Not actually a logged batch query, but this is opaque to the proxy and mock cluster. It's considered a
+			// logged batch because the error returned by the server says it is.
+			idempotentQuery,
 			&message.WriteTimeout{
 				ErrorMessage: "WriteTimeout",
 				Consistency:  primitive.ConsistencyLevelQuorum,
@@ -165,12 +167,12 @@ func TestProxy_Retries(t *testing.T) {
 				BlockFor:     2,
 				WriteType:    primitive.WriteTypeBatchLog, // Retry if a logged batch
 			},
-			1,
-			1,
+			1, // Tried and retried on a single node
+			1, // Retried on the same node
 		},
 		{
-			"write timeout error w/ unmet conditions, don't retry",
-			idempotentQuery,
+			"write timeout error w/ not a logged batch, don't retry",
+			idempotentQuery, // Opaque idempotent query (see reason it's not an actual batch query above)
 			&message.WriteTimeout{
 				ErrorMessage: "WriteTimeout",
 				Consistency:  primitive.ConsistencyLevelQuorum,
@@ -178,8 +180,8 @@ func TestProxy_Retries(t *testing.T) {
 				BlockFor:     2,
 				WriteType:    primitive.WriteTypeSimple, // Don't retry for anything other than logged batches
 			},
-			1,
-			0,
+			1, // Tried the query on the first node and it failed
+			0, // Did not retry
 		},
 	}
 
