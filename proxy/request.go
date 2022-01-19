@@ -15,8 +15,8 @@
 package proxy
 
 import (
-	"crypto/md5"
 	"io"
+	"reflect"
 	"sync"
 
 	"github.com/datastax/cql-proxy/parser"
@@ -139,9 +139,11 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 					idempotent, err := parser.IsQueryIdempotent(r.query)
 					if err != nil {
 						r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+					} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
+						r.client.preparedIdempotence.Store(preparedIdKey(result.PreparedQueryId), idempotent)
 					} else {
-						// TODO: Make sure this hash matches server-side impl.
-						r.client.preparedIdempotence.Store(md5.Sum([]byte(r.keyspace+r.query)), idempotent)
+						r.client.proxy.logger.Error("expected prepared result, but got some other type of message",
+							zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
 					}
 				}
 			}

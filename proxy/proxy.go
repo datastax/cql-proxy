@@ -42,6 +42,8 @@ var (
 	encodedZeroValue, _ = proxycore.EncodeType(datatype.Int, primitive.ProtocolVersion4, 0)
 )
 
+const preparedIdSize = 16
+
 type Config struct {
 	Version           primitive.ProtocolVersion
 	MaxVersion        primitive.ProtocolVersion
@@ -211,7 +213,7 @@ func (p *Proxy) handle(conn *net.TCPConn) {
 		ctx:                 p.ctx,
 		proxy:               p,
 		id:                  atomic.AddUint64(&p.clientIdGen, 1),
-		preparedSystemQuery: make(map[[16]byte]interface{}),
+		preparedSystemQuery: make(map[[preparedIdSize]byte]interface{}),
 	}
 	cl.conn = proxycore.NewConn(conn, cl)
 	cl.conn.Start()
@@ -288,7 +290,7 @@ type client struct {
 	conn                *proxycore.Conn
 	keyspace            string
 	id                  uint64
-	preparedSystemQuery map[[16]byte]interface{}
+	preparedSystemQuery map[[preparedIdSize]byte]interface{}
 	preparedIdempotence sync.Map
 }
 
@@ -380,24 +382,24 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 					if columns, err := parser.FilterColumns(s, systemColumns); err != nil {
 						c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 					} else {
-						hash := md5.Sum([]byte(msg.Query + keyspace))
+						id := md5.Sum([]byte(msg.Query + keyspace))
 						c.send(hdr, &message.PreparedResult{
-							PreparedQueryId: hash[:],
+							PreparedQueryId: id[:],
 							ResultMetadata: &message.RowsMetadata{
 								ColumnCount: int32(len(columns)),
 								Columns:     columns,
 							},
 						})
-						c.preparedSystemQuery[hash] = stmt
+						c.preparedSystemQuery[id] = stmt
 					}
 				} else {
 					c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 				}
 			case *parser.UseStatement:
-				hash := md5.Sum([]byte(msg.Query))
-				c.preparedSystemQuery[hash] = stmt
+				id := md5.Sum([]byte(msg.Query))
+				c.preparedSystemQuery[id] = stmt
 				c.send(hdr, &message.PreparedResult{
-					PreparedQueryId: hash[:],
+					PreparedQueryId: id[:],
 				})
 			default:
 				c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
@@ -410,13 +412,11 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 }
 
 func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
-	var hash [16]byte
-	copy(hash[:], msg.queryId)
-
-	if stmt, ok := c.preparedSystemQuery[hash]; ok {
+	id := preparedIdKey(msg.queryId)
+	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
-		idempotent, ok := c.preparedIdempotence.Load(hash)
+		idempotent, ok := c.preparedIdempotence.Load(id)
 		state := notIdempotent
 		if ok && idempotent.(bool) {
 			state = isIdempotent
@@ -569,4 +569,10 @@ func (d defaultPreparedCache) Load(id string) (entry *proxycore.PreparedEntry, o
 		return val.(*proxycore.PreparedEntry), true
 	}
 	return nil, false
+}
+
+func preparedIdKey(bytes []byte) [preparedIdSize]byte {
+	var buf [preparedIdSize]byte
+	copy(buf[:], bytes)
+	return buf
 }
