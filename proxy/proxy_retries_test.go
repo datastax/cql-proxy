@@ -201,39 +201,117 @@ func TestProxy_Retries(t *testing.T) {
 	}
 }
 
-//func TestProxy_BatchRetries(t *testing.T) {
-//	var tests = []struct {
-//		msg           string
-//		batch         *message.Batch
-//		response      message.Error
-//		numNodesTried int
-//		retryCount    int
-//	}{
-//		{
-//			"write timeout error, retry once if logged batch",
-//			&message.Batch{Children: []*message.BatchChild{
-//				{QueryOrId: idempotentQuery},
-//			}},
-//			&message.WriteTimeout{
-//				ErrorMessage: "WriteTimeout",
-//				Consistency:  primitive.ConsistencyLevelQuorum,
-//				Received:     1,
-//				BlockFor:     2,
-//				WriteType:    primitive.WriteTypeBatchLog, // Retry if a logged batch
-//			},
-//			1,
-//			1,
-//		},
-//	}
-//
-//	for _, tt := range tests {
-//		numNodesTried, retryCount, err := testProxyRetry(t, tt.batch, tt.response)
-//		assert.Error(t, err, tt.msg)
-//		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
-//		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
-//		assert.Equal(t, tt.retryCount, retryCount, tt.msg)
-//	}
-//}
+func TestProxy_PreparedRetries(t *testing.T) {
+	var tests = []struct {
+		msg           string
+		execute       *message.Execute
+		response      message.Error
+		numNodesTried int
+		retryCount    int
+	}{
+		{
+			"idempotent prepared query, retry on all nodes",
+			&message.Execute{QueryId: idempotentQueryHash[:]},
+			&message.ServerError{ErrorMessage: "some server error"},
+			3,
+			2,
+		},
+		{
+			"non-idempotent prepared query, don't retry",
+			&message.Execute{QueryId: nonIdempotentQueryHash[:]},
+			&message.ServerError{ErrorMessage: "some server error"},
+			1,
+			0,
+		},
+	}
+
+	for _, tt := range tests {
+		numNodesTried, retryCount, err := testProxyRetry(t, tt.execute, tt.response)
+		assert.Error(t, err, tt.msg)
+		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
+		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
+		assert.Equal(t, tt.retryCount, retryCount, tt.msg)
+	}
+}
+
+func TestProxy_BatchRetries(t *testing.T) {
+	var tests = []struct {
+		msg           string
+		batch         *message.Batch
+		response      message.Error
+		numNodesTried int
+		retryCount    int
+	}{
+		{
+			"write timeout error, retry once if logged batch",
+			&message.Batch{Children: []*message.BatchChild{
+				{QueryOrId: idempotentQuery},
+			}},
+			&message.WriteTimeout{
+				ErrorMessage: "WriteTimeout",
+				Consistency:  primitive.ConsistencyLevelQuorum,
+				Received:     1,
+				BlockFor:     2,
+				WriteType:    primitive.WriteTypeBatchLog, // Retry if a logged batch
+			},
+			1,
+			1,
+		},
+		{
+			"write timeout error, retry once if logged batch w/ prepared statement",
+			&message.Batch{Children: []*message.BatchChild{
+				{QueryOrId: idempotentQueryHash[:]},
+			}},
+			&message.WriteTimeout{
+				ErrorMessage: "WriteTimeout",
+				Consistency:  primitive.ConsistencyLevelQuorum,
+				Received:     1,
+				BlockFor:     2,
+				WriteType:    primitive.WriteTypeBatchLog, // Retry if a logged batch
+			},
+			1,
+			1,
+		},
+		{
+			"batch w/ non-idempotent query, don't retry",
+			&message.Batch{Children: []*message.BatchChild{
+				{QueryOrId: nonIdempotentQuery},
+			}},
+			&message.WriteTimeout{
+				ErrorMessage: "WriteTimeout",
+				Consistency:  primitive.ConsistencyLevelQuorum,
+				Received:     1,
+				BlockFor:     2,
+				WriteType:    primitive.WriteTypeBatchLog, // Retry if a logged batch
+			},
+			1,
+			0,
+		},
+		{
+			"batch w/ non-idempotent prepared query, don't retry",
+			&message.Batch{Children: []*message.BatchChild{
+				{QueryOrId: nonIdempotentQueryHash[:]},
+			}},
+			&message.WriteTimeout{
+				ErrorMessage: "WriteTimeout",
+				Consistency:  primitive.ConsistencyLevelQuorum,
+				Received:     1,
+				BlockFor:     2,
+				WriteType:    primitive.WriteTypeBatchLog, // Retry if a logged batch
+			},
+			1,
+			0,
+		},
+	}
+
+	for _, tt := range tests {
+		numNodesTried, retryCount, err := testProxyRetry(t, tt.batch, tt.response)
+		assert.Error(t, err, tt.msg)
+		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
+		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
+		assert.Equal(t, tt.retryCount, retryCount, tt.msg)
+	}
+}
 
 func testProxyRetry(t *testing.T, query message.Message, response message.Error) (numNodesTried, retryCount int, responseError error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -266,6 +344,7 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error)
 					Id:           id[:],
 				}
 			} else {
+				tried[cl.Local().IP]++
 				return response
 			}
 		},
@@ -285,7 +364,8 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error)
 					}
 				}
 			}
-			return &message.VoidResult{}
+			tried[cl.Local().IP]++
+			return response
 		},
 		primitive.OpCodePrepare: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
 			msg := frm.Body.Message.(*message.Prepare)
@@ -312,6 +392,10 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error)
 			var hash [16]byte
 			copy(hash[:], unprepared.Id)
 			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Prepare{Query: preparedStmts[hash]})
+			if err != nil {
+				return 0, 0, err
+			}
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, query)
 		}
 	}
 

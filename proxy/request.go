@@ -178,9 +178,8 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	if err != nil {
 		logger.Error("unable to decode error frame for retry decision", zap.Error(err))
 	} else {
-		idempotent := r.checkIdempotent()
-
 		errMsg := frm.Body.Message.(message.Error)
+
 		logger.Debug("received error response",
 			zap.Stringer("host", r.host),
 			zap.Stringer("errorCode", errMsg.GetErrorCode()),
@@ -197,7 +196,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 				)
 			}
 		case *message.WriteTimeout:
-			if idempotent {
+			if r.checkIdempotent() {
 				decision = r.client.proxy.config.RetryPolicy.OnWriteTimeout(msg, r.retryCount)
 				if decision != ReturnError {
 					logger.Debug("retrying write timeout",
@@ -224,7 +223,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 			)
 		case *message.ServerError, *message.Overloaded, *message.TruncateError,
 			*message.ReadFailure, *message.WriteFailure:
-			if idempotent {
+			if r.checkIdempotent() {
 				decision = r.client.proxy.config.RetryPolicy.OnErrorResponse(errMsg, r.retryCount)
 				if decision != ReturnError {
 					logger.Debug("retrying on error response",

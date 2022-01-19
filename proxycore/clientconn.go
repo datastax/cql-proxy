@@ -212,7 +212,7 @@ func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersio
 	switch msg := response.Body.Message.(type) {
 	case *message.RowsResult:
 		return NewResultSet(msg, version), nil
-	case *message.VoidResult:
+	case *message.VoidResult, *message.PreparedResult:
 		return nil, nil // TODO: Make empty result set
 	case message.Error:
 		return nil, &CqlError{Message: msg}

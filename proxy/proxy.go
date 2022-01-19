@@ -333,6 +333,7 @@ func (c *client) Receive(reader io.Reader) error {
 	case *partialQuery:
 		c.handleQuery(raw, msg)
 	case *partialBatch:
+		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
