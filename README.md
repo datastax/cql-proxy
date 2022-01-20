@@ -93,14 +93,14 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 
 - Volume mounts: Modify `/tmp/` as a volume mount as required.
 
-       volumeMounts:
+      volumeMounts:
         - name: my-cm-vol
-          mountPath: /tmp/
+        mountPath: /tmp/
  
 
 - Volume: Modify the `configMap` filename as required. In this example, it is named `cql-proxy-configmap`. Use the same name for the `volumes` that you used for the `volumeMounts`. 
 
-       volumes:
+      volumes:
         - name: my-cm-vol
           configMap:
             name: cql-proxy-configmap        
@@ -131,9 +131,9 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 
 5. Create a k8ssandra deployment with the YAML file you created:
 
-    ```sh
-    kubectl create -f cql-proxy.yaml
-    ```
+     ```sh
+     kubectl create -f cql-proxy.yaml
+     ```
 
 6. Check the logs:
     ```sh
