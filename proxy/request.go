@@ -15,8 +15,8 @@
 package proxy
 
 import (
-	"crypto/md5"
 	"io"
+	"reflect"
 	"sync"
 
 	"github.com/datastax/cql-proxy/parser"
@@ -65,7 +65,7 @@ func (r *request) executeInternal(next bool) {
 		}
 		if r.host == nil {
 			r.done = true
-			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (exhausted query plan)"})
+			r.send(&message.ServerError{ErrorMessage: "Proxy exhausted query plan and there are no more hosts available to try"})
 		} else {
 			err := r.session.Send(r.host, r)
 			if err == nil {
@@ -118,32 +118,122 @@ func (r *request) OnClose(_ error) {
 	} else {
 		if !r.done {
 			r.done = true
-			r.send(&message.Unavailable{ErrorMessage: "No more hosts available (cluster connection closed and request is not idempotent)"})
+			r.send(&message.ServerError{ErrorMessage: "Proxy is unable to retry non-idempotent query after connection to backend cluster closed"})
 		}
 	}
 }
 
 func (r *request) OnResult(raw *frame.RawFrame) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if !r.done {
-		r.done = true
-		if r.raw.Header.OpCode == primitive.OpCodePrepare && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
-			frm, err := codec.ConvertFromRawFrame(raw)
-			if err != nil {
-				r.client.proxy.logger.Error("error attempting to decode prepared result message")
-			} else if _, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
-				r.client.proxy.logger.Error("expected prepared result message, but got something else")
-			} else {
-				idempotent, err := parser.IsQueryIdempotent(r.query)
+		if raw.Header.OpCode != primitive.OpCodeError ||
+			!r.handleErrorResult(raw) { // If the error result is retried then we don't send back this response
+			if r.raw.Header.OpCode == primitive.OpCodePrepare && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
+				frm, err := codec.ConvertFromRawFrame(raw)
 				if err != nil {
-					r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+					r.client.proxy.logger.Error("error attempting to decode prepared result message")
+				} else if _, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
+					r.client.proxy.logger.Error("expected prepared result message, but got something else")
 				} else {
-					// TODO: Make sure this hash matches server-side impl.
-					r.client.preparedIdempotence.Store(md5.Sum([]byte(r.keyspace+r.query)), idempotent)
+					idempotent, err := parser.IsQueryIdempotent(r.query)
+					if err != nil {
+						r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+					} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
+						r.client.preparedIdempotence.Store(preparedIdKey(result.PreparedQueryId), idempotent)
+					} else {
+						r.client.proxy.logger.Error("expected prepared result, but got some other type of message",
+							zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
+					}
 				}
 			}
+			r.done = true
+			r.sendRaw(raw)
 		}
-		r.sendRaw(raw)
 	}
-	r.mu.Unlock()
+}
+
+func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
+	retried = false
+	logger := r.client.proxy.logger
+	decision := ReturnError
+
+	frm, err := codec.ConvertFromRawFrame(raw)
+	if err != nil {
+		logger.Error("unable to decode error frame for retry decision", zap.Error(err))
+	} else {
+		idempotent := r.checkIdempotent()
+
+		errMsg := frm.Body.Message.(message.Error)
+		logger.Debug("received error response",
+			zap.Stringer("host", r.host),
+			zap.Stringer("errorCode", errMsg.GetErrorCode()),
+			zap.String("error", errMsg.GetErrorMessage()),
+		)
+		switch msg := frm.Body.Message.(type) {
+		case *message.ReadTimeout:
+			decision = r.client.proxy.config.RetryPolicy.OnReadTimeout(msg, r.retryCount)
+			if decision != ReturnError {
+				logger.Debug("retrying read timeout",
+					zap.Stringer("decision", decision),
+					zap.Stringer("response", msg),
+					zap.Int("retryCount", r.retryCount),
+				)
+			}
+		case *message.WriteTimeout:
+			if idempotent {
+				decision = r.client.proxy.config.RetryPolicy.OnWriteTimeout(msg, r.retryCount)
+				if decision != ReturnError {
+					logger.Debug("retrying write timeout",
+						zap.Stringer("decision", decision),
+						zap.Stringer("response", msg),
+						zap.Int("retryCount", r.retryCount),
+					)
+				}
+			}
+		case *message.Unavailable:
+			decision = r.client.proxy.config.RetryPolicy.OnUnavailable(msg, r.retryCount)
+			if decision != ReturnError {
+				logger.Debug("retrying on unavailable error",
+					zap.Stringer("decision", decision),
+					zap.Stringer("response", msg),
+					zap.Int("retryCount", r.retryCount),
+				)
+			}
+		case *message.IsBootstrapping:
+			decision = RetryNext
+			logger.Debug("retrying on bootstrapping error",
+				zap.Stringer("decision", decision),
+				zap.Int("retryCount", r.retryCount),
+			)
+		case *message.ServerError, *message.Overloaded, *message.TruncateError,
+			*message.ReadFailure, *message.WriteFailure:
+			if idempotent {
+				decision = r.client.proxy.config.RetryPolicy.OnErrorResponse(errMsg, r.retryCount)
+				if decision != ReturnError {
+					logger.Debug("retrying on error response",
+						zap.Stringer("decision", decision),
+						zap.Int("retryCount", r.retryCount),
+					)
+				}
+			}
+		default:
+			// Do nothing, return the error
+		}
+
+		switch decision {
+		case RetryNext:
+			r.retryCount++
+			r.executeInternal(true)
+			retried = true
+		case RetrySame:
+			r.retryCount++
+			r.executeInternal(false)
+			retried = true
+		default:
+			// Do nothing, return the error
+		}
+	}
+
+	return retried
 }
