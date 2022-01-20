@@ -6,10 +6,10 @@
 
 - [What is the cql-proxy?](https://github.com/datastax/cql-proxy#what-is-cqlproxy)
 - [When to use cql-proxy](https://github.com/datastax/cql-proxy#when-to-use-cql-proxy)
-- [Getting started](https://github.com/datastax/cql-proxy#getting-started)
 - [Configuration](https://github.com/datastax/cql-proxy#configuration)
+- [Getting started](https://github.com/datastax/cql-proxy#getting-started)
 
-## What is cql-proxy?
+## What is `cql-proxy`?
 
 ![cql-proxy](cql-proxy.png)
 
@@ -25,14 +25,50 @@ The `cql-proxy` sidecar enables unsupported CQL drivers to work with [DataStax A
 `cql-proxy` also enables applications that are currently using [Apache Cassandra][cassandra] or [DataStax Enterprise (DSE)][dse] to use Astra without requiring any code changes.  Your application just needs to be configured to use the proxy.
 
 If you're building a new application using DataStax [drivers], `cql-proxy` is not required, as the drivers can communicate directly with Astra. DataStax drivers have excellent support for Astra out-of-the-box, and are well-documented in the [driver-guide] guide. 
+
+## Configuration
+
+Use the `-h` or `--help` flag to display a listing all flags and their corresponding descriptions and environment variables (shown below as items starting with `$`):
+
+```sh
+$ ./cql-proxy -h
+Usage: cql-proxy
+
+Flags:
+  -h, --help               Show context-sensitive help.
+  -b, --bundle=STRING      Path to secure connect bundle ($BUNDLE)
+  -u, --username=STRING    Username to use for authentication ($USERNAME)
+  -p, --password=STRING    Password to use for authentication ($PASSWORD)
+  -c, --contact-points=CONTACT-POINTS,...
+                           Contact points for cluster. Ignored if using the bundle path
+                           option ($CONTACT_POINTS).
+  -a, --bind=STRING        Address to use to bind serve ($BIND)
+      --debug              Show debug logging ($DEBUG)
+      --profiling          Enable profiling ($PROFILING)
+```
+
+To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the follwing samples show how username, password and bundle are defined with each method.
+### Using flags
+
+```sh
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.2 \
+  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
+```
+### Using environment variables
+
+```sh
+docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
+  --rm datastax/cql-proxy:v0.0.2 \
+  -e BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
+```
 ## Getting started
 
 There are three methods for using `cql-proxy`:
 
 - Locally build and run `cql-proxy`
 - Run a docker image that has `cql-proxy` installed
-- Use k8ssandra to run `cql-proxy` in a Kubernetes container 
-
+- Use a Kubernetes container to run `cql-proxy`
 ### Locally build and run
 
 1. Build `cql-proxy`.
@@ -76,7 +112,7 @@ There are three methods for using `cql-proxy`:
       ```
   If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.0.4 `.
 
-### Use k8ssandra and Kubernetes
+### Use Kubernetes
 
 Using Kubernetes with `cql-proxy` requires a number of steps:
 
@@ -129,7 +165,7 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
       scb.zip: 12311 bytes
     ```
 
-5. Create a k8ssandra deployment with the YAML file you created:
+5. Create a Kubernetes deployment with the YAML file you created:
 
      ```sh
      kubectl create -f cql-proxy.yaml
@@ -139,43 +175,6 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
     ```sh
     kubectl logs <deployment-name>
     ```
-
-## Configuration
-
-Use the `-h` or `--help` flag to display a listing all flags and their corresponding descriptions and environment variables (shown below as items starting with `$`):
-
-```sh
-$ ./cql-proxy -h
-Usage: cql-proxy
-
-Flags:
-  -h, --help               Show context-sensitive help.
-  -b, --bundle=STRING      Path to secure connect bundle ($BUNDLE)
-  -u, --username=STRING    Username to use for authentication ($USERNAME)
-  -p, --password=STRING    Password to use for authentication ($PASSWORD)
-  -c, --contact-points=CONTACT-POINTS,...
-                           Contact points for cluster. Ignored if using the bundle path
-                           option ($CONTACT_POINTS).
-  -a, --bind=STRING        Address to use to bind serve ($BIND)
-      --debug              Show debug logging ($DEBUG)
-      --profiling          Enable profiling ($PROFILING)
-```
-
-To pass configuration to the cql-proxy, either command-line flags or environment variables can be used. The same example passing username, password and bundle are shown with each method.
-### Using flags
-
-```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
-  --rm datastax/cql-proxy:v0.0.2 \
-  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
-```
-### Using environment variables
-
-```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
-  --rm datastax/cql-proxy:v0.0.2 \
-  -e BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
-```
 
 [astra]: https://astra.datastax.com/
 [drivers]: https://docs.datastax.com/en/driver-matrix/doc/driver_matrix/common/driverMatrix.html
