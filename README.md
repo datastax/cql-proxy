@@ -8,6 +8,10 @@
 - [When to use cql-proxy](https://github.com/datastax/cql-proxy#when-to-use-cql-proxy)
 - [Configuration](https://github.com/datastax/cql-proxy#configuration)
 - [Getting started](https://github.com/datastax/cql-proxy#getting-started)
+  - [Locally build and run](https://github.com/datastax/cql-proxy#locally-build-and-run)
+  - [Run a `cql-proxy` docker image](https://github.com/datastax/cql-proxy#run-a-cql-proxy-docker-image)
+  - [Use Kubernetes](https://github.com/datastax/cql-proxy#use-kubernetes)
+
 
 ## What is `cql-proxy`?
 
