@@ -15,7 +15,6 @@
 package proxy
 
 import (
-	"crypto/md5"
 	"errors"
 	"io"
 	"reflect"
@@ -104,6 +103,8 @@ func (r *request) checkIdempotent() bool {
 			switch msg := r.msg.(type) {
 			case *partialQuery:
 				idempotent, err = parser.IsQueryIdempotent(msg.query)
+			case *partialExecute:
+				idempotent = r.client.proxy.isIdempotent(msg.queryId)
 			case *partialBatch:
 				idempotent, err = r.isBatchIdempotent(msg)
 			default:
@@ -145,24 +146,7 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 	if !r.done {
 		if raw.Header.OpCode != primitive.OpCodeError ||
 			!r.handleErrorResult(raw) { // If the error result is retried then we don't send back this response
-			if r.raw.Header.OpCode == primitive.OpCodePrepare && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
-				frm, err := codec.ConvertFromRawFrame(raw)
-				if err != nil {
-					r.client.proxy.logger.Error("error attempting to decode prepared result message")
-				} else if _, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
-					r.client.proxy.logger.Error("expected prepared result message, but got something else")
-				} else if msg, ok := r.msg.(*message.Prepare); !ok {
-					r.client.proxy.logger.Error("expected the request to be a prepare request")
-				} else {
-					idempotent, err := parser.IsQueryIdempotent(msg.Query)
-					if err != nil {
-						r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
-					} else {
-						// TODO: Make sure this hash matches server-side impl.
-						r.client.preparedIdempotence.Store(md5.Sum([]byte(r.keyspace+msg.Query)), idempotent)
-					}
-				}
-			}
+			r.client.proxy.maybeStorePreparedIdempotence(raw, r.msg)
 			r.done = true
 			r.sendRaw(raw)
 		}
@@ -261,11 +245,8 @@ func (r *request) isBatchIdempotent(batch *partialBatch) (idempotent bool, err e
 				return idempotent, err
 			}
 		case []byte:
-			var hash [16]byte
-			copy(hash[:], q)
-			if maybeIdempotent, ok := r.client.preparedIdempotence.Load(hash); !ok {
-				return false, errors.New("unable to determine if prepared statement in batch is idempotent")
-			} else if !maybeIdempotent.(bool) {
+			idempotent = r.client.proxy.isIdempotent(q)
+			if !idempotent {
 				return false, nil
 			}
 		default:
