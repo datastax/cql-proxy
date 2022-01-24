@@ -27,7 +27,7 @@ func TestIsIdempotentDeleteStmt(t *testing.T) {
 		hasError   bool
 		msg        string
 	}{
-		{"DELETE FROM table", true, false, "simple table"},
+		{"DELETE FROM table", true, false, "simple"},
 		{"DELETE a FROM table", true, false, "w/ operation"},
 		{"DELETE a FROM ks.table", true, false, "simple qualified table"},
 		{"DELETE a.b FROM table", true, false, "UDT field"},
@@ -37,7 +37,7 @@ func TestIsIdempotentDeleteStmt(t *testing.T) {
 
 		// Invalid
 		{"DELETE a. FROM table", false, true, "no UDT field"},
-		{"DELETE FROM ks.", true, false, "no table after '.'"},
+		{"DELETE FROM ks.", false, true, "no table after '.'"},
 		{"DELETE FROM table WHERE", true, false, "where clause w/ no relation"},
 		{"DELETE a[0 table WHERE b > 0", false, true, "collection element with no closing square bracket"},
 
@@ -45,6 +45,7 @@ func TestIsIdempotentDeleteStmt(t *testing.T) {
 		{"DELETE a, b, c[1] FROM ks.table", false, false, "multiple with list element"},
 		{"DELETE FROM ks.table WHERE a > toTimestamp(now())", false, false, "now() relation"},
 		{"DELETE FROM table WHERE a > 0 IF EXISTS", false, false, "LWT"},
+		{"DELETE a['key'] FROM table WHERE a > 0 IF EXISTS", false, false, "LWT w/ map field"},
 
 		// Ambiguous
 		{"DELETE a[0] FROM ks.table", false, false, "potentially a list element"},

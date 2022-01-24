@@ -18,10 +18,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,18 +63,19 @@ type Config struct {
 }
 
 type Proxy struct {
-	ctx                context.Context
-	config             Config
-	logger             *zap.Logger
-	listener           *net.TCPListener
-	cluster            *proxycore.Cluster
-	sessions           [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
-	sessMu             sync.Mutex
-	schemaEventClients sync.Map
-	preparedCache      proxycore.PreparedCache
-	clientIdGen        uint64
-	lb                 proxycore.LoadBalancer
-	systemLocalValues  map[string]message.Column
+	ctx                 context.Context
+	config              Config
+	logger              *zap.Logger
+	listener            *net.TCPListener
+	cluster             *proxycore.Cluster
+	sessions            [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
+	sessMu              sync.Mutex
+	schemaEventClients  sync.Map
+	preparedCache       proxycore.PreparedCache
+	preparedIdempotence sync.Map
+	clientIdGen         uint64
+	lb                  proxycore.LoadBalancer
+	systemLocalValues   map[string]message.Column
 }
 
 func (p *Proxy) OnEvent(event interface{}) {
@@ -284,14 +287,49 @@ func (p *Proxy) encodeTypeFatal(dt datatype.DataType, val interface{}) []byte {
 	return encoded
 }
 
+// isIdempotent checks whether a prepared ID is idempotent.
+// If the proxy receives a query that it's never prepared then this will also return false.
+func (p *Proxy) isIdempotent(id []byte) bool {
+	if val, ok := p.preparedIdempotence.Load(preparedIdKey(id)); !ok {
+		// This should only happen if the proxy has never had a "PREPARE" request for this query ID.
+		p.logger.Error("unable to determine if prepared statement is idempotent",
+			zap.String("preparedID", hex.EncodeToString(id)))
+		return false
+	} else {
+		return val.(bool)
+	}
+}
+
+// maybeStorePreparedIdempotence stores the idempotence of a "PREPARE" request's query.
+// This information is used by future "EXECUTE" requests when they need to be retried.
+func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.Message) {
+	if prepareMsg, ok := msg.(*message.Prepare); ok && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
+		frm, err := codec.ConvertFromRawFrame(raw)
+		if err != nil {
+			p.logger.Error("error attempting to decode prepared result message")
+		} else if _, ok = frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
+			p.logger.Error("expected prepared result message, but got something else")
+		} else {
+			idempotent, err := parser.IsQueryIdempotent(prepareMsg.Query)
+			if err != nil {
+				p.logger.Error("error parsing query for idempotence", zap.Error(err))
+			} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
+				p.preparedIdempotence.Store(preparedIdKey(result.PreparedQueryId), idempotent)
+			} else {
+				p.logger.Error("expected prepared result, but got some other type of message",
+					zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
+			}
+		}
+	}
+}
+
 type client struct {
 	ctx                 context.Context
 	proxy               *Proxy
 	conn                *proxycore.Conn
 	keyspace            string
 	id                  uint64
-	preparedSystemQuery map[[preparedIdSize]byte]interface{}
-	preparedIdempotence sync.Map
+	preparedSystemQuery map[[16]byte]interface{}
 }
 
 func (c *client) Receive(reader io.Reader) error {
@@ -334,6 +372,8 @@ func (c *client) Receive(reader io.Reader) error {
 		c.handleExecute(raw, msg)
 	case *partialQuery:
 		c.handleQuery(raw, msg)
+	case *partialBatch:
+		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
@@ -341,13 +381,13 @@ func (c *client) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, query string) {
+func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, msg message.Message) {
 	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
 		req := &request{
 			client:   c,
 			session:  sess,
 			state:    state,
-			query:    query,
+			msg:      msg,
 			keyspace: keyspace,
 			done:     false,
 			stream:   raw.Header.StreamId,
@@ -407,7 +447,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		}
 
 	} else {
-		c.execute(raw, isIdempotent, keyspace, msg.Query) // Prepared statements can be retried themselves
+		c.execute(raw, isIdempotent, keyspace, msg) // Prepared statements can be retried themselves
 	}
 }
 
@@ -416,12 +456,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
-		idempotent, ok := c.preparedIdempotence.Load(id)
-		state := notIdempotent
-		if ok && idempotent.(bool) {
-			state = isIdempotent
-		}
-		c.execute(raw, state, "", "")
+		c.execute(raw, notDetermined, "", msg)
 	}
 }
 
@@ -438,7 +473,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
-		c.execute(raw, notDetermined, c.keyspace, msg.query)
+		c.execute(raw, notDetermined, c.keyspace, msg)
 	}
 }
 

@@ -23,52 +23,49 @@ import "errors"
 // * uses a lightweight transaction (LWT) e.g. 'IF EXISTS' or 'IF a > 0'
 // * has an update operation or relation that uses a non-idempotent function e.g. now() or uuid()
 //
-// updateStatement: 'UPDATE' tableName usingClause? 'SET' updateOperations whereClause( 'IF' ( 'EXISTS' | conditions ))?
+// updateStatement: 'UPDATE' tableName usingClause? 'SET' updateOperations whereClause 'IF' ( 'EXISTS' | conditions )?
 // tableName: ( identifier '.' )? identifier
 //
-func isIdempotentUpdateStmt(l *lexer) (idempotent bool, err error) {
-	t := l.next()
+func isIdempotentUpdateStmt(l *lexer) (idempotent bool, t token, err error) {
+	t = l.next()
 	if tkIdentifier != t {
-		return false, errors.New("expected identifier after 'UPDATE' in update statement")
+		return false, tkInvalid, errors.New("expected identifier after 'UPDATE' in update statement")
 	}
 
 	_, _, t, err = parseQualifiedIdentifier(l)
 	if err != nil {
-		return false, err
+		return false, tkInvalid, err
 	}
 
 	t, err = parseUsingClause(l, t)
 	if err != nil {
-		return false, err
+		return false, tkInvalid, err
 	}
 
 	for !isUnreservedKeyword(l, t, "set") {
-		return false, errors.New("expected 'SET' in update statement")
+		return false, tkInvalid, errors.New("expected 'SET' in update statement")
 	}
 
-	for t = l.next(); tkIf != t && tkWhere != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+	for t = l.next(); tkIf != t && tkWhere != t && !isDMLTerminator(t); t = skipToken(l, l.next(), tkComma) {
 		idempotent, err = parseUpdateOp(l, t)
 		if !idempotent {
-			return idempotent, err
+			return idempotent, tkInvalid, err
 		}
 	}
 
 	if tkWhere == t {
 		idempotent, t, err = parseWhereClause(l)
 		if !idempotent {
-			return idempotent, err
+			return idempotent, tkInvalid, err
 		}
 	}
 
-	for tkIf != t && tkEOF != t {
-		t = l.next()
+	for ; !isDMLTerminator(t); t = l.next() {
+		if tkIf == t {
+			return false, tkInvalid, nil
+		}
 	}
-
-	if tkIf == t {
-		return false, nil
-	}
-
-	return true, nil
+	return true, t, nil
 }
 
 // Parse over using clause.
