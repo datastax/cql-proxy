@@ -16,14 +16,23 @@ package astra
 
 import (
 	"archive/zip"
+	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"runtime"
+	"time"
+
+	"github.com/datastax/astra-client-go/v2/astra"
 )
+
+const URL = "https://api.astra.datastax.com"
 
 type Bundle struct {
 	tlsConfig *tls.Config
@@ -83,6 +92,68 @@ func LoadBundleZipFromPath(path string) (*Bundle, error) {
 	}(reader)
 
 	return LoadBundleZip(&reader.Reader)
+}
+
+func LoadBundleZipFromURL(url, databaseID, token string, timeout time.Duration) (*Bundle, error) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	defer cancel()
+
+	credsURL, err := generateSecureBundleURLWithResponse(url, databaseID, token, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error generating secure bundle zip URLs: %v", err)
+	}
+	resp, err := http.Get(credsURL.DownloadURL)
+
+	defer resp.Body.Close()
+
+	body, err := readAllWithTimeout(resp.Body, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error downloading bundle zip: %v", err)
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return nil, fmt.Errorf("error creating zip reader for bundle zip: %v", err)
+	}
+
+	return LoadBundleZip(reader)
+}
+
+func readAllWithTimeout(r io.Reader, ctx context.Context) (bytes []byte, err error) {
+	ch := make(chan struct{})
+
+	go func() {
+		bytes, err = ioutil.ReadAll(r)
+		close(ch)
+	}()
+
+	select {
+	case <-ch:
+	case <-ctx.Done():
+		return nil, errors.New("timeout reading data")
+	}
+
+	return bytes, err
+}
+
+func generateSecureBundleURLWithResponse(url, databaseID, token string, ctx context.Context) (*astra.CredsURL, error) {
+	client, err := astra.NewClientWithResponses(url, func(c *astra.Client) error {
+		c.RequestEditors = append(c.RequestEditors, func(ctx context.Context, req *http.Request) error {
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GenerateSecureBundleURLWithResponse(ctx, astra.DatabaseIdParam(databaseID))
+
+	if res.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("unable to generate bundle urls, failed with status code %d", res.StatusCode())
+	}
+
+	return res.JSON200, nil
 }
 
 func (b *Bundle) Host() string {

@@ -35,6 +35,8 @@ var cli struct {
 	Bundle             string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
 	Username           string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
 	Password           string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
+	Token              string        `help:"Token" short:"t" env:"TOKEN"`
+	DatabaseID         string        `help:"Database ID" short:"i" env:"DATABASE_ID"`
 	ContactPoints      []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
 	ProtocolVersion    string        `help:"Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" short:"n" env:"PROTOCOL_VERSION"`
 	MaxProtocolVersion string        `help:"Max protocol version supported by the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" short:"m" env:"MAX_PROTOCOL_VERSION"`
@@ -72,11 +74,22 @@ func main() {
 	if len(cli.Bundle) > 0 {
 		bundle, err := astra.LoadBundleZipFromPath(cli.Bundle)
 		if err != nil {
-			cliCtx.Fatalf("unable to open bundle %s: %v", cli.Bundle, err)
+			cliCtx.Fatalf("unable to open bundle %s from file: %v", cli.Bundle, err)
 		}
 		resolver = astra.NewResolver(bundle)
 	} else if len(cli.ContactPoints) > 0 {
 		resolver = proxycore.NewResolver(cli.ContactPoints...)
+	} else if len(cli.Token) > 0 {
+		if len(cli.DatabaseID) == 0 {
+			cliCtx.Fatalf("database ID is required when using a token")
+		}
+		bundle, err := astra.LoadBundleZipFromURL(astra.URL, cli.DatabaseID, cli.Token, 10*time.Second)
+		if err != nil {
+			cliCtx.Fatalf("unable to load bundle %s from astra: %v", cli.Bundle, err)
+		}
+		resolver = astra.NewResolver(bundle)
+		cli.Username = "token"
+		cli.Password = cli.Token
 	} else {
 		cliCtx.Fatalf("must provide either bundle path or contact points")
 	}
