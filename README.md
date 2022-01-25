@@ -56,14 +56,14 @@ To pass configuration to `cql-proxy`, either command-line flags or environment v
 
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
-  --rm datastax/cql-proxy:v0.0.2 \
+  --rm datastax/cql-proxy:v0.0.4 \
   --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 ### Using environment variables
 
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
-  --rm datastax/cql-proxy:v0.0.2 \
+  --rm datastax/cql-proxy:v0.0.4 \
   -e BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
 ```
 ## Getting started
