@@ -33,33 +33,65 @@ const (
 	DefaultRefreshTimeout = 5 * time.Second
 )
 
+type Event interface {
+	isEvent()
+}
+
 type AddEvent struct {
 	Host *Host
+}
+
+func (a AddEvent) isEvent() {
+	panic("do not call")
 }
 
 type RemoveEvent struct {
 	Host *Host
 }
 
+func (r RemoveEvent) isEvent() {
+	panic("do not call")
+}
+
+type UpEvent struct {
+	Host *Host
+}
+
+func (a UpEvent) isEvent() {
+	panic("do not call")
+}
+
 type BootstrapEvent struct {
 	Hosts []*Host
+}
+
+func (b BootstrapEvent) isEvent() {
+	panic("do not call")
 }
 
 type SchemaChangeEvent struct {
 	Message *message.SchemaChangeEvent
 }
 
+func (s SchemaChangeEvent) isEvent() {
+	panic("do not call")
+}
+
 type ReconnectEvent struct {
 	Endpoint
 }
 
-type ClusterListener interface {
-	OnEvent(event interface{})
+func (r ReconnectEvent) isEvent() {
+	panic("do not call")
 }
 
-type ClusterListenerFunc func(event interface{})
+type ClusterListener interface {
+	OnEvent(event Event)
+}
 
-func (f ClusterListenerFunc) OnEvent(event interface{}) {
+type ClusterListenerFunc func(event Event)
+
+func (f ClusterListenerFunc) OnEvent(event Event) {
 	f(event)
 }
 
@@ -236,7 +268,7 @@ func (c *Cluster) mergeHosts(hosts []*Host) error {
 	return nil
 }
 
-func (c *Cluster) sendEvent(event interface{}) {
+func (c *Cluster) sendEvent(event Event) {
 	for _, listener := range c.listeners {
 		listener.OnEvent(event)
 	}
