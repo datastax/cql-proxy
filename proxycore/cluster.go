@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/datastax/go-cassandra-native-protocol/frame"
@@ -94,6 +95,8 @@ type Cluster struct {
 	listeners        []ClusterListener
 	addListener      chan ClusterListener
 	events           chan *frame.Frame
+	outageMu         sync.Mutex
+	outageTime       time.Time
 	// the following are immutable after start up
 	NegotiatedVersion primitive.ProtocolVersion
 	Info              ClusterInfo
@@ -190,6 +193,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 
 	c.currentEndpoint = endpoint
 	c.controlConn = conn
+	c.setOutageTime(time.Time{})
 	if initial {
 		c.NegotiatedVersion = negotiated
 		c.Info = info
@@ -323,6 +327,16 @@ func (c *Cluster) reconnect() bool {
 	}
 }
 
+func (c *Cluster) OutageDuration() time.Duration {
+	c.outageMu.Lock()
+	defer c.outageMu.Unlock()
+	if c.outageTime.IsZero() {
+		return time.Duration(0)
+	} else {
+		return time.Now().Sub(c.outageTime)
+	}
+}
+
 func (c *Cluster) refreshHosts() {
 	timeout := getOrUseDefault(c.config.RefreshTimeout, DefaultRefreshTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -335,6 +349,12 @@ func (c *Cluster) refreshHosts() {
 		c.logger.Error("unable to refresh hosts", zap.Error(err))
 		_ = c.controlConn.Close()
 	}
+}
+
+func (c *Cluster) setOutageTime(t time.Time) {
+	c.outageMu.Lock()
+	c.outageTime = t
+	c.outageMu.Unlock()
 }
 
 func (c *Cluster) stayConnected() {
@@ -374,6 +394,7 @@ func (c *Cluster) stayConnected() {
 				_ = c.controlConn.Close()
 			case <-c.controlConn.IsClosed():
 				c.logger.Warn("control connection closed", zap.Stringer("endpoint", c.currentEndpoint), zap.Error(c.controlConn.Err()))
+				c.setOutageTime(time.Now())
 				c.controlConn = nil
 			case newListener := <-c.addListener:
 				for _, listener := range c.listeners {
