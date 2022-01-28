@@ -56,7 +56,7 @@ func TestConnectCluster(t *testing.T) {
 
 	events := make(chan interface{})
 
-	err = cluster.Listen(ClusterListenerFunc(func(event interface{}) {
+	err = cluster.Listen(ClusterListenerFunc(func(event Event) {
 		events <- event
 	}))
 	require.NoError(t, err)
