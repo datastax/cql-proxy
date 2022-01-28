@@ -78,7 +78,7 @@ type Proxy struct {
 	systemLocalValues   map[string]message.Column
 }
 
-func (p *Proxy) OnEvent(event interface{}) {
+func (p *Proxy) OnEvent(event proxycore.Event) {
 	switch evt := event.(type) {
 	case *proxycore.SchemaChangeEvent:
 		frm := frame.NewFrame(p.cluster.NegotiatedVersion, -1, evt.Message)
