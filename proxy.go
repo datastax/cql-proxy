@@ -95,7 +95,7 @@ func main() {
 		cliCtx.Fatalf("default protocol version is greater than max protocol version")
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+	ctx, cancel := signalContext(context.Background(), os.Interrupt, os.Kill)
 	defer cancel()
 
 	var logger *zap.Logger
@@ -152,6 +152,25 @@ func parseProtocolVersion(s string) (version primitive.ProtocolVersion, ok bool)
 		ok = false
 	}
 	return version, ok
+}
+
+func signalContext(parent context.Context, sig ...os.Signal) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, sig...)
+	if ctx.Err() == nil {
+		go func() {
+			select {
+			case <-c:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
+	return ctx, func() {
+		cancel()
+		signal.Stop(c)
+	}
 }
 
 func maybeAddHealthCheck(p *proxy.Proxy) {
