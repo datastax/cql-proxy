@@ -34,7 +34,7 @@ const (
 )
 
 type Event interface {
-	isEvent()
+	isEvent() // Marker method for the event interface
 }
 
 type AddEvent struct {
