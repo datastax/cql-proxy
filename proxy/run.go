@@ -167,6 +167,7 @@ func parseProtocolVersion(s string) (version primitive.ProtocolVersion, ok bool)
 	return version, ok
 }
 
+// maybeAddHealthCheck checks the cli flag and adds handlers for health checks if required.
 func maybeAddHealthCheck(p *Proxy) {
 	if cli.HealthCheck {
 		http.HandleFunc(livenessPath, func(writer http.ResponseWriter, request *http.Request) {
@@ -197,7 +198,7 @@ func maybeAddHealthCheck(p *Proxy) {
 	}
 }
 
-//maybeAddPort adds the default port to an IP; otherwise, it returns the original address
+// maybeAddPort adds the default port to an IP; otherwise, it returns the original address.
 func maybeAddPort(addr string, defaultPort string) string {
 	if net.ParseIP(addr) != nil {
 		return net.JoinHostPort(addr, defaultPort)
@@ -205,6 +206,7 @@ func maybeAddPort(addr string, defaultPort string) string {
 	return addr
 }
 
+// listenAndServe correctly handles serving both the proxy and an HTTP server simultaneously.
 func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err error) {
 	var wg sync.WaitGroup
 

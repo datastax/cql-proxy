@@ -29,6 +29,7 @@ func main() {
 	os.Exit(proxy.Run(ctx, os.Args[1:]))
 }
 
+// signalContext is a simplified version of `signal.NotifyContext()` for  golang 1.15 and earlier
 func signalContext(parent context.Context, sig ...os.Signal) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(parent)
 	ch := make(chan os.Signal)
