@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 	"reflect"
 	"sync"
@@ -41,7 +42,7 @@ type request struct {
 	session    *proxycore.Session
 	state      idempotentState
 	keyspace   string
-	query      string
+	msg        message.Message
 	done       bool
 	retryCount int
 	host       *proxycore.Host
@@ -96,9 +97,25 @@ func (r *request) Frame() interface{} {
 
 func (r *request) checkIdempotent() bool {
 	if notDetermined == r.state {
-		idempotent, err := parser.IsQueryIdempotent(r.query)
+		idempotent := false
+		var err error
+		if r.msg != nil {
+			switch msg := r.msg.(type) {
+			case *partialQuery:
+				idempotent, err = parser.IsQueryIdempotent(msg.query)
+			case *partialExecute:
+				idempotent = r.client.proxy.isIdempotent(msg.queryId)
+			case *partialBatch:
+				idempotent, err = r.isBatchIdempotent(msg)
+			default:
+				r.client.proxy.logger.Error("invalid message type encountered when checking for idempotence",
+					zap.Stringer("type", reflect.TypeOf(msg)))
+			}
+		}
 		if err != nil {
-			r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
+			r.client.proxy.logger.Error("error parsing query for idempotence",
+				zap.Error(err),
+				zap.Stringer("type", reflect.TypeOf(r.msg)))
 		}
 		if idempotent {
 			r.state = isIdempotent
@@ -129,24 +146,7 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 	if !r.done {
 		if raw.Header.OpCode != primitive.OpCodeError ||
 			!r.handleErrorResult(raw) { // If the error result is retried then we don't send back this response
-			if r.raw.Header.OpCode == primitive.OpCodePrepare && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
-				frm, err := codec.ConvertFromRawFrame(raw)
-				if err != nil {
-					r.client.proxy.logger.Error("error attempting to decode prepared result message")
-				} else if _, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
-					r.client.proxy.logger.Error("expected prepared result message, but got something else")
-				} else {
-					idempotent, err := parser.IsQueryIdempotent(r.query)
-					if err != nil {
-						r.client.proxy.logger.Error("error parsing query for idempotence", zap.Error(err))
-					} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
-						r.client.preparedIdempotence.Store(preparedIdKey(result.PreparedQueryId), idempotent)
-					} else {
-						r.client.proxy.logger.Error("expected prepared result, but got some other type of message",
-							zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
-					}
-				}
-			}
+			r.client.proxy.maybeStorePreparedIdempotence(raw, r.msg)
 			r.done = true
 			r.sendRaw(raw)
 		}
@@ -162,9 +162,8 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	if err != nil {
 		logger.Error("unable to decode error frame for retry decision", zap.Error(err))
 	} else {
-		idempotent := r.checkIdempotent()
-
 		errMsg := frm.Body.Message.(message.Error)
+
 		logger.Debug("received error response",
 			zap.Stringer("host", r.host),
 			zap.Stringer("errorCode", errMsg.GetErrorCode()),
@@ -181,7 +180,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 				)
 			}
 		case *message.WriteTimeout:
-			if idempotent {
+			if r.checkIdempotent() {
 				decision = r.client.proxy.config.RetryPolicy.OnWriteTimeout(msg, r.retryCount)
 				if decision != ReturnError {
 					logger.Debug("retrying write timeout",
@@ -208,7 +207,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 			)
 		case *message.ServerError, *message.Overloaded, *message.TruncateError,
 			*message.ReadFailure, *message.WriteFailure:
-			if idempotent {
+			if r.checkIdempotent() {
 				decision = r.client.proxy.config.RetryPolicy.OnErrorResponse(errMsg, r.retryCount)
 				if decision != ReturnError {
 					logger.Debug("retrying on error response",
@@ -236,4 +235,23 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	}
 
 	return retried
+}
+
+func (r *request) isBatchIdempotent(batch *partialBatch) (idempotent bool, err error) {
+	for _, queryOrId := range batch.queryOrIds {
+		switch q := queryOrId.(type) {
+		case string:
+			if idempotent, err = parser.IsQueryIdempotent(q); !idempotent {
+				return idempotent, err
+			}
+		case []byte:
+			idempotent = r.client.proxy.isIdempotent(q)
+			if !idempotent {
+				return false, nil
+			}
+		default:
+			return false, errors.New("unhandled query type in batch")
+		}
+	}
+	return true, nil
 }

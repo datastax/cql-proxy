@@ -37,7 +37,6 @@ type connPool struct {
 	logger        *zap.Logger
 	preparedCache PreparedCache
 	cancel        context.CancelFunc
-	remaining     int32
 	conns         []*ClientConn
 	connsMu       *sync.RWMutex
 }
@@ -53,7 +52,6 @@ func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) 
 		logger:        GetOrCreateNopLogger(config.Logger),
 		preparedCache: config.PreparedCache,
 		cancel:        cancel,
-		remaining:     int32(config.NumConns),
 		conns:         make([]*ClientConn, config.NumConns),
 		connsMu:       &sync.RWMutex{},
 	}
@@ -91,13 +89,12 @@ func connectPoolNoFail(ctx context.Context, config connPoolConfig) *connPool {
 	ctx, cancel := context.WithCancel(ctx)
 
 	pool := &connPool{
-		ctx:       ctx,
-		config:    config,
-		logger:    GetOrCreateNopLogger(config.Logger),
-		cancel:    cancel,
-		remaining: int32(config.NumConns),
-		conns:     make([]*ClientConn, config.NumConns),
-		connsMu:   &sync.RWMutex{},
+		ctx:     ctx,
+		config:  config,
+		logger:  GetOrCreateNopLogger(config.Logger),
+		cancel:  cancel,
+		conns:   make([]*ClientConn, config.NumConns),
+		connsMu: &sync.RWMutex{},
 	}
 
 	for i := 0; i < config.NumConns; i++ {

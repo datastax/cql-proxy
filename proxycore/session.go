@@ -106,7 +106,7 @@ func (s *Session) leastBusyConn(host *Host) *ClientConn {
 	return nil
 }
 
-func (s *Session) OnEvent(event interface{}) {
+func (s *Session) OnEvent(event Event) {
 	switch evt := event.(type) {
 	case *BootstrapEvent:
 		go func() {
