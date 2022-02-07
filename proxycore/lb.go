@@ -42,7 +42,7 @@ type roundRobinLoadBalancer struct {
 	mu    *sync.Mutex
 }
 
-func (l *roundRobinLoadBalancer) OnEvent(event interface{}) {
+func (l *roundRobinLoadBalancer) OnEvent(event Event) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

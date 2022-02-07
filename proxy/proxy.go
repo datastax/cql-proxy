@@ -78,7 +78,7 @@ type Proxy struct {
 	systemLocalValues   map[string]message.Column
 }
 
-func (p *Proxy) OnEvent(event interface{}) {
+func (p *Proxy) OnEvent(event proxycore.Event) {
 	switch evt := event.(type) {
 	case *proxycore.SchemaChangeEvent:
 		frm := frame.NewFrame(p.cluster.NegotiatedVersion, -1, evt.Message)
@@ -356,7 +356,10 @@ func (c *client) Receive(reader io.Reader) error {
 
 	switch msg := body.Message.(type) {
 	case *message.Options:
-		c.send(raw.Header, &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.0.0"}, "COMPRESSION": {}}})
+		c.send(raw.Header, &message.Supported{Options: map[string][]string{
+			"CQL_VERSION": {c.proxy.cluster.Info.CQLVersion},
+			"COMPRESSION": {},
+		}})
 	case *message.Startup:
 		c.send(raw.Header, &message.Ready{})
 	case *message.Register:
