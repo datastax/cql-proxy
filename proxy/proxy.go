@@ -203,6 +203,14 @@ func (p *Proxy) Shutdown() error {
 	return p.listener.Close()
 }
 
+func (p *Proxy) Ready() bool {
+	return true
+}
+
+func (p *Proxy) OutageDuration() time.Duration {
+	return p.cluster.OutageDuration()
+}
+
 func (p *Proxy) handle(conn *net.TCPConn) {
 	if err := conn.SetKeepAlive(false); err != nil {
 		p.logger.Warn("failed to disable keepalive on connection", zap.Error(err))
