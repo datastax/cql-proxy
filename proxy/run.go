@@ -38,6 +38,8 @@ var cli struct {
 	Bundle             string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
 	Username           string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
 	Password           string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
+	Token              string        `help:"Token" short:"t" env:"TOKEN"`
+	DatabaseID         string        `help:"Database ID" short:"i" env:"DATABASE_ID"`
 	ContactPoints      []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
 	Port               int           `help:"Default port to use when connecting to cluster" default:"9042" short:"t" env:"PORT"`
 	ProtocolVersion    string        `help:"Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" default:"v4" short:"n" env:"PROTOCOL_VERSION"`
@@ -70,13 +72,24 @@ func Run(ctx context.Context, args []string) int {
 	var resolver proxycore.EndpointResolver
 	if len(cli.Bundle) > 0 {
 		if bundle, err := astra.LoadBundleZipFromPath(cli.Bundle); err != nil {
-			cliCtx.Errorf("unable to open bundle %s: %v", cli.Bundle, err)
+			cliCtx.Errorf("unable to open bundle %s from file: %v", cli.Bundle, err)
 			return 1
 		} else {
 			resolver = astra.NewResolver(bundle)
 		}
 	} else if len(cli.ContactPoints) > 0 {
 		resolver = proxycore.NewResolverWithDefaultPort(cli.ContactPoints, cli.Port)
+	} else if len(cli.Token) > 0 {
+		if len(cli.DatabaseID) == 0 {
+			cliCtx.Fatalf("database ID is required when using a token")
+		}
+		bundle, err := astra.LoadBundleZipFromURL(astra.URL, cli.DatabaseID, cli.Token, 10*time.Second)
+		if err != nil {
+			cliCtx.Fatalf("unable to load bundle %s from astra: %v", cli.Bundle, err)
+		}
+		resolver = astra.NewResolver(bundle)
+		cli.Username = "token"
+		cli.Password = cli.Token
 	} else {
 		cliCtx.Errorf("must provide either bundle path or contact points")
 		return 1
