@@ -28,6 +28,7 @@ func TestIsIdempotentUpdateStmt(t *testing.T) {
 		msg        string
 	}{
 		{"UPDATE table SET a = 0", true, false, "simple table"},
+		{"UPDATE table SET a = 0;", true, false, "semicolong"},
 		{"UPDATE table SET a = 0, b = 0", true, false, "multiple updates"},
 		{"UPDATE ks.table SET a = 0", true, false, "simple qualified table"},
 		{"UPDATE ks.table USING TIMESTAMP 1234 SET a = 0", true, false, "using timestamp"},
@@ -53,6 +54,7 @@ func TestIsIdempotentUpdateStmt(t *testing.T) {
 		{"UPDATE table SET a = 0 WHERE a > toTimestamp(toDate(now()))", false, false, "where clause w/ now()"},
 		{"UPDATE table SET a = 0 WHERE a > 0 IF EXISTS", false, false, "where clause w/ LWT"},
 		{"UPDATE table SET a = 0 IF EXISTS", false, false, "LWT"},
+		{"UPDATE table SET a = 0 IF EXISTS;", false, false, "LWT and semicolon"},
 	}
 
 	for _, tt := range tests {

@@ -58,6 +58,9 @@ func isIdempotentBatchStmt(l *lexer) (idempotent bool, err error) {
 		default:
 			return false, errors.New("unexpected child statement in batch statement")
 		}
+		if t == tkEOS { // Skip ';'
+			t = l.next()
+		}
 		if !idempotent {
 			return idempotent, err
 		}

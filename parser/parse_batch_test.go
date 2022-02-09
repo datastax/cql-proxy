@@ -33,6 +33,15 @@ func TestIsIdempotentBatchStmt(t *testing.T) {
 		  APPLY BATCH`,
 			true, false, "simple"},
 		{`BEGIN BATCH
+			INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1)
+		  APPLY BATCH;`,
+			true, false, "semicolon at the end of the batch"},
+		{`BEGIN BATCH
+			INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1);
+			INSERT INTO table (a, b, c) VALUES (2, 'b', 0.2);
+		  APPLY BATCH;`,
+			true, false, "semicolon at the end of child statements"},
+		{`BEGIN BATCH
 		 APPLY BATCH`,
 			true, false, "empty"},
 		{`BEGIN BATCH
@@ -76,14 +85,17 @@ func TestIsIdempotentBatchStmt(t *testing.T) {
 			false, false, "batch counter update"},
 		{`BEGIN BATCH
 			INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1) 
-			DELETE a, b, c[1] FROM ks.table
+			DELETE a, b, c[1] FROM ks.table;
 		  APPLY BATCH`,
 			false, false, "delete from list in batch"},
 		{`BEGIN BATCH
 			INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1) 
 			INSERT INTO table (a, b, c) VALUES (now(), 'a', 0.1)
-		  APPLY BATCH`,
+		  APPLY BATCH;`,
 			false, false, "contains now()"},
+		// Found defect
+		{"BEGIN BATCH USING TIMESTAMP 1481124356754405\nINSERT INTO cycling.cyclist_expenses \n   (cyclist_name, expense_id, amount, description, paid) \n   VALUES ('Vera ADRIAN', 2, 13.44, 'Lunch', true);\nINSERT INTO cycling.cyclist_expenses \n   (cyclist_name, expense_id, amount, description, paid) \n   VALUES ('Vera ADRIAN', 3, 25.00, 'Dinner', true);\nAPPLY BATCH;",
+			true, false, "has semicolons after each statement"},
 	}
 
 	for _, tt := range tests {
