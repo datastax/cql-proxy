@@ -103,5 +103,5 @@ func isIdempotentStmt(l *lexer, t token) (idempotent bool, err error) {
 	default:
 		return false, errors.New("invalid statement type")
 	}
-	return idempotent && t == tkEOF, err
+	return idempotent && (t == tkEOF || t == tkEOS), err
 }

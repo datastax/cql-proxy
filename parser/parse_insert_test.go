@@ -28,6 +28,7 @@ func TestIsIdempotentInsertStmt(t *testing.T) {
 		msg        string
 	}{
 		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1)", true, false, "simple"},
+		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1);", true, false, "semicolon"},
 		{"INSERT INTO ks.table (a, b, c) VALUES (1, 'a', 0.1)", true, false, "simple qualified table name"},
 		{"INSERT INTO table () VALUES ()", true, false, "no identifier of values"},
 		{"INSERT INTO table JSON '{}'", true, false, "JSON"},
@@ -49,6 +50,7 @@ func TestIsIdempotentInsertStmt(t *testing.T) {
 		{"INSERT INTO table (a, b, c) VALUES (1, 'a', 0.1) IF NOT EXISTS", false, false, "simple w/ LWT"},
 		{"INSERT INTO table () VALUES () IF NOT EXIST", false, false, "no identifier of values w/ LWT"},
 		{"INSERT INTO table JSON '{}' IF NOT EXIST", false, false, "'JSON' w/ LWT"},
+		{"INSERT INTO table JSON '{}' IF NOT EXIST;", false, false, "'JSON' w/ LWT and semicolon"},
 	}
 
 	for _, tt := range tests {

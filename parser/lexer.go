@@ -70,6 +70,7 @@ const (
 	tkDuration
 	tkNan
 	tkInfinity
+	tkEOS
 )
 
 const (
@@ -77,14 +78,14 @@ const (
 	tkRangle = tkGt
 )
 
-//line lexer.go:84
+//line lexer.go:85
 const lex_start int = 90
 const lex_first_final int = 90
 const lex_error int = -1
 
 const lex_en_main int = 90
 
-//line lexer.rl:83
+//line lexer.rl:84
 
 type lexer struct {
 	data     string
@@ -130,7 +131,7 @@ func (l *lexer) next() token {
 		return tkEOF
 	}
 
-//line lexer.go:140
+//line lexer.go:141
 	{
 		cs = lex_start
 		ts = 0
@@ -138,7 +139,7 @@ func (l *lexer) next() token {
 		act = 0
 	}
 
-//line lexer.go:148
+//line lexer.go:149
 	{
 		if p == pe {
 			goto _test_eof
@@ -880,7 +881,7 @@ func (l *lexer) next() token {
 
 		goto st90
 	tr2:
-//line lexer.rl:197
+//line lexer.rl:198
 		te = p + 1
 		{
 			tk = tkIdentifier
@@ -893,7 +894,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr11:
-//line lexer.rl:195
+//line lexer.rl:196
 		p = (te) - 1
 		{
 			tk = tkDuration
@@ -905,7 +906,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr17:
-//line lexer.rl:185
+//line lexer.rl:186
 		p = (te) - 1
 		{
 			tk = tkSub
@@ -917,7 +918,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr24:
-//line lexer.rl:189
+//line lexer.rl:190
 		te = p + 1
 		{
 			tk = tkInfinity
@@ -929,7 +930,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr26:
-//line lexer.rl:188
+//line lexer.rl:189
 		te = p + 1
 		{
 			tk = tkNan
@@ -941,7 +942,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr30:
-//line lexer.rl:195
+//line lexer.rl:196
 		te = p + 1
 		{
 			tk = tkDuration
@@ -953,7 +954,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr82:
-//line lexer.rl:196
+//line lexer.rl:197
 		te = p + 1
 		{
 			tk = tkUuid
@@ -965,7 +966,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr84:
-//line lexer.rl:192
+//line lexer.rl:193
 		p = (te) - 1
 		{
 			tk = tkInteger
@@ -977,7 +978,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr109:
-//line lexer.rl:200
+//line lexer.rl:201
 		te = p + 1
 		{
 			tk = tkInvalid
@@ -989,19 +990,19 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr110:
-//line lexer.rl:199
+//line lexer.rl:200
 		te = p + 1
 		{ /* Skip */
 		}
 		goto st90
 	tr111:
-//line lexer.rl:198
+//line lexer.rl:199
 		te = p + 1
 		{ /* Skip */
 		}
 		goto st90
 	tr117:
-//line lexer.rl:172
+//line lexer.rl:173
 		te = p + 1
 		{
 			tk = tkLparen
@@ -1013,7 +1014,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr118:
-//line lexer.rl:173
+//line lexer.rl:174
 		te = p + 1
 		{
 			tk = tkRparen
@@ -1025,7 +1026,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr119:
-//line lexer.rl:167
+//line lexer.rl:168
 		te = p + 1
 		{
 			tk = tkStar
@@ -1037,7 +1038,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr121:
-//line lexer.rl:168
+//line lexer.rl:169
 		te = p + 1
 		{
 			tk = tkComma
@@ -1049,7 +1050,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr123:
-//line lexer.rl:169
+//line lexer.rl:170
 		te = p + 1
 		{
 			tk = tkDot
@@ -1061,7 +1062,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr126:
-//line lexer.rl:170
+//line lexer.rl:171
 		te = p + 1
 		{
 			tk = tkColon
@@ -1073,10 +1074,10 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr127:
-//line lexer.rl:190
+//line lexer.rl:191
 		te = p + 1
 		{
-			tk = tkEOF
+			tk = tkEOS
 			{
 				p++
 				cs = 90
@@ -1085,7 +1086,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr129:
-//line lexer.rl:178
+//line lexer.rl:179
 		te = p + 1
 		{
 			tk = tkEqual
@@ -1097,7 +1098,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr131:
-//line lexer.rl:171
+//line lexer.rl:172
 		te = p + 1
 		{
 			tk = tkQMark
@@ -1109,7 +1110,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr145:
-//line lexer.rl:174
+//line lexer.rl:175
 		te = p + 1
 		{
 			tk = tkLsquare
@@ -1121,7 +1122,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr146:
-//line lexer.rl:175
+//line lexer.rl:176
 		te = p + 1
 		{
 			tk = tkRsquare
@@ -1133,7 +1134,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr147:
-//line lexer.rl:176
+//line lexer.rl:177
 		te = p + 1
 		{
 			tk = tkLcurly
@@ -1145,7 +1146,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr148:
-//line lexer.rl:177
+//line lexer.rl:178
 		te = p + 1
 		{
 			tk = tkRcurly
@@ -1157,7 +1158,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr149:
-//line lexer.rl:200
+//line lexer.rl:201
 		te = p
 		p--
 		{
@@ -1170,7 +1171,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr150:
-//line lexer.rl:183
+//line lexer.rl:184
 		te = p + 1
 		{
 			tk = tkNotEqual
@@ -1182,7 +1183,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr151:
-//line lexer.rl:191
+//line lexer.rl:192
 		te = p
 		p--
 		{
@@ -1195,7 +1196,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr152:
-//line lexer.rl:184
+//line lexer.rl:185
 		te = p
 		p--
 		{
@@ -1208,7 +1209,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr153:
-//line lexer.rl:186
+//line lexer.rl:187
 		te = p + 1
 		{
 			tk = tkAddEqual
@@ -1220,7 +1221,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr154:
-//line lexer.rl:185
+//line lexer.rl:186
 		te = p
 		p--
 		{
@@ -1233,7 +1234,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr156:
-//line lexer.rl:187
+//line lexer.rl:188
 		te = p + 1
 		{
 			tk = tkSubEqual
@@ -1245,7 +1246,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr160:
-//line lexer.rl:192
+//line lexer.rl:193
 		te = p
 		p--
 		{
@@ -1258,7 +1259,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr163:
-//line lexer.rl:193
+//line lexer.rl:194
 		te = p
 		p--
 		{
@@ -1271,7 +1272,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr164:
-//line lexer.rl:195
+//line lexer.rl:196
 		te = p
 		p--
 		{
@@ -1284,7 +1285,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr189:
-//line lexer.rl:194
+//line lexer.rl:195
 		te = p
 		p--
 		{
@@ -1297,7 +1298,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr190:
-//line lexer.rl:181
+//line lexer.rl:182
 		te = p
 		p--
 		{
@@ -1310,7 +1311,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr191:
-//line lexer.rl:179
+//line lexer.rl:180
 		te = p + 1
 		{
 			tk = tkLtEqual
@@ -1322,7 +1323,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr192:
-//line lexer.rl:182
+//line lexer.rl:183
 		te = p
 		p--
 		{
@@ -1335,7 +1336,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr193:
-//line lexer.rl:180
+//line lexer.rl:181
 		te = p + 1
 		{
 			tk = tkGtEqual
@@ -1347,7 +1348,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr194:
-//line lexer.rl:197
+//line lexer.rl:198
 		te = p
 		p--
 		{
@@ -1361,7 +1362,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr231:
-//line lexer.rl:162
+//line lexer.rl:163
 		te = p
 		p--
 		{
@@ -1384,7 +1385,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		ts = p
 
-//line lexer.go:927
+//line lexer.go:928
 		switch data[p] {
 		case 9:
 			goto tr110
@@ -1526,14 +1527,14 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:197
+//line lexer.rl:198
 		act = 51
 		goto st93
 	tr114:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:200
+//line lexer.rl:201
 		act = 54
 		goto st93
 	st93:
@@ -1541,7 +1542,7 @@ func (l *lexer) next() token {
 			goto _test_eof93
 		}
 	st_case_93:
-//line lexer.go:1084
+//line lexer.go:1085
 		switch data[p] {
 		case 10:
 			goto tr0
@@ -1589,7 +1590,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:200
+//line lexer.rl:201
 		act = 54
 		goto st94
 	st94:
@@ -1597,7 +1598,7 @@ func (l *lexer) next() token {
 			goto _test_eof94
 		}
 	st_case_94:
-//line lexer.go:1140
+//line lexer.go:1141
 		if data[p] == 36 {
 			goto tr6
 		}
@@ -1615,7 +1616,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:191
+//line lexer.rl:192
 		act = 45
 		goto st95
 	st95:
@@ -1623,7 +1624,7 @@ func (l *lexer) next() token {
 			goto _test_eof95
 		}
 	st_case_95:
-//line lexer.go:1166
+//line lexer.go:1167
 		if data[p] == 36 {
 			goto st2
 		}
@@ -1632,7 +1633,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:200
+//line lexer.rl:201
 		act = 54
 		goto st96
 	st96:
@@ -1640,7 +1641,7 @@ func (l *lexer) next() token {
 			goto _test_eof96
 		}
 	st_case_96:
-//line lexer.go:1183
+//line lexer.go:1184
 		if data[p] == 39 {
 			goto tr8
 		}
@@ -1658,7 +1659,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:191
+//line lexer.rl:192
 		act = 45
 		goto st97
 	st97:
@@ -1666,7 +1667,7 @@ func (l *lexer) next() token {
 			goto _test_eof97
 		}
 	st_case_97:
-//line lexer.go:1209
+//line lexer.go:1210
 		if data[p] == 39 {
 			goto st3
 		}
@@ -1690,7 +1691,7 @@ func (l *lexer) next() token {
 			goto _test_eof99
 		}
 	st_case_99:
-//line lexer.go:1233
+//line lexer.go:1234
 		switch data[p] {
 		case 61:
 			goto tr156
@@ -1713,7 +1714,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st100
 	st100:
@@ -1721,7 +1722,7 @@ func (l *lexer) next() token {
 			goto _test_eof100
 		}
 	st_case_100:
-//line lexer.go:1264
+//line lexer.go:1265
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -1772,7 +1773,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st101
 	st101:
@@ -1780,7 +1781,7 @@ func (l *lexer) next() token {
 			goto _test_eof101
 		}
 	st_case_101:
-//line lexer.go:1323
+//line lexer.go:1324
 		switch data[p] {
 		case 69:
 			goto st4
@@ -1828,7 +1829,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st103
 	st103:
@@ -1836,7 +1837,7 @@ func (l *lexer) next() token {
 			goto _test_eof103
 		}
 	st_case_103:
-//line lexer.go:1379
+//line lexer.go:1380
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st6
 		}
@@ -1890,7 +1891,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st104
 	st104:
@@ -1898,7 +1899,7 @@ func (l *lexer) next() token {
 			goto _test_eof104
 		}
 	st_case_104:
-//line lexer.go:1441
+//line lexer.go:1442
 		switch data[p] {
 		case 79:
 			goto tr13
@@ -2046,7 +2047,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st105
 	st105:
@@ -2054,7 +2055,7 @@ func (l *lexer) next() token {
 			goto _test_eof105
 		}
 	st_case_105:
-//line lexer.go:1597
+//line lexer.go:1598
 		if data[p] == 84 {
 			goto tr166
 		}
@@ -2304,7 +2305,7 @@ func (l *lexer) next() token {
 			goto _test_eof107
 		}
 	st_case_107:
-//line lexer.go:1847
+//line lexer.go:1848
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st37
 		}
@@ -2336,7 +2337,7 @@ func (l *lexer) next() token {
 			goto _test_eof108
 		}
 	st_case_108:
-//line lexer.go:1879
+//line lexer.go:1880
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st38
 		}
@@ -2366,7 +2367,7 @@ func (l *lexer) next() token {
 			goto _test_eof109
 		}
 	st_case_109:
-//line lexer.go:1909
+//line lexer.go:1910
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st39
 		}
@@ -2393,7 +2394,7 @@ func (l *lexer) next() token {
 			goto _test_eof110
 		}
 	st_case_110:
-//line lexer.go:1936
+//line lexer.go:1937
 		if data[p] == 84 {
 			goto tr166
 		}
@@ -2423,7 +2424,7 @@ func (l *lexer) next() token {
 			goto _test_eof111
 		}
 	st_case_111:
-//line lexer.go:1966
+//line lexer.go:1967
 		if data[p] == 84 {
 			goto tr166
 		}
@@ -2450,7 +2451,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st112
 	st112:
@@ -2458,7 +2459,7 @@ func (l *lexer) next() token {
 			goto _test_eof112
 		}
 	st_case_112:
-//line lexer.go:2001
+//line lexer.go:2002
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2524,7 +2525,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st113
 	st113:
@@ -2532,7 +2533,7 @@ func (l *lexer) next() token {
 			goto _test_eof113
 		}
 	st_case_113:
-//line lexer.go:2075
+//line lexer.go:2076
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2592,7 +2593,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st114
 	st114:
@@ -2600,7 +2601,7 @@ func (l *lexer) next() token {
 			goto _test_eof114
 		}
 	st_case_114:
-//line lexer.go:2143
+//line lexer.go:2144
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2660,7 +2661,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st115
 	st115:
@@ -2668,7 +2669,7 @@ func (l *lexer) next() token {
 			goto _test_eof115
 		}
 	st_case_115:
-//line lexer.go:2211
+//line lexer.go:2212
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2728,7 +2729,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st116
 	st116:
@@ -2736,7 +2737,7 @@ func (l *lexer) next() token {
 			goto _test_eof116
 		}
 	st_case_116:
-//line lexer.go:2279
+//line lexer.go:2280
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2796,7 +2797,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st117
 	st117:
@@ -2804,7 +2805,7 @@ func (l *lexer) next() token {
 			goto _test_eof117
 		}
 	st_case_117:
-//line lexer.go:2347
+//line lexer.go:2348
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2864,7 +2865,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st118
 	st118:
@@ -2872,7 +2873,7 @@ func (l *lexer) next() token {
 			goto _test_eof118
 		}
 	st_case_118:
-//line lexer.go:2415
+//line lexer.go:2416
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -2932,7 +2933,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st119
 	st119:
@@ -2940,7 +2941,7 @@ func (l *lexer) next() token {
 			goto _test_eof119
 		}
 	st_case_119:
-//line lexer.go:2483
+//line lexer.go:2484
 		switch data[p] {
 		case 45:
 			goto st42
@@ -3461,7 +3462,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st120
 	st120:
@@ -3469,7 +3470,7 @@ func (l *lexer) next() token {
 			goto _test_eof120
 		}
 	st_case_120:
-//line lexer.go:3012
+//line lexer.go:3013
 		if data[p] == 45 {
 			goto st42
 		}
@@ -3514,7 +3515,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st121
 	st121:
@@ -3522,7 +3523,7 @@ func (l *lexer) next() token {
 			goto _test_eof121
 		}
 	st_case_121:
-//line lexer.go:3065
+//line lexer.go:3066
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3540,7 +3541,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st122
 	st122:
@@ -3548,7 +3549,7 @@ func (l *lexer) next() token {
 			goto _test_eof122
 		}
 	st_case_122:
-//line lexer.go:3091
+//line lexer.go:3092
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3566,7 +3567,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st123
 	st123:
@@ -3574,7 +3575,7 @@ func (l *lexer) next() token {
 			goto _test_eof123
 		}
 	st_case_123:
-//line lexer.go:3117
+//line lexer.go:3118
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3592,7 +3593,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st124
 	st124:
@@ -3600,7 +3601,7 @@ func (l *lexer) next() token {
 			goto _test_eof124
 		}
 	st_case_124:
-//line lexer.go:3143
+//line lexer.go:3144
 		if data[p] == 45 {
 			goto st47
 		}
@@ -3630,7 +3631,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st125
 	st125:
@@ -3638,7 +3639,7 @@ func (l *lexer) next() token {
 			goto _test_eof125
 		}
 	st_case_125:
-//line lexer.go:3181
+//line lexer.go:3182
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3727,7 +3728,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st126
 	st126:
@@ -3735,7 +3736,7 @@ func (l *lexer) next() token {
 			goto _test_eof126
 		}
 	st_case_126:
-//line lexer.go:3278
+//line lexer.go:3279
 		if data[p] == 45 {
 			goto st42
 		}
@@ -3765,7 +3766,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st127
 	st127:
@@ -3773,7 +3774,7 @@ func (l *lexer) next() token {
 			goto _test_eof127
 		}
 	st_case_127:
-//line lexer.go:3316
+//line lexer.go:3317
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3869,7 +3870,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st128
 	st128:
@@ -3877,7 +3878,7 @@ func (l *lexer) next() token {
 			goto _test_eof128
 		}
 	st_case_128:
-//line lexer.go:3420
+//line lexer.go:3421
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3913,7 +3914,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st129
 	st129:
@@ -3921,7 +3922,7 @@ func (l *lexer) next() token {
 			goto _test_eof129
 		}
 	st_case_129:
-//line lexer.go:3464
+//line lexer.go:3465
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4017,7 +4018,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st130
 	st130:
@@ -4025,7 +4026,7 @@ func (l *lexer) next() token {
 			goto _test_eof130
 		}
 	st_case_130:
-//line lexer.go:3568
+//line lexer.go:3569
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4061,7 +4062,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st131
 	st131:
@@ -4069,7 +4070,7 @@ func (l *lexer) next() token {
 			goto _test_eof131
 		}
 	st_case_131:
-//line lexer.go:3612
+//line lexer.go:3613
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4165,7 +4166,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st132
 	st132:
@@ -4173,7 +4174,7 @@ func (l *lexer) next() token {
 			goto _test_eof132
 		}
 	st_case_132:
-//line lexer.go:3716
+//line lexer.go:3717
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4209,7 +4210,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st133
 	st133:
@@ -4217,7 +4218,7 @@ func (l *lexer) next() token {
 			goto _test_eof133
 		}
 	st_case_133:
-//line lexer.go:3760
+//line lexer.go:3761
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4313,7 +4314,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st134
 	st134:
@@ -4321,7 +4322,7 @@ func (l *lexer) next() token {
 			goto _test_eof134
 		}
 	st_case_134:
-//line lexer.go:3864
+//line lexer.go:3865
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4357,7 +4358,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st135
 	st135:
@@ -4365,7 +4366,7 @@ func (l *lexer) next() token {
 			goto _test_eof135
 		}
 	st_case_135:
-//line lexer.go:3908
+//line lexer.go:3909
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4461,7 +4462,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
+//line lexer.rl:194
 		act = 47
 		goto st136
 	st136:
@@ -4469,7 +4470,7 @@ func (l *lexer) next() token {
 			goto _test_eof136
 		}
 	st_case_136:
-//line lexer.go:4012
+//line lexer.go:4013
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4505,7 +4506,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
+//line lexer.rl:193
 		act = 46
 		goto st138
 	st138:
@@ -4513,7 +4514,7 @@ func (l *lexer) next() token {
 			goto _test_eof138
 		}
 	st_case_138:
-//line lexer.go:4056
+//line lexer.go:4057
 		switch data[p] {
 		case 46:
 			goto tr161
@@ -4817,7 +4818,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:197
+//line lexer.rl:198
 		act = 51
 		goto st148
 	st148:
@@ -4825,7 +4826,7 @@ func (l *lexer) next() token {
 			goto _test_eof148
 		}
 	st_case_148:
-//line lexer.go:4368
+//line lexer.go:4369
 		switch data[p] {
 		case 45:
 			goto st42
@@ -4849,161 +4850,161 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:197
+//line lexer.rl:198
 		act = 51
 		goto st149
 	tr256:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:195
+//line lexer.rl:196
 		act = 49
 		goto st149
 	tr204:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:160
+//line lexer.rl:161
 		act = 14
 		goto st149
 	tr207:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:153
+//line lexer.rl:154
 		act = 7
 		goto st149
 	tr212:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:151
+//line lexer.rl:152
 		act = 5
 		goto st149
 	tr215:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:152
+//line lexer.rl:153
 		act = 6
 		goto st149
 	tr220:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:150
+//line lexer.rl:151
 		act = 4
 		goto st149
 	tr225:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:165
+//line lexer.rl:166
 		act = 19
 		goto st149
 	tr227:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:155
+//line lexer.rl:156
 		act = 9
 		goto st149
 	tr228:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:158
+//line lexer.rl:159
 		act = 12
 		goto st149
 	tr230:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:161
+//line lexer.rl:162
 		act = 15
 		goto st149
 	tr239:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:189
+//line lexer.rl:190
 		act = 43
 		goto st149
 	tr242:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:148
+//line lexer.rl:149
 		act = 2
 		goto st149
 	tr243:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:154
+//line lexer.rl:155
 		act = 8
 		goto st149
 	tr247:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:188
+//line lexer.rl:189
 		act = 42
 		goto st149
 	tr248:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:163
+//line lexer.rl:164
 		act = 17
 		goto st149
 	tr250:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:166
+//line lexer.rl:167
 		act = 20
 		goto st149
 	tr272:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:147
+//line lexer.rl:148
 		act = 1
 		goto st149
 	tr277:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:164
+//line lexer.rl:165
 		act = 18
 		goto st149
 	tr283:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:149
+//line lexer.rl:150
 		act = 3
 		goto st149
 	tr284:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:156
+//line lexer.rl:157
 		act = 10
 		goto st149
 	tr287:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:157
+//line lexer.rl:158
 		act = 11
 		goto st149
 	tr291:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:159
+//line lexer.rl:160
 		act = 13
 		goto st149
 	st149:
@@ -5011,7 +5012,7 @@ func (l *lexer) next() token {
 			goto _test_eof149
 		}
 	st_case_149:
-//line lexer.go:4554
+//line lexer.go:4555
 		if data[p] == 95 {
 			goto tr137
 		}
@@ -6267,7 +6268,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:197
+//line lexer.rl:198
 		act = 51
 		goto st193
 	st193:
@@ -6275,7 +6276,7 @@ func (l *lexer) next() token {
 			goto _test_eof193
 		}
 	st_case_193:
-//line lexer.go:5818
+//line lexer.go:5819
 		switch data[p] {
 		case 45:
 			goto st22
@@ -8333,7 +8334,7 @@ func (l *lexer) next() token {
 		}
 	}
 
-//line lexer.rl:205
+//line lexer.rl:206
 
 	l.p = p
 

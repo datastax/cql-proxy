@@ -191,5 +191,5 @@ func parseIdentifiers(l *lexer, t token) (err error) {
 }
 
 func isDMLTerminator(t token) bool {
-	return t == tkEOF || t == tkInsert || t == tkUpdate || t == tkDelete || t == tkApply
+	return t == tkEOF || t == tkEOS || t == tkInsert || t == tkUpdate || t == tkDelete || t == tkApply
 }
