@@ -19,9 +19,6 @@
 
 `cql-proxy` is designed to forward your application's CQL traffic to an appropriate database service. It listens on a local address and securely forwards that traffic.
 
-**Warning**: `cql-proxy` in its current state works well, and you should give it a try. However, it is still under development, so things might break or change. 
-
-Please give it a try and let us know what you think!
 ## When to use `cql-proxy`
 
 The `cql-proxy` sidecar enables unsupported CQL drivers to work with [DataStax Astra][astra]. These drivers include both legacy DataStax [drivers] and community-maintained CQL drivers, such as the [gocql] driver and the [rust-driver].
@@ -64,12 +61,33 @@ Flags:
 To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the following samples show how username, password and bundle are defined with each method.
 ### Using flags
 
+The easiest way to connect `cql-proxy` to Astra is to use your Astra Token and Database ID:
+
+```sh
+docker run -p 9042:9042 \
+  --rm datastax/cql-proxy:v0.0.4 \
+  --astra-token <astra-token> --astra-database-id <astra-datbase-id>
+```
+
+The proxy also support using the Astra Secure Connect Bundle, but it requires mounting the bundle to a volume in the container.
+
+
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
   --rm datastax/cql-proxy:v0.0.4 \
   --astra-bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
 ```
 ### Using environment variables
+
+Using the Astra Token:
+
+```sh
+docker run -p 9042:9042  \
+  --rm datastax/cql-proxy:v0.0.4 \
+  -e ASTRA_TOKEN=<astra-token> -e ASTRA_DATABASE_ID=<astra-datbase-id>
+```
+
+or mounting the secure connect bundle:
 
 ```sh
 docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
@@ -96,8 +114,7 @@ There are three methods for using `cql-proxy`:
    - [DataStax Astra][astra] cluster:
 
       ```sh
-      ./cql-proxy --astra-bundle <your-secure-connect-zip> \
-      --username <astra-client-id> --password <astra-client-secret>
+      ./cql-proxy --astra-token <astra-token> --astra-database-id <astra-database-id>
       ```
    - [Apache Cassandra][cassandra] cluster:
 
@@ -111,11 +128,11 @@ There are three methods for using `cql-proxy`:
    - [DataStax Astra][astra] cluster:
 
       ```sh
-      docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+      docker run -p 9042:9042 \
         datastax/cql-proxy:v0.0.4 \
-        --astra-bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
+        --astra-token <astra-token> --astra-database-id <astra-database-id>
       ```
-      The `<astra-client-id>` and `<astra-client-secret>` can be generated using these [instructions].
+      The `<astra-token>` can be generated using these [instructions].
 
    - [Apache Cassandra][cassandra] cluster:
 
