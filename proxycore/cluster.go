@@ -259,11 +259,13 @@ func (c *Cluster) mergeHosts(hosts []*Host) error {
 		if _, ok := existing[key]; ok {
 			delete(existing, key)
 		} else {
+			c.logger.Info("adding host to the cluster", zap.Stringer("host", host))
 			c.sendEvent(&AddEvent{host})
 		}
 	}
 
 	for _, host := range existing {
+		c.logger.Info("removing host from the cluster", zap.Stringer("host", host))
 		c.sendEvent(&RemoveEvent{host})
 	}
 

@@ -140,6 +140,7 @@ func (p *Proxy) Listen(address string) error {
 		ReconnectPolicy:   p.config.ReconnectPolicy,
 		HeartBeatInterval: p.config.HeartBeatInterval,
 		IdleTimeout:       p.config.IdleTimeout,
+		Logger:            p.logger,
 	})
 
 	if err != nil {
@@ -167,6 +168,7 @@ func (p *Proxy) Listen(address string) error {
 		HeartBeatInterval: p.config.HeartBeatInterval,
 		IdleTimeout:       p.config.IdleTimeout,
 		PreparedCache:     p.preparedCache,
+		Logger:            p.logger,
 	})
 
 	if err != nil {
@@ -245,6 +247,7 @@ func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace s
 			Keyspace:          keyspace,
 			HeartBeatInterval: p.config.HeartBeatInterval,
 			IdleTimeout:       p.config.IdleTimeout,
+			Logger:            p.logger,
 		})
 		if err != nil {
 			return nil, err
