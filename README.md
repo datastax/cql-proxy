@@ -61,38 +61,18 @@ Flags:
 To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the following samples show how username, password and bundle are defined with each method.
 ### Using flags
 
-The easiest way to connect `cql-proxy` to Astra is to use your Astra Token and Database ID:
-
 ```sh
 docker run -p 9042:9042 \
   --rm datastax/cql-proxy:v0.0.4 \
   --astra-token <astra-token> --astra-database-id <astra-datbase-id>
 ```
 
-The proxy also supports using the Astra Secure Connect Bundle, but requires mounting the bundle to a volume in the container.
-
-
-```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
-  --rm datastax/cql-proxy:v0.0.4 \
-  --astra-bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
-```
 ### Using environment variables
-
-Using the Astra Token:
 
 ```sh
 docker run -p 9042:9042  \
   --rm datastax/cql-proxy:v0.0.4 \
   -e ASTRA_TOKEN=<astra-token> -e ASTRA_DATABASE_ID=<astra-datbase-id>
-```
-
-or mounting the secure connect bundle:
-
-```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
-  --rm datastax/cql-proxy:v0.0.4 \
-  -e ASTRA_BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
 ```
 ## Getting started
 
@@ -132,8 +112,14 @@ There are three methods for using `cql-proxy`:
         datastax/cql-proxy:v0.0.4 \
         --astra-token <astra-token> --astra-database-id <astra-database-id>
       ```
-      The `<astra-token>` can be generated using these [instructions].
 
+      The `<astra-token>` can be generated using these [instructions]. The proxy also supports using the [Astra Secure Connect Bundle][bundle], but it requires mounting the bundle to a volume in the container:
+
+      ```sh
+      docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+      --rm datastax/cql-proxy:v0.0.4 \
+      --astra-bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
+      ```
    - [Apache Cassandra][cassandra] cluster:
 
       ```sh
@@ -215,6 +201,6 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 [cassandra]: https://cassandra.apache.org/
 [dse]: https://www.datastax.com/products/datastax-enterprise
 [instructions]: https://docs.datastax.com/en/astra/docs/manage-application-tokens.html
-
+[bundle]: https://docs.datastax.com/en/astra/docs/obtaining-database-credentials.html#_getting_your_secure_connect_bundle
 
 
