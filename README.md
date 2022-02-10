@@ -58,7 +58,7 @@ Flags:
       --num-conns=1                          Number of connection to create to each node of the backend cluster ($NUM_CONNS)
 ```
 
-To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the following samples show how username, password and bundle are defined with each method.
+To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the following samples show how the token and database ID are defined with each method.
 ### Using flags
 
 ```sh
@@ -96,10 +96,18 @@ There are three methods for using `cql-proxy`:
       ```sh
       ./cql-proxy --astra-token <astra-token> --astra-database-id <astra-database-id>
       ```
+
+      The `<astra-token>` can be generated using these [instructions]. The proxy also supports using the [Astra Secure Connect Bundle][bundle] along with a client ID and secret generated using these [instructions]:
+
+      ```
+      ./cql-proxy --bundle <your-secure-connect-zip> \
+      --username <astra-client-id> --password <astra-client-secret>
+      ```
+
    - [Apache Cassandra][cassandra] cluster:
 
       ```sh
-      ./cql-proxy --contact-points <cluster node IPs or DNS names>
+      ./cql-proxy --contact-points <cluster node IPs or DNS names> [--username <username>] [--password <password>]
       ```
 ### Run a `cql-proxy` docker image
 
@@ -125,7 +133,7 @@ There are three methods for using `cql-proxy`:
       ```sh
       docker run -p 9042:9042 \
         datastax/cql-proxy:v0.0.4 \
-        --contact-points <cluster node IPs or DNS names>
+        --contact-points <cluster node IPs or DNS names> [--username <username>] [--password <password>]
       ```
   If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.0.4 `.
 
