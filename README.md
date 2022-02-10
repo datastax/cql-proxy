@@ -69,7 +69,7 @@ docker run -p 9042:9042 \
   --astra-token <astra-token> --astra-database-id <astra-datbase-id>
 ```
 
-The proxy also support using the Astra Secure Connect Bundle, but it requires mounting the bundle to a volume in the container.
+The proxy also supports using the Astra Secure Connect Bundle, but requires mounting the bundle to a volume in the container.
 
 
 ```sh
