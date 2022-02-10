@@ -176,7 +176,7 @@ func (p *connPool) stayConnected(idx int) {
 
 	connectTimer := time.NewTimer(0)
 	reconnectPolicy := p.config.ReconnectPolicy.Clone()
-	pendingConnect := false
+	pendingConnect := true
 
 	done := false
 	for !done {
@@ -212,6 +212,7 @@ func (p *connPool) stayConnected(idx int) {
 				p.connsMu.Lock()
 				conn, p.conns[idx] = nil, nil
 				p.connsMu.Unlock()
+				pendingConnect = false
 			}
 		}
 	}
