@@ -38,6 +38,7 @@ var cli struct {
 	AstraBundle        string        `help:"Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option." short:"b" env:"ASTRA_BUNDLE"`
 	AstraToken         string        `help:"Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option." short:"t" env:"ASTRA_TOKEN"`
 	AstraDatabaseID    string        `help:"Database ID of the Astra database. Requires '--astra-token'" short:"i" env:"ASTRA_DATABASE_ID"`
+	AstraAPIURL        string        `help:"URL for the Astra API" default:"https://api.astra.datastax.com" env:"ASTRA_API_URL"`
 	ContactPoints      []string      `help:"Contact points for cluster. Ignored if using the bundle path or token option." short:"c" env:"CONTACT_POINTS"`
 	Username           string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
 	Password           string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
@@ -82,7 +83,7 @@ func Run(ctx context.Context, args []string) int {
 		if len(cli.AstraDatabaseID) == 0 {
 			cliCtx.Fatalf("database ID is required when using a token")
 		}
-		bundle, err := astra.LoadBundleZipFromURL(astra.URL, cli.AstraDatabaseID, cli.AstraToken, 10*time.Second)
+		bundle, err := astra.LoadBundleZipFromURL(cli.AstraAPIURL, cli.AstraDatabaseID, cli.AstraToken, 10*time.Second)
 		if err != nil {
 			cliCtx.Fatalf("unable to load bundle %s from astra: %v", cli.AstraBundle, err)
 		}
