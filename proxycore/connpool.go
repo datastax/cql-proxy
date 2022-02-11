@@ -183,7 +183,8 @@ func (p *connPool) stayConnected(idx int) {
 		if conn == nil {
 			if !pendingConnect {
 				delay := reconnectPolicy.NextDelay()
-				p.logger.Debug("pool connection attempting to reconnect after delay", zap.Duration("delay", delay))
+				p.logger.Info("pool connection attempting to reconnect after delay",
+					zap.Stringer("host", p.config.Endpoint), zap.Duration("delay", delay))
 				connectTimer = time.NewTimer(reconnectPolicy.NextDelay())
 				pendingConnect = true
 			} else {
@@ -193,7 +194,8 @@ func (p *connPool) stayConnected(idx int) {
 				case <-connectTimer.C:
 					c, err := p.connect()
 					if err != nil {
-						p.logger.Error("pool failed to connect", zap.Stringer("host", p.config.Endpoint), zap.Error(err))
+						p.logger.Error("pool connection failed to connect",
+							zap.Stringer("host", p.config.Endpoint), zap.Error(err))
 					} else {
 						p.connsMu.Lock()
 						conn, p.conns[idx] = c, c
@@ -209,6 +211,7 @@ func (p *connPool) stayConnected(idx int) {
 				done = true
 				_ = conn.Close()
 			case <-conn.IsClosed():
+				p.logger.Info("pool connection closed", zap.Stringer("host", p.config.Endpoint))
 				p.connsMu.Lock()
 				conn, p.conns[idx] = nil, nil
 				p.connsMu.Unlock()

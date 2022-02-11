@@ -35,13 +35,14 @@ const livenessPath = "/liveness"
 const readinessPath = "/readiness"
 
 var cli struct {
-	Bundle             string        `help:"Path to secure connect bundle" short:"b" env:"BUNDLE"`
+	AstraBundle        string        `help:"Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option." short:"b" env:"ASTRA_BUNDLE"`
+	AstraToken         string        `help:"Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option." short:"t" env:"ASTRA_TOKEN"`
+	AstraDatabaseID    string        `help:"Database ID of the Astra database. Requires '--astra-token'" short:"i" env:"ASTRA_DATABASE_ID"`
+	AstraApiURL        string        `help:"URL for the Astra API" default:"https://api.astra.datastax.com" env:"ASTRA_API_URL"`
+	ContactPoints      []string      `help:"Contact points for cluster. Ignored if using the bundle path or token option." short:"c" env:"CONTACT_POINTS"`
 	Username           string        `help:"Username to use for authentication" short:"u" env:"USERNAME"`
 	Password           string        `help:"Password to use for authentication" short:"p" env:"PASSWORD"`
-	Token              string        `help:"Token" short:"t" env:"TOKEN"`
-	DatabaseID         string        `help:"Database ID" short:"i" env:"DATABASE_ID"`
-	ContactPoints      []string      `help:"Contact points for cluster. Ignored if using the bundle path option." short:"c" env:"CONTACT_POINTS"`
-	Port               int           `help:"Default port to use when connecting to cluster" default:"9042" short:"t" env:"PORT"`
+	Port               int           `help:"Default port to use when connecting to cluster" default:"9042" short:"r" env:"PORT"`
 	ProtocolVersion    string        `help:"Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" default:"v4" short:"n" env:"PROTOCOL_VERSION"`
 	MaxProtocolVersion string        `help:"Max protocol version supported by the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)" default:"v4" short:"m" env:"MAX_PROTOCOL_VERSION"`
 	Bind               string        `help:"Address to use to bind server" short:"a" default:":9042" env:"BIND"`
@@ -51,6 +52,7 @@ var cli struct {
 	HeartbeatInterval  time.Duration `help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
 	IdleTimeout        time.Duration `help:"Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
 	ReadinessTimeout   time.Duration `help:"Duration the proxy is unable to connect to the backend cluster before it is considered not ready" default:"30s" env:"READINESS_TIMEOUT"`
+	NumConns           int           `help:"Number of connection to create to each node of the backend cluster" default:"1" env:"NUM_CONNS"`
 }
 
 // Run starts the proxy command. 'args' shouldn't include the executable (i.e. os.Args[1:]). It returns the exit code
@@ -70,33 +72,39 @@ func Run(ctx context.Context, args []string) int {
 	}
 
 	var resolver proxycore.EndpointResolver
-	if len(cli.Bundle) > 0 {
-		if bundle, err := astra.LoadBundleZipFromPath(cli.Bundle); err != nil {
-			cliCtx.Errorf("unable to open bundle %s from file: %v", cli.Bundle, err)
+	if len(cli.AstraBundle) > 0 {
+		if bundle, err := astra.LoadBundleZipFromPath(cli.AstraBundle); err != nil {
+			cliCtx.Errorf("unable to open bundle %s from file: %v", cli.AstraBundle, err)
 			return 1
 		} else {
 			resolver = astra.NewResolver(bundle)
 		}
-	} else if len(cli.ContactPoints) > 0 {
-		resolver = proxycore.NewResolverWithDefaultPort(cli.ContactPoints, cli.Port)
-	} else if len(cli.Token) > 0 {
-		if len(cli.DatabaseID) == 0 {
+	} else if len(cli.AstraToken) > 0 {
+		if len(cli.AstraDatabaseID) == 0 {
 			cliCtx.Fatalf("database ID is required when using a token")
 		}
-		bundle, err := astra.LoadBundleZipFromURL(astra.URL, cli.DatabaseID, cli.Token, 10*time.Second)
+		bundle, err := astra.LoadBundleZipFromURL(cli.AstraApiURL, cli.AstraDatabaseID, cli.AstraToken, 10*time.Second)
 		if err != nil {
-			cliCtx.Fatalf("unable to load bundle %s from astra: %v", cli.Bundle, err)
+			cliCtx.Fatalf("unable to load bundle %s from astra: %v", cli.AstraBundle, err)
 		}
 		resolver = astra.NewResolver(bundle)
 		cli.Username = "token"
-		cli.Password = cli.Token
+		cli.Password = cli.AstraToken
+	} else if len(cli.ContactPoints) > 0 {
+		resolver = proxycore.NewResolverWithDefaultPort(cli.ContactPoints, cli.Port)
 	} else {
-		cliCtx.Errorf("must provide either bundle path or contact points")
+		cliCtx.Errorf("must provide either bundle path, token, or contact points")
 		return 1
 	}
 
 	if cli.HeartbeatInterval >= cli.IdleTimeout {
-		cliCtx.Errorf("idle-timeout must be greater than heartbeat-interval")
+		cliCtx.Errorf("idle-timeout must be greater than heartbeat-interval (heartbeat interval: %s, idle timeout: %s)",
+			cli.HeartbeatInterval, cli.IdleTimeout)
+		return 1
+	}
+
+	if cli.NumConns < 1 {
+		cliCtx.Errorf("invalid number of connections, must be greater than 0 (provided: %d)", cli.NumConns)
 		return 1
 	}
 
@@ -140,7 +148,7 @@ func Run(ctx context.Context, args []string) int {
 		MaxVersion:        maxVersion,
 		Resolver:          resolver,
 		ReconnectPolicy:   proxycore.NewReconnectPolicy(),
-		NumConns:          1,
+		NumConns:          cli.NumConns,
 		Auth:              auth,
 		Logger:            logger,
 		HeartBeatInterval: cli.HeartbeatInterval,

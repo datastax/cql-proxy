@@ -32,8 +32,6 @@ import (
 	"github.com/datastax/astra-client-go/v2/astra"
 )
 
-const URL = "https://api.astra.datastax.com"
-
 type Bundle struct {
 	tlsConfig *tls.Config
 	host      string

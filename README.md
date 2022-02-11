@@ -19,9 +19,6 @@
 
 `cql-proxy` is designed to forward your application's CQL traffic to an appropriate database service. It listens on a local address and securely forwards that traffic.
 
-**Warning**: `cql-proxy` in its current state works well, and you should give it a try. However, it is still under development, so things might break or change. 
-
-Please give it a try and let us know what you think!
 ## When to use `cql-proxy`
 
 The `cql-proxy` sidecar enables unsupported CQL drivers to work with [DataStax Astra][astra]. These drivers include both legacy DataStax [drivers] and community-maintained CQL drivers, such as the [gocql] driver and the [rust-driver].
@@ -39,32 +36,43 @@ $ ./cql-proxy -h
 Usage: cql-proxy
 
 Flags:
-  -h, --help               Show context-sensitive help.
-  -b, --bundle=STRING      Path to secure connect bundle ($BUNDLE)
-  -u, --username=STRING    Username to use for authentication ($USERNAME)
-  -p, --password=STRING    Password to use for authentication ($PASSWORD)
-  -c, --contact-points=CONTACT-POINTS,...
-                           Contact points for cluster. Ignored if using the bundle path
-                           option ($CONTACT_POINTS).
-  -a, --bind=STRING        Address to use to bind serve ($BIND)
-      --debug              Show debug logging ($DEBUG)
-      --profiling          Enable profiling ($PROFILING)
+  -h, --help                                 Show context-sensitive help.
+  -b, --astra-bundle=STRING                  Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option
+                                             ($ASTRA_BUNDLE).
+  -t, --astra-token=STRING                   Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option
+                                             ($ASTRA_TOKEN).
+  -i, --astra-database-id=STRING             Database ID of the Astra database. Requires '--astra-token' ($ASTRA_DATABASE_ID)
+  -c, --contact-points=CONTACT-POINTS,...    Contact points for cluster. Ignored if using the bundle path or token option ($CONTACT_POINTS).
+  -u, --username=STRING                      Username to use for authentication ($USERNAME)
+  -p, --password=STRING                      Password to use for authentication ($PASSWORD)
+  -r, --port=9042                            Default port to use when connecting to cluster ($PORT)
+  -n, --protocol-version="v4"                Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2) ($PROTOCOL_VERSION)
+  -m, --max-protocol-version="v4"            Max protocol version supported by the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2) ($MAX_PROTOCOL_VERSION)
+  -a, --bind=":9042"                         Address to use to bind server ($BIND)
+      --debug                                Show debug logging ($DEBUG)
+      --health-check                         Enable liveness and readiness checks ($HEALTH_CHECK)
+      --http-bind=":8000"                    Address to use to bind HTTP server used for health checks ($HTTP_BIND)
+      --heartbeat-interval=30s               Interval between performing heartbeats to the cluster ($HEARTBEAT_INTERVAL)
+      --idle-timeout=60s                     Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed ($IDLE_TIMEOUT)
+      --readiness-timeout=30s                Duration the proxy is unable to connect to the backend cluster before it is considered not ready ($READINESS_TIMEOUT)
+      --num-conns=1                          Number of connection to create to each node of the backend cluster ($NUM_CONNS)
 ```
 
-To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the follwing samples show how username, password and bundle are defined with each method.
+To pass configuration to `cql-proxy`, either command-line flags or environment variables can be used. Using the `docker` method as an example, the following samples show how the token and database ID are defined with each method.
 ### Using flags
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+docker run -p 9042:9042 \
   --rm datastax/cql-proxy:v0.0.4 \
-  --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
+  --astra-token <astra-token> --astra-database-id <astra-datbase-id>
 ```
+
 ### Using environment variables
 
 ```sh
-docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042  \
+docker run -p 9042:9042  \
   --rm datastax/cql-proxy:v0.0.4 \
-  -e BUNDLE=/tmp/scb.zip -e USERNAME=<astra-client-id> -e PASSWORD=<astra-client-secret>
+  -e ASTRA_TOKEN=<astra-token> -e ASTRA_DATABASE_ID=<astra-datbase-id>
 ```
 ## Getting started
 
@@ -86,13 +94,20 @@ There are three methods for using `cql-proxy`:
    - [DataStax Astra][astra] cluster:
 
       ```sh
+      ./cql-proxy --astra-token <astra-token> --astra-database-id <astra-database-id>
+      ```
+
+      The `<astra-token>` can be generated using these [instructions]. The proxy also supports using the [Astra Secure Connect Bundle][bundle] along with a client ID and secret generated using these [instructions]:
+
+      ```
       ./cql-proxy --bundle <your-secure-connect-zip> \
       --username <astra-client-id> --password <astra-client-secret>
       ```
+
    - [Apache Cassandra][cassandra] cluster:
 
       ```sh
-      ./cql-proxy --contact-points <cluster node IPs or DNS names>
+      ./cql-proxy --contact-points <cluster node IPs or DNS names> [--username <username>] [--password <password>]
       ```
 ### Run a `cql-proxy` docker image
 
@@ -101,18 +116,24 @@ There are three methods for using `cql-proxy`:
    - [DataStax Astra][astra] cluster:
 
       ```sh
-      docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+      docker run -p 9042:9042 \
         datastax/cql-proxy:v0.0.4 \
-        --bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
+        --astra-token <astra-token> --astra-database-id <astra-database-id>
       ```
-      The `<astra-client-id>` and `<astra-client-secret>` can be generated using these [instructions].
 
+      The `<astra-token>` can be generated using these [instructions]. The proxy also supports using the [Astra Secure Connect Bundle][bundle], but it requires mounting the bundle to a volume in the container:
+
+      ```sh
+      docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
+      --rm datastax/cql-proxy:v0.0.4 \
+      --astra-bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
+      ```
    - [Apache Cassandra][cassandra] cluster:
 
       ```sh
       docker run -p 9042:9042 \
         datastax/cql-proxy:v0.0.4 \
-        --contact-points <cluster node IPs or DNS names>
+        --contact-points <cluster node IPs or DNS names> [--username <username>] [--password <password>]
       ```
   If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.0.4 `.
 
@@ -128,7 +149,7 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 
       ```
       command: ["./cql-proxy"]
-      args: ["--bundle=/tmp/scb.zip","--username=Client ID","--password=Client Secret"]
+      args: ["--astra-bundle=/tmp/scb.zip","--username=Client ID","--password=Client Secret"]
       ```
 
 - Volume mounts: Modify `/tmp/` as a volume mount as required.
@@ -188,6 +209,6 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 [cassandra]: https://cassandra.apache.org/
 [dse]: https://www.datastax.com/products/datastax-enterprise
 [instructions]: https://docs.datastax.com/en/astra/docs/manage-application-tokens.html
-
+[bundle]: https://docs.datastax.com/en/astra/docs/obtaining-database-credentials.html#_getting_your_secure_connect_bundle
 
 
