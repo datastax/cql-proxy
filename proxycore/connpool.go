@@ -194,7 +194,7 @@ func (p *connPool) stayConnected(idx int) {
 				case <-connectTimer.C:
 					c, err := p.connect()
 					if err != nil {
-						p.logger.Error("pool failed to connect",
+						p.logger.Error("pool connection failed to connect",
 							zap.Stringer("host", p.config.Endpoint), zap.Error(err))
 					} else {
 						p.connsMu.Lock()
@@ -211,7 +211,7 @@ func (p *connPool) stayConnected(idx int) {
 				done = true
 				_ = conn.Close()
 			case <-conn.IsClosed():
-				p.logger.Warn("pool closed", zap.Stringer("host", p.config.Endpoint))
+				p.logger.Info("pool connection closed", zap.Stringer("host", p.config.Endpoint))
 				p.connsMu.Lock()
 				conn, p.conns[idx] = nil, nil
 				p.connsMu.Unlock()
