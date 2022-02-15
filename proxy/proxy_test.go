@@ -74,7 +74,7 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	})
 	defer func() {
 		cluster.Shutdown()
-		_ = proxy.Shutdown()
+		_ = proxy.Close()
 	}()
 
 	cl := connectTestClient(t, ctx)
@@ -138,7 +138,7 @@ func TestProxy_Unprepared(t *testing.T) {
 	})
 	defer func() {
 		cluster.Shutdown()
-		_ = proxy.Shutdown()
+		_ = proxy.Close()
 	}()
 
 	cl := connectTestClient(t, ctx)
@@ -174,7 +174,7 @@ func TestProxy_UseKeyspace(t *testing.T) {
 	cluster, proxy := setupProxyTest(t, ctx, 1, nil)
 	defer func() {
 		cluster.Shutdown()
-		_ = proxy.Shutdown()
+		_ = proxy.Close()
 	}()
 
 	cl := connectTestClient(t, ctx)
@@ -195,7 +195,7 @@ func TestProxy_NegotiateProtocolV5(t *testing.T) {
 	cluster, proxy := setupProxyTest(t, ctx, 1, nil)
 	defer func() {
 		cluster.Shutdown()
-		_ = proxy.Shutdown()
+		_ = proxy.Close()
 	}()
 
 	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(testProxyContactPoint), proxycore.ClientConnConfig{})

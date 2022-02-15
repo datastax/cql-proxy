@@ -44,6 +44,8 @@ var (
 	encodedZeroValue, _ = proxycore.EncodeType(datatype.Int, primitive.ProtocolVersion4, 0)
 )
 
+var ErrProxyClosed = errors.New("proxy closed")
+
 const preparedIdSize = 16
 
 type Config struct {
@@ -76,6 +78,8 @@ type Proxy struct {
 	clientIdGen         uint64
 	lb                  proxycore.LoadBalancer
 	systemLocalValues   map[string]message.Column
+	closed              chan struct{}
+	closingMu           sync.Mutex
 }
 
 func (p *Proxy) OnEvent(event proxycore.Event) {
@@ -114,6 +118,7 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 		ctx:    ctx,
 		config: config,
 		logger: proxycore.GetOrCreateNopLogger(config.Logger),
+		closed: make(chan struct{}),
 	}
 }
 
@@ -195,13 +200,25 @@ func (p *Proxy) Serve() error {
 	for {
 		conn, err := p.listener.AcceptTCP()
 		if err != nil {
-			return err
+			select {
+			case <-p.closed:
+				return ErrProxyClosed
+			default:
+				return err
+			}
 		}
 		p.handle(conn)
 	}
 }
 
-func (p *Proxy) Shutdown() error {
+func (p *Proxy) Close() error {
+	p.closingMu.Lock()
+	defer p.closingMu.Unlock()
+	select {
+	case <-p.closed:
+	default:
+		close(p.closed)
+	}
 	return p.listener.Close()
 }
 
