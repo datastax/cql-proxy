@@ -294,7 +294,7 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 
 	for err = range ch {
 		if err != nil {
-			return nil
+			return err
 		}
 	}
 
