@@ -265,6 +265,11 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 	wg.Add(numServers)
 
 	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	go func() {
 		select {
 		case <-ctx.Done():
 			logger.Debug("proxy interrupted/killed")
@@ -275,7 +280,7 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 
 	go func() {
 		defer wg.Done()
-		err = p.Serve()
+		err := p.Serve()
 		if err != nil && err != ErrProxyClosed {
 			ch <- err
 		}
@@ -284,7 +289,7 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 	if cli.HealthCheck {
 		go func() {
 			defer wg.Done()
-			err = server.Serve(listener)
+			err := server.Serve(listener)
 			if err != nil {
 				ch <- err
 			}
