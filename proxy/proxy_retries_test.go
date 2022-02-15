@@ -382,7 +382,7 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error)
 	})
 	defer func() {
 		cluster.Shutdown()
-		_ = proxy.Shutdown()
+		_ = proxy.Close()
 	}()
 
 	cl := connectTestClient(t, ctx)

@@ -44,7 +44,7 @@ var (
 	encodedZeroValue, _ = proxycore.EncodeType(datatype.Int, primitive.ProtocolVersion4, 0)
 )
 
-var ErrProxyClosed = errors.New("proxy shutdown")
+var ErrProxyClosed = errors.New("proxy closed")
 
 const preparedIdSize = 16
 
@@ -211,7 +211,7 @@ func (p *Proxy) Serve() error {
 	}
 }
 
-func (p *Proxy) Shutdown() error {
+func (p *Proxy) Close() error {
 	p.closingMu.Lock()
 	defer p.closingMu.Unlock()
 	select {

@@ -269,7 +269,7 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 		case <-ctx.Done():
 			logger.Debug("proxy interrupted/killed")
 			_ = server.Close()
-			_ = p.Shutdown()
+			_ = p.Close()
 		}
 	}()
 
