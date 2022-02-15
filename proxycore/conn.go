@@ -41,6 +41,7 @@ type Conn struct {
 	err      error
 	recv     Receiver
 	writer   *bufio.Writer
+	reader   *bufio.Reader
 	mu       *sync.Mutex
 }
 
@@ -95,6 +96,7 @@ func NewConn(conn net.Conn, recv Receiver) *Conn {
 		conn:     conn,
 		recv:     recv,
 		writer:   bufio.NewWriterSize(conn, MaxCoalesceSize),
+		reader:   bufio.NewReader(conn),
 		closed:   make(chan struct{}),
 		messages: make(chan Sender, MaxMessages),
 		mu:       &sync.Mutex{},
@@ -109,7 +111,7 @@ func (c *Conn) Start() {
 func (c *Conn) read() {
 	done := false
 	for !done {
-		done = c.checkErr(c.recv.Receive(c.conn))
+		done = c.checkErr(c.recv.Receive(c.reader))
 	}
 	c.recv.Closing(c.Err())
 }
