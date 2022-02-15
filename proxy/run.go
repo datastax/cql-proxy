@@ -290,7 +290,7 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 		go func() {
 			defer wg.Done()
 			err := server.Serve(listener)
-			if err != nil {
+			if err != nil && err != http.ErrServerClosed {
 				ch <- err
 			}
 		}()
