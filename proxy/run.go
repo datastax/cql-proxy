@@ -276,7 +276,7 @@ func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err erro
 	go func() {
 		defer wg.Done()
 		err = p.Serve()
-		if err != nil {
+		if err != nil && err != ErrProxyClosed {
 			ch <- err
 		}
 	}()
