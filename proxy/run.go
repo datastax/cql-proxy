@@ -53,6 +53,9 @@ var cli struct {
 	IdleTimeout        time.Duration `help:"Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
 	ReadinessTimeout   time.Duration `help:"Duration the proxy is unable to connect to the backend cluster before it is considered not ready" default:"30s" env:"READINESS_TIMEOUT"`
 	NumConns           int           `help:"Number of connection to create to each node of the backend cluster" default:"1" env:"NUM_CONNS"`
+	RPCAddress         string        `help:"Proxy address to use to advertise the proxy" env:"RPC_ADDRESS"`
+	DataCenter         string        `help:"Name of the data center for this proxy instance" default:"dc1" env:"DATA_CENTER"`
+	Peers              []string      `help:"RPC addresses of other proxy instances" env:"PEERS"`
 }
 
 // Run starts the proxy command. 'args' shouldn't include the executable (i.e. os.Args[1:]). It returns the exit code
@@ -143,6 +146,14 @@ func Run(ctx context.Context, args []string) int {
 		auth = proxycore.NewPasswordAuth(cli.Username, cli.Password)
 	}
 
+	cli.RPCAddress = maybeAddPort(cli.RPCAddress, "9042")
+
+	for i, peer := range cli.Peers {
+		pair := strings.Split(peer, ";")
+		pair[0] = maybeAddPort(pair[0], "9042")
+		cli.Peers[i] = strings.Join(pair, ";")
+	}
+
 	p := NewProxy(ctx, Config{
 		Version:           version,
 		MaxVersion:        maxVersion,
@@ -153,6 +164,9 @@ func Run(ctx context.Context, args []string) int {
 		Logger:            logger,
 		HeartBeatInterval: cli.HeartbeatInterval,
 		IdleTimeout:       cli.IdleTimeout,
+		DataCenter:        cli.DataCenter,
+		RPCAddr:           cli.RPCAddress,
+		Peers:             cli.Peers,
 	})
 
 	cli.Bind = maybeAddPort(cli.Bind, "9042")

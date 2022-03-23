@@ -92,3 +92,62 @@ func (p *roundRobinQueryPlan) Next() *Host {
 	p.index++
 	return host
 }
+
+func NewLocalDCOnlyLoadBalancer(localDC string) LoadBalancer {
+	lb := &localDCOnlyLoadBalancer{
+		localDC: localDC,
+		mu:      &sync.Mutex{},
+	}
+	lb.hosts.Store(make([]*Host, 0))
+	return lb
+}
+
+type localDCOnlyLoadBalancer struct {
+	localDC string
+	hosts   atomic.Value
+	index   uint32
+	mu      *sync.Mutex
+}
+
+func (l *localDCOnlyLoadBalancer) OnEvent(event Event) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	switch evt := event.(type) {
+	case *BootstrapEvent:
+		hosts := make([]*Host, 0)
+		for _, host := range evt.Hosts {
+			if host.DC == l.localDC {
+				hosts = append(hosts, host)
+			}
+		}
+		l.hosts.Store(hosts)
+	case *AddEvent:
+		if evt.Host.DC == l.localDC {
+			l.hosts.Store(append(l.copy(), evt.Host))
+		}
+	case *RemoveEvent:
+		cpy := l.copy()
+		for i, h := range cpy {
+			if h.Endpoint().Key() == evt.Host.Key() {
+				l.hosts.Store(append(cpy[:i], cpy[i+1:]...))
+				break
+			}
+		}
+	}
+}
+
+func (l *localDCOnlyLoadBalancer) copy() []*Host {
+	hosts := l.hosts.Load().([]*Host)
+	cpy := make([]*Host, len(hosts))
+	copy(cpy, hosts)
+	return cpy
+}
+
+func (l *localDCOnlyLoadBalancer) NewQueryPlan() QueryPlan {
+	return &roundRobinQueryPlan{
+		hosts:  l.hosts.Load().([]*Host),
+		offset: atomic.AddUint32(&l.index, 1) - 1,
+		index:  0,
+	}
+}

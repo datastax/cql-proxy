@@ -17,13 +17,19 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"net"
 	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,6 +65,9 @@ type Config struct {
 	Logger            *zap.Logger
 	HeartBeatInterval time.Duration
 	IdleTimeout       time.Duration
+	RPCAddr           string
+	DataCenter        string
+	Peers             []string
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
@@ -80,6 +89,15 @@ type Proxy struct {
 	systemLocalValues   map[string]message.Column
 	closed              chan struct{}
 	closingMu           sync.Mutex
+	localNode           *node
+	nodes               []*node
+}
+
+type node struct {
+	Addr       *net.TCPAddr
+	DataCenter string
+	token      string
+	hostId     primitive.UUID
 }
 
 func (p *Proxy) OnEvent(event proxycore.Event) {
@@ -157,9 +175,19 @@ func (p *Proxy) Listen(address string) error {
 		return fmt.Errorf("unable to register to listen for schema events %w", err)
 	}
 
+	err = p.buildNodes()
+	if err != nil {
+		return fmt.Errorf("unable to build node information %w", err)
+	}
+
 	p.buildLocalRow()
 
-	p.lb = proxycore.NewRoundRobinLoadBalancer()
+	if len(p.config.DataCenter) > 0 {
+		p.lb = proxycore.NewLocalDCOnlyLoadBalancer(p.config.DataCenter)
+	} else {
+		p.lb = proxycore.NewRoundRobinLoadBalancer()
+	}
+
 	err = p.cluster.Listen(p.lb)
 	if err != nil {
 		return err
@@ -288,22 +316,86 @@ func (p *Proxy) newQueryPlan() proxycore.QueryPlan {
 
 var (
 	schemaVersion, _ = primitive.ParseUuid("4f2b29e6-59b5-4e2d-8fd6-01e32e67f0d7")
-	hostId, _        = primitive.ParseUuid("19e26944-ffb1-40a9-a184-a9b065e5e06b")
 )
+
+func (p *Proxy) buildNodes() (err error) {
+	numPeers := len(p.config.Peers)
+	nodes := make([]*node, 0, numPeers+1)
+
+	var localRpcAddr *net.TCPAddr
+	if len(p.config.RPCAddr) > 0 {
+		localRpcAddr, err = net.ResolveTCPAddr("tcp", p.config.RPCAddr)
+		if err != nil {
+			return fmt.Errorf("invalid RPC address: %w", err)
+		}
+	}
+
+	p.localNode = &node{
+		Addr:       localRpcAddr,
+		DataCenter: p.config.DataCenter,
+		token:      strconv.FormatInt(math.MinInt64, 10),
+	}
+	nodes = append(nodes, p.localNode)
+
+	for _, peer := range p.config.Peers {
+		pair := strings.Split(peer, ";")
+		dataCenter := p.config.DataCenter
+		if len(pair) > 1 {
+			dataCenter = pair[1]
+		}
+		peerAddr, err := net.ResolveTCPAddr("tcp", pair[0])
+		if err != nil {
+			return fmt.Errorf("invalid peer address: %w", err)
+		}
+		nodes = append(nodes, &node{
+			Addr:       peerAddr,
+			DataCenter: dataCenter,
+		})
+	}
+
+	if len(nodes) > 1 {
+		sort.Slice(nodes, func(i, j int) bool {
+			a := nodes[i]
+			b := nodes[j]
+			res := bytes.Compare(a.Addr.IP, b.Addr.IP)
+			if res < 0 ||
+				res == 0 && a.Addr.Port < b.Addr.Port ||
+				a.Addr.Port == b.Addr.Port && a.Addr.Zone < b.Addr.Zone ||
+				a.Addr.Zone == b.Addr.Zone && a.DataCenter < b.DataCenter {
+				return true
+			}
+			return false
+		})
+
+		var numTokens big.Int
+		numTokens.SetUint64(math.MaxUint64/uint64(numPeers+1) + 1)
+
+		start := big.NewInt(math.MinInt64)
+
+		for _, n := range nodes {
+			n.token = start.Text(10)
+			n.hostId = nameBasedUUID(n.Addr.String())
+			start.Add(start, &numTokens)
+		}
+	}
+
+	p.nodes = nodes
+
+	return nil
+}
 
 func (p *Proxy) buildLocalRow() {
 	p.systemLocalValues = map[string]message.Column{
 		"key":                     p.encodeTypeFatal(datatype.Varchar, "local"),
-		"data_center":             p.encodeTypeFatal(datatype.Varchar, "dc1"),
+		"data_center":             p.encodeTypeFatal(datatype.Varchar, p.config.DataCenter),
 		"rack":                    p.encodeTypeFatal(datatype.Varchar, "rack1"),
-		"tokens":                  p.encodeTypeFatal(datatype.NewListType(datatype.Varchar), []string{"0"}),
+		"tokens":                  p.encodeTypeFatal(datatype.NewListType(datatype.Varchar), []string{p.localNode.token}),
 		"release_version":         p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.ReleaseVersion),
 		"partitioner":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.Partitioner),
 		"cluster_name":            p.encodeTypeFatal(datatype.Varchar, "cql-proxy"),
 		"cql_version":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.CQLVersion),
 		"schema_version":          p.encodeTypeFatal(datatype.Uuid, schemaVersion), // TODO: Make this match the downstream cluster(s)
 		"native_protocol_version": p.encodeTypeFatal(datatype.Varchar, p.cluster.NegotiatedVersion.String()),
-		"host_id":                 p.encodeTypeFatal(datatype.Uuid, hostId),
 	}
 }
 
@@ -508,33 +600,55 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 	}
 }
 
-func (c *client) columnValue(values map[string]message.Column, name string, table string) message.Column {
-	var val message.Column
-	var ok bool
-	if val, ok = values[name]; !ok {
-		if name == "rpc_address" && table == "local" {
-			switch addr := c.conn.LocalAddr().(type) {
-			case *net.TCPAddr:
-				val, _ = proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, addr.IP)
-			}
-		}
-	}
-	return val
-}
-
 func (c *client) filterSystemLocalValues(stmt *parser.SelectStatement) (row []message.Column, err error) {
 	return parser.FilterValues(stmt, parser.SystemLocalColumns, func(name string) (value message.Column, err error) {
-		if val, ok := c.proxy.systemLocalValues[name]; ok {
-			return val, nil
-		} else if name == "rpc_address" {
-			switch addr := c.conn.LocalAddr().(type) {
+		if name == "rpc_address" {
+			var addr net.Addr
+			if c.proxy.localNode.Addr != nil {
+				addr = c.proxy.localNode.Addr
+			} else {
+				addr = c.conn.LocalAddr()
+			}
+			switch a := addr.(type) {
 			case *net.TCPAddr:
-				return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, addr.IP)
+				return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, a.IP)
 			default:
 				return nil, errors.New("unhandled local address type")
 			}
+		} else if name == "host_id" {
+			var addr net.Addr
+			if c.proxy.localNode.Addr != nil {
+				addr = c.proxy.localNode.Addr
+			} else {
+				addr = c.conn.LocalAddr()
+			}
+			return proxycore.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(addr.String()))
+		} else if val, ok := c.proxy.systemLocalValues[name]; ok {
+			return val, nil
 		} else if name == parser.CountValueName {
 			return encodedOneValue, nil
+		} else {
+			return nil, fmt.Errorf("no column value for %s", name)
+		}
+	})
+}
+
+func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, peer *node, peerCount int) (row []message.Column, err error) {
+	return parser.FilterValues(stmt, parser.SystemPeersColumns, func(name string) (value message.Column, err error) {
+		if name == "data_center" {
+			return proxycore.EncodeType(datatype.Varchar, c.proxy.cluster.NegotiatedVersion, peer.DataCenter)
+		} else if name == "host_id" {
+			return proxycore.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, peer.hostId)
+		} else if name == "tokens" {
+			return proxycore.EncodeType(datatype.NewListType(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, []string{peer.token})
+		} else if name == "peer" {
+			return proxycore.EncodeType(datatype.Varchar, c.proxy.cluster.NegotiatedVersion, peer.Addr.IP.String())
+		} else if name == "rpc_address" {
+			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.Addr.IP)
+		} else if val, ok := c.proxy.systemLocalValues[name]; ok {
+			return val, nil
+		} else if name == parser.CountValueName {
+			return proxycore.EncodeType(datatype.Int, c.proxy.cluster.NegotiatedVersion, peerCount)
 		} else {
 			return nil, fmt.Errorf("no column value for %s", name)
 		}
@@ -563,16 +677,27 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				var data []message.Row
-				if parser.IsCountStarQuery(s) { // COUNT(*) always returns a value, even when there are no rows
-					data = []message.Row{{encodedZeroValue}}
+				for _, n := range c.proxy.nodes {
+					if n != c.proxy.localNode {
+						var row message.Row
+						row, err = c.filterSystemPeerValues(s, n, len(c.proxy.nodes)-1)
+						if err != nil {
+							break
+						}
+						data = append(data, row)
+					}
 				}
-				c.send(hdr, &message.RowsResult{
-					Metadata: &message.RowsMetadata{
-						ColumnCount: int32(len(columns)),
-						Columns:     columns,
-					},
-					Data: data,
-				})
+				if err != nil {
+					c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
+				} else {
+					c.send(hdr, &message.RowsResult{
+						Metadata: &message.RowsMetadata{
+							ColumnCount: int32(len(columns)),
+							Columns:     columns,
+						},
+						Data: data,
+					})
+				}
 			}
 		} else if columns, ok := parser.SystemColumnsByName[s.Table]; ok {
 			c.send(hdr, &message.RowsResult{
@@ -641,4 +766,19 @@ func preparedIdKey(bytes []byte) [preparedIdSize]byte {
 	var buf [preparedIdSize]byte
 	copy(buf[:], bytes)
 	return buf
+}
+
+func nameBasedUUID(name string) primitive.UUID {
+	var uuid primitive.UUID
+	m := crypto.MD5.New()
+	_, _ = io.WriteString(m, name)
+	hash := m.Sum(nil)
+	for i := 0; i < len(uuid); i++ {
+		uuid[i] = hash[i]
+	}
+	uuid[6] &= 0x0F
+	uuid[6] |= 0x30
+	uuid[8] &= 0x3F
+	uuid[8] |= 0x80
+	return uuid
 }
