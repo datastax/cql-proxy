@@ -79,10 +79,17 @@ func TestAstraResolver_NewEndpoint(t *testing.T) {
 					Index:    0,
 					Type:     datatype.Uuid,
 				},
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "data_center",
+					Index:    1,
+					Type:     datatype.Varchar,
+				},
 			},
 		},
 		Data: message.RowSet{
-			message.Row{makeUUID(hostId)},
+			message.Row{makeUUID(hostId), makeVarchar("us-east1")},
 		},
 	}, primitive.ProtocolVersion4)
 
@@ -90,6 +97,43 @@ func TestAstraResolver_NewEndpoint(t *testing.T) {
 	assert.NotNil(t, endpoint)
 	assert.Nil(t, err)
 	assert.Contains(t, endpoint.Key(), hostId)
+}
+
+func TestAstraResolver_NewEndpoint_Ignored(t *testing.T) {
+	resolver := createResolver(t)
+	_, err := resolver.Resolve()
+	require.NoError(t, err)
+
+	const hostId = "a2e24181-d732-402a-ab06-894a8b2f6094"
+
+	rs := proxycore.NewResultSet(&message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 1,
+			Columns: []*message.ColumnMetadata{
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "host_id",
+					Index:    0,
+					Type:     datatype.Uuid,
+				},
+				{
+					Keyspace: "system",
+					Table:    "peers",
+					Name:     "data_center",
+					Index:    1,
+					Type:     datatype.Varchar,
+				},
+			},
+		},
+		Data: message.RowSet{
+			message.Row{makeUUID(hostId), makeVarchar("ignored")},
+		},
+	}, primitive.ProtocolVersion4)
+
+	endpoint, err := resolver.NewEndpoint(rs.Row(0))
+	assert.Nil(t, endpoint)
+	assert.ErrorIs(t, err, proxycore.IgnoreEndpoint)
 }
 
 func TestAstraResolver_NewEndpointInvalidHostID(t *testing.T) {
@@ -227,5 +271,10 @@ func createServerTLSConfig(dnsName string) (*tls.Config, error) {
 func makeUUID(uuid string) []byte {
 	parsedUuid, _ := primitive.ParseUuid(uuid)
 	bytes, _ := proxycore.EncodeType(datatype.Uuid, primitive.ProtocolVersion4, parsedUuid)
+	return bytes
+}
+
+func makeVarchar(s string) []byte {
+	bytes, _ := proxycore.EncodeType(datatype.Varchar, primitive.ProtocolVersion4, s)
 	return bytes
 }
