@@ -23,6 +23,8 @@ import (
 	"strconv"
 )
 
+var IgnoreEndpoint = errors.New("ignore endpoint")
+
 type Endpoint interface {
 	fmt.Stringer
 	Addr() string
@@ -108,19 +110,14 @@ func (r *defaultEndpointResolver) NewEndpoint(row Row) (Endpoint, error) {
 	if err != nil && !errors.Is(err, ColumnNameNotFound) {
 		return nil, err
 	}
-	rpcAddress, err := row.ByName("rpc_address")
+	rpcAddress, err := row.InetByName("rpc_address")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ignoring host because its `rpc_address` is not set or is invalid: %w", err)
 	}
 
-	var ok bool
-	var addr net.IP
-
-	if addr, ok = rpcAddress.(net.IP); !ok {
-		return nil, errors.New("ignoring host because its `rpc_address` is not set or is invalid")
-	}
-
+	addr := rpcAddress
 	if addr.Equal(net.IPv4zero) || addr.Equal(net.IPv6zero) {
+		var ok bool
 		if addr, ok = peer.(net.IP); !ok {
 			return nil, errors.New("ignoring host because its `peer` is not set or is invalid")
 		}

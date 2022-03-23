@@ -282,7 +282,6 @@ func (c *Cluster) sendEvent(event Event) {
 
 func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version primitive.ProtocolVersion) (hosts []*Host, info ClusterInfo, err error) {
 	var rs *ResultSet
-	var val interface{}
 
 	rs, err = conn.Query(ctx, version, &message.Query{
 		Query: "SELECT * FROM system.local",
@@ -299,23 +298,20 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 	hosts = c.addHosts(hosts, rs)
 	row := rs.Row(0)
 
-	val, err = row.ByName("partitioner")
+	partitioner, err := row.StringByName("partitioner")
 	if err != nil {
 		return nil, ClusterInfo{}, err
 	}
-	partitioner := val.(string)
 
-	val, err = row.ByName("release_version")
+	releaseVersion, err := row.StringByName("release_version")
 	if err != nil {
 		return nil, ClusterInfo{}, err
 	}
-	releaseVersion := val.(string)
 
-	val, err = row.ByName("cql_version")
+	cqlVersion, err := row.StringByName("cql_version")
 	if err != nil {
 		return nil, ClusterInfo{}, err
 	}
-	cqlVersion := val.(string)
 
 	rs, err = conn.Query(ctx, version, &message.Query{
 		Query: "SELECT * FROM system.peers",
@@ -341,7 +337,11 @@ func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 		if endpoint, err := c.config.Resolver.NewEndpoint(row); err == nil {
 			if host, err := NewHostFromRow(endpoint, row); err == nil {
 				hosts = append(hosts, host)
+			} else {
+				c.logger.Error("unable to create new host", zap.Stringer("endpoint", endpoint), zap.Error(err))
 			}
+		} else if err != IgnoreEndpoint {
+			c.logger.Error("unable to create new endpoint", zap.Error(err))
 		}
 	}
 	return hosts

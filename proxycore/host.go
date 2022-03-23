@@ -14,20 +14,15 @@
 
 package proxycore
 
-import "errors"
-
 type Host struct {
 	endpoint Endpoint
 	DC       string
 }
 
 func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
-	val, err := row.ByName("data_center")
+	dc, err := row.StringByName("data_center")
 	if err != nil {
 		return nil, err
-	}
-	if dc, ok := val.(string); !ok {
-		return nil, errors.New("'data_center' is not a string")
 	} else {
 		return &Host{endpoint, dc}, nil
 	}
