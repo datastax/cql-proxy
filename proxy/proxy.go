@@ -642,7 +642,7 @@ func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, peer *node
 		} else if name == "tokens" {
 			return proxycore.EncodeType(datatype.NewListType(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, []string{peer.token})
 		} else if name == "peer" {
-			return proxycore.EncodeType(datatype.Varchar, c.proxy.cluster.NegotiatedVersion, peer.Addr.IP.String())
+			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.Addr.IP)
 		} else if name == "rpc_address" {
 			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.Addr.IP)
 		} else if val, ok := c.proxy.systemLocalValues[name]; ok {
