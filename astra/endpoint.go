@@ -25,13 +25,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/datastax/go-cassandra-native-protocol/primitive"
-
 	"github.com/datastax/cql-proxy/proxycore"
 )
 
 type astraResolver struct {
 	sniProxyAddress string
+	region          string
 	bundle          *Bundle
 	mu              *sync.Mutex
 }
@@ -77,6 +76,7 @@ func (r *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
 
 	r.mu.Lock()
 	r.sniProxyAddress = sniProxyAddress
+	r.region = metadata.Region
 	r.mu.Unlock()
 
 	var endpoints []proxycore.Endpoint
@@ -91,31 +91,35 @@ func (r *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
 	return endpoints, nil
 }
 
-func (r *astraResolver) getSNIProxyAddress() (string, error) {
+func (r *astraResolver) getSNIProxyAddressAndRegion() (string, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.sniProxyAddress) == 0 {
-		return "", errors.New("SNI proxy address never resolved")
+		return "", "", errors.New("SNI proxy address (and region) never resolved")
 	}
-	return r.sniProxyAddress, nil
+	return r.sniProxyAddress, r.region, nil
 }
 
 func (r *astraResolver) NewEndpoint(row proxycore.Row) (proxycore.Endpoint, error) {
-	sniProxyAddress, err := r.getSNIProxyAddress()
+	sniProxyAddress, region, err := r.getSNIProxyAddressAndRegion()
 	if err != nil {
 		return nil, err
 	}
-	hostId, err := row.ByName("host_id")
+	dc, err := row.StringByName("data_center")
 	if err != nil {
 		return nil, err
 	}
-	if uuid, ok := hostId.(primitive.UUID); !ok {
-		return nil, errors.New("ignoring host because its `host_id` is not set or is invalid")
+	if len(region) > 0 && region != dc {
+		return nil, proxycore.IgnoreEndpoint
+	}
+	hostId, err := row.UUIDByName("host_id")
+	if err != nil {
+		return nil, err
 	} else {
 		return &astraEndpoint{
 			addr:      sniProxyAddress,
-			key:       fmt.Sprintf("%s:%s", sniProxyAddress, &uuid),
-			tlsConfig: copyTLSConfig(r.bundle, uuid.String()),
+			key:       fmt.Sprintf("%s:%s", sniProxyAddress, &hostId),
+			tlsConfig: copyTLSConfig(r.bundle, hostId.String()),
 		}, nil
 	}
 }

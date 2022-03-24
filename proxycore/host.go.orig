@@ -15,17 +15,31 @@
 package proxycore
 
 type Host struct {
-	Endpoint
+	endpoint Endpoint
 }
 
-func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
+<<<<<<< HEAD
+func NewHostFromRow(endpoint Endpoint, _ Row) (*Host, error) {
 	return &Host{endpoint}, nil
+=======
+func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
+	dc, err := row.StringByName("data_center")
+	if err != nil {
+		return nil, err
+	} else {
+		return &Host{endpoint, dc}, nil
+	}
+>>>>>>> 4a77b5a... Filter endpoints that are not in the current region
+}
+
+func (h *Host) Endpoint() Endpoint {
+	return h.endpoint
 }
 
 func (h *Host) Key() string {
-	return h.Endpoint.Key()
+	return h.endpoint.Key()
 }
 
 func (h *Host) String() string {
-	return h.Endpoint.String()
+	return h.endpoint.String()
 }

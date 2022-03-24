@@ -99,7 +99,7 @@ func (s *Session) Send(host *Host, request Request) error {
 }
 
 func (s *Session) leastBusyConn(host *Host) *ClientConn {
-	if p, ok := s.pools.Load(host.Endpoint().Key()); ok {
+	if p, ok := s.pools.Load(host.Key()); ok {
 		pool := p.(*connPool)
 		return pool.leastBusyConn()
 	}
@@ -118,7 +118,7 @@ func (s *Session) OnEvent(event Event) {
 			for _, host := range evt.Hosts {
 				go func(host *Host) {
 					pool, err := connectPool(s.ctx, connPoolConfig{
-						Endpoint:      host.Endpoint(),
+						Endpoint:      host.Endpoint,
 						SessionConfig: s.config,
 					})
 					if err != nil {
@@ -127,7 +127,7 @@ func (s *Session) OnEvent(event Event) {
 						default:
 						}
 					}
-					s.pools.Store(host.Endpoint().Key(), pool)
+					s.pools.Store(host.Key(), pool)
 					wg.Done()
 				}(host)
 			}
@@ -139,7 +139,7 @@ func (s *Session) OnEvent(event Event) {
 	case *AddEvent:
 		// There's no compute if absent for sync.Map, figure a better way to do this if the pool already exists.
 		if pool, loaded := s.pools.LoadOrStore(evt.Host.Key(), connectPoolNoFail(s.ctx, connPoolConfig{
-			Endpoint:      evt.Host.Endpoint(),
+			Endpoint:      evt.Host.Endpoint,
 			SessionConfig: s.config,
 		})); loaded {
 			p := pool.(*connPool)
