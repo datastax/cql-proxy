@@ -15,8 +15,9 @@
 package proxycore
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRoundRobinLoadBalancer_NewQueryPlan(t *testing.T) {
@@ -26,7 +27,7 @@ func TestRoundRobinLoadBalancer_NewQueryPlan(t *testing.T) {
 	assert.Nil(t, qp.Next())
 
 	newHost := func(addr string) *Host {
-		return &Host{endpoint: &defaultEndpoint{addr: addr}}
+		return &Host{Endpoint: &defaultEndpoint{addr: addr}}
 	}
 
 	lb.OnEvent(&BootstrapEvent{Hosts: []*Host{newHost("127.0.0.1"), newHost("127.0.0.2"), newHost("127.0.0.3")}})
