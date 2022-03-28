@@ -82,12 +82,12 @@ func Run(ctx context.Context, args []string) int {
 	if config.Config != nil {
 		bytes, err := io.ReadAll(config.Config)
 		if err != nil {
-			cliCtx.Errorf("unable to read contents of configuration file '%s': ", config.Config.Name(), err)
+			cliCtx.Errorf("unable to read contents of configuration file '%s': %v", config.Config.Name(), err)
 			return 1
 		}
 		err = yaml.Unmarshal(bytes, &config)
 		if err != nil {
-			cliCtx.Errorf("invalid YAML in configuration file '%s': ", config.Config.Name(), err)
+			cliCtx.Errorf("invalid YAML in configuration file '%s': %v", config.Config.Name(), err)
 		}
 	}
 
