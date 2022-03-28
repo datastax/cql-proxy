@@ -113,6 +113,7 @@ type ClusterInfo struct {
 	Partitioner    string
 	ReleaseVersion string
 	CQLVersion     string
+	LocalDC        string
 }
 
 // Cluster defines a downstream cluster that is being proxied to.
@@ -297,6 +298,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 	}
 	hosts = c.addHosts(hosts, rs)
 	row := rs.Row(0)
+	localDC := hosts[0].DC
 
 	partitioner, err := row.StringByName("partitioner")
 	if err != nil {
@@ -328,7 +330,7 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 		return hosts[i].Key() < hosts[j].Key()
 	})
 
-	return hosts, ClusterInfo{Partitioner: partitioner, ReleaseVersion: releaseVersion, CQLVersion: cqlVersion}, nil
+	return hosts, ClusterInfo{Partitioner: partitioner, ReleaseVersion: releaseVersion, CQLVersion: cqlVersion, LocalDC: localDC}, nil
 }
 
 func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {

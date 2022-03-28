@@ -36,7 +36,7 @@ var (
 	}
 
 	SystemPeersColumns = []*message.ColumnMetadata{
-		{Keyspace: "system", Table: "peers", Name: "peer", Type: datatype.Varchar},
+		{Keyspace: "system", Table: "peers", Name: "peer", Type: datatype.Inet},
 		{Keyspace: "system", Table: "peers", Name: "rpc_address", Type: datatype.Inet},
 		{Keyspace: "system", Table: "peers", Name: "data_center", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "peers", Name: "rack", Type: datatype.Varchar},
