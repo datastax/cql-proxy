@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -80,7 +80,7 @@ func Run(ctx context.Context, args []string) int {
 	}
 
 	if config.Config != nil {
-		bytes, err := io.ReadAll(config.Config)
+		bytes, err := ioutil.ReadAll(config.Config)
 		if err != nil {
 			cliCtx.Errorf("unable to read contents of configuration file '%s': %v", config.Config.Name(), err)
 			return 1
