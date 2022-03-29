@@ -182,9 +182,10 @@ func Run(ctx context.Context, args []string) int {
 	config.Bind = maybeAddPort(config.Bind, "9042")
 	config.HttpBind = maybeAddPort(config.HttpBind, "8000")
 
-	maybeAddHealthCheck(p)
+	var mux http.ServeMux
+	maybeAddHealthCheck(p, &mux)
 
-	err = listenAndServe(p, ctx, logger)
+	err = listenAndServe(p, &mux, ctx, logger)
 	if err != nil {
 		cliCtx.Errorf("%v", err)
 		return 1
@@ -213,13 +214,13 @@ func parseProtocolVersion(s string) (version primitive.ProtocolVersion, ok bool)
 }
 
 // maybeAddHealthCheck checks the config and adds handlers for health checks if required.
-func maybeAddHealthCheck(p *Proxy) {
+func maybeAddHealthCheck(p *Proxy, mux *http.ServeMux) {
 	if config.HealthCheck {
-		http.HandleFunc(livenessPath, func(writer http.ResponseWriter, request *http.Request) {
+		mux.HandleFunc(livenessPath, func(writer http.ResponseWriter, request *http.Request) {
 			writer.WriteHeader(http.StatusOK)
 			_, _ = writer.Write([]byte("ok"))
 		})
-		http.HandleFunc(readinessPath, func(writer http.ResponseWriter, request *http.Request) {
+		mux.HandleFunc(readinessPath, func(writer http.ResponseWriter, request *http.Request) {
 			header := writer.Header()
 			header.Set("Content-Type", "application/json")
 
@@ -252,11 +253,11 @@ func maybeAddPort(addr string, defaultPort string) string {
 }
 
 // listenAndServe correctly handles serving both the proxy and an HTTP server simultaneously.
-func listenAndServe(p *Proxy, ctx context.Context, logger *zap.Logger) (err error) {
+func listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *zap.Logger) (err error) {
 	var wg sync.WaitGroup
 
 	ch := make(chan error)
-	server := http.Server{Addr: config.HttpBind}
+	server := http.Server{Addr: config.HttpBind, Handler: mux}
 
 	numServers := 1 // Without the HTTP server
 
