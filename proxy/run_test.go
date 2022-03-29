@@ -179,6 +179,89 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 	assert.Equal(t, "-3074457345618258602", *tokens[0])
 }
 
+func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+
+	err := cluster.Add(ctx, 1)
+	require.NoError(t, err)
+
+	defer cluster.Shutdown()
+
+	configFileName, err := writeTempYaml(struct {
+		Bind          string
+		Port          int
+		RPCAddr       string `yaml:"rpc-address"`
+		DataCenter    string `yaml:"data-center"`
+		Tokens        []string
+		ContactPoints []string `yaml:"contact-points"`
+		HealthCheck   bool     `yaml:"health-check"`
+		HttpBind      string   `yaml:"http-bind"`
+		Peers         []PeerConfig
+	}{
+		Bind:          "127.0.0.1:9042",
+		RPCAddr:       "127.0.0.1",
+		DataCenter:    "dc-1",
+		Tokens:        []string{"0", "1"}, // Provide custom tokens
+		Port:          testClusterPort,
+		ContactPoints: []string{testClusterContactPoint},
+		HealthCheck:   true,
+		HttpBind:      testProxyHTTPBind,
+		Peers: []PeerConfig{{
+			RPCAddr: "127.0.0.2",
+			Tokens:  []string{"42", "613"}, // Same here
+		}},
+	})
+
+	go func() {
+		rc := Run(ctx, []string{
+			"--config", configFileName,
+		})
+		require.Equal(t, 0, rc)
+	}()
+
+	waitUntil(10*time.Second, func() bool {
+		res, err := http.Get(fmt.Sprintf("http://%s%s", testProxyHTTPBind, livenessPath))
+		return err == nil && res.StatusCode == http.StatusOK
+	})
+
+	cl := connectTestClient(t, ctx)
+
+	rs, err := cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+		Query: "SELECT rpc_address, tokens FROM system.local",
+	})
+	require.Equal(t, rs.RowCount(), 1)
+
+	rpcAddress, err := rs.Row(0).InetByName("rpc_address")
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1", rpcAddress.String())
+
+	val, err := rs.Row(0).ByName("tokens")
+	require.NoError(t, err)
+	tokens := val.([]*string)
+	assert.NotEmpty(t, tokens)
+	assert.Equal(t, "0", *tokens[0])
+	assert.Equal(t, "1", *tokens[1])
+
+	rs, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+		Query: "SELECT rpc_address, data_center, tokens FROM system.peers",
+	})
+	require.Equal(t, rs.RowCount(), 1)
+
+	rpcAddress, err = rs.Row(0).InetByName("rpc_address")
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.2", rpcAddress.String())
+
+	val, err = rs.Row(0).ByName("tokens")
+	require.NoError(t, err)
+	tokens = val.([]*string)
+	assert.NotEmpty(t, tokens)
+	assert.Equal(t, "42", *tokens[0])
+	assert.Equal(t, "613", *tokens[1])
+}
+
 func TestRun_ConfigFileWithPeersAndNoRPCAddr(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -205,6 +288,45 @@ func TestRun_ConfigFileWithPeersAndNoRPCAddr(t *testing.T) {
 		Peers: []PeerConfig{{
 			RPCAddr: "127.0.0.2",
 			DC:      "dc-2",
+		}},
+	})
+	require.NoError(t, err)
+
+	rc := Run(ctx, []string{
+		"--config", configFileName,
+	})
+	require.Equal(t, 1, rc)
+}
+
+func TestRun_ConfigFileWithNoPeerTokens(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+
+	err := cluster.Add(ctx, 1)
+	require.NoError(t, err)
+
+	defer cluster.Shutdown()
+
+	configFileName, err := writeTempYaml(struct {
+		Bind          string
+		Port          int
+		RPCAddr       string `yaml:"rpc-address"`
+		DataCenter    string `yaml:"data-center"`
+		Tokens        []string
+		ContactPoints []string `yaml:"contact-points"`
+		Peers         []PeerConfig
+	}{
+		ContactPoints: []string{testClusterContactPoint},
+		Port:          testClusterPort,
+		Bind:          "127.0.0.1:9042",
+		RPCAddr:       "127.0.0.1",
+		Tokens:        []string{"0"}, // Local tokens set
+		Peers: []PeerConfig{{
+			RPCAddr: "127.0.0.2",
+			DC:      "dc-2",
+			// No peer tokens
 		}},
 	})
 	require.NoError(t, err)

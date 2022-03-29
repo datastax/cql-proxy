@@ -375,11 +375,15 @@ func (p *Proxy) buildNodes() (err error) {
 			return errors.New("tokens must be provided for all peer proxies if tokens are provided for this proxy")
 		}
 		nodes = append(nodes, &node{
-			addr: addr,
-			dc:   dc,
+			addr:   addr,
+			dc:     dc,
+			tokens: peer.Tokens,
 		})
 	}
 
+	// If tokens are not provided then we calculate tokens by sorting the addresses and assigning an even portion of the
+	// ring to each proxy. This should be deterministic in multiple independent proxies, assuming they have the same
+	// list of peers.
 	if calculateTokens && len(nodes) > 1 {
 		sort.Slice(nodes, func(i, j int) bool {
 			return compareIPAddr(nodes[i].addr, nodes[j].addr) < 0
