@@ -55,8 +55,8 @@ const preparedIdSize = 16
 
 type PeerConfig struct {
 	RPCAddr string   `yaml:"rpc-address"`
-	DC      string   `yaml:"data-center"`
-	Tokens  []string `yaml:"tokens"`
+	DC      string   `yaml:"data-center,omitempty"`
+	Tokens  []string `yaml:"tokens,omitempty"`
 }
 
 type Config struct {
