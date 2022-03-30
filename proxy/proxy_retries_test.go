@@ -25,6 +25,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const idempotentQuery = "INSERT INTO test.test (k, v) VALUES ('a', 123e4567-e89b-12d3-a456-426614174000)"
@@ -195,7 +196,7 @@ func TestProxy_Retries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetry(t, &message.Query{Query: tt.query}, tt.response)
+		numNodesTried, retryCount, err := testProxyRetry(t, &message.Query{Query: tt.query}, tt.response, tt.msg)
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
 		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
@@ -228,7 +229,7 @@ func TestProxy_PreparedRetries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetry(t, tt.execute, tt.response)
+		numNodesTried, retryCount, err := testProxyRetry(t, tt.execute, tt.response, tt.msg)
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
 		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
@@ -307,7 +308,7 @@ func TestProxy_BatchRetries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetry(t, tt.batch, tt.response)
+		numNodesTried, retryCount, err := testProxyRetry(t, tt.batch, tt.response, tt.msg)
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
 		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
@@ -315,15 +316,13 @@ func TestProxy_BatchRetries(t *testing.T) {
 	}
 }
 
-func testProxyRetry(t *testing.T, query message.Message, response message.Error) (numNodesTried, retryCount int, responseError error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func testProxyRetry(t *testing.T, query message.Message, response message.Error, testMessage string) (numNodesTried, retryCount int, responseError error) {
 	var mu sync.Mutex
 	tried := make(map[string]int)
 	prepared := make(map[[16]byte]string)
 
-	cluster, proxy := setupProxyTest(t, ctx, 3, proxycore.MockRequestHandlers{
+	ctx, cancel := context.WithCancel(context.Background())
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 3, proxycore.MockRequestHandlers{
 		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
 			if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
 				return msg
@@ -381,13 +380,14 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error)
 		},
 	})
 	defer func() {
-		cluster.Shutdown()
-		_ = proxy.Close()
+		cancel()
+		tester.shutdown()
 	}()
+	require.NoError(t, err, testMessage)
 
-	cl := connectTestClient(t, ctx)
+	cl := connectTestClient(t, ctx, proxyContactPoint)
 
-	_, err := cl.Query(ctx, primitive.ProtocolVersion4, query)
+	_, err = cl.Query(ctx, primitive.ProtocolVersion4, query)
 
 	if cqlErr, ok := err.(*proxycore.CqlError); ok {
 		if unprepared, ok := cqlErr.Message.(*message.Unprepared); ok {

@@ -34,43 +34,43 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const (
-	testProxyHTTPBind = "127.0.0.1:8001"
-)
-
 func TestRun_HealthChecks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+	clusterPort, clusterAddr, proxyBindAddr, httpBindAddr := generateTestAddrs(testAddr)
 
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
+	defer cluster.Shutdown()
 	err := cluster.Add(ctx, 1)
 	require.NoError(t, err)
-
-	defer cluster.Shutdown()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
 		rc := Run(ctx, []string{
-			"--contact-points", testClusterContactPoint,
-			"--port", strconv.Itoa(testClusterPort),
+			"--bind", proxyBindAddr,
+			"--contact-points", clusterAddr,
+			"--port", strconv.Itoa(clusterPort),
 			"--health-check",
-			"--http-bind", testProxyHTTPBind,
+			"--http-bind", httpBindAddr,
 			"--readiness-timeout", "200ms", // Use short timeout for the test
 		})
 		assert.Equal(t, 0, rc)
 		wg.Done()
 	}()
 
-	waitUntil(10*time.Second, func() bool {
-		res, err := http.Get(fmt.Sprintf("http://%s%s", testProxyHTTPBind, livenessPath))
-		return err == nil && res.StatusCode == http.StatusOK
-	})
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	require.True(t, waitUntil(10*time.Second, func() bool {
+		return checkLiveness(httpBindAddr)
+	}))
 
 	// Sanity check the readiness of the cluster
-	outage, status := checkReadiness(t)
+	outage, status := checkReadiness(t, httpBindAddr)
 	assert.Equal(t, time.Duration(0), outage)
 	assert.Equal(t, http.StatusOK, status)
 
@@ -78,35 +78,32 @@ func TestRun_HealthChecks(t *testing.T) {
 	cluster.Stop(1)
 
 	// Wait for the readiness check to fail
-	waitUntil(10*time.Second, func() bool {
-		outage, status = checkReadiness(t)
+	require.True(t, waitUntil(10*time.Second, func() bool {
+		outage, status = checkReadiness(t, httpBindAddr)
 		return outage > 0 && status == http.StatusServiceUnavailable
-	})
+	}))
 
 	// Restart the cluster
 	err = cluster.Start(ctx, 1)
 	require.NoError(t, err)
 
 	// Wait for the readiness check to recover
-	waitUntil(10*time.Second, func() bool {
-		outage, status = checkReadiness(t)
+	require.True(t, waitUntil(10*time.Second, func() bool {
+		outage, status = checkReadiness(t, httpBindAddr)
 		return outage == 0 && status == http.StatusOK
-	})
-
-	cancel()
-	wg.Wait()
+	}))
 }
 
 func TestRun_ConfigFileWithPeers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
-
-	err := cluster.Add(ctx, 1)
-	require.NoError(t, err)
+	proxy1Addr, proxy2Addr := testAddr, generateTestAddr(testAddr, 1)
+	clusterPort, clusterAddr, proxy1BindAddr, httpBindAddr := generateTestAddrs(proxy1Addr)
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
 
 	defer cluster.Shutdown()
+	err := cluster.Add(ctx, 1)
+	require.NoError(t, err)
 
 	configFileName, err := writeTempYaml(struct {
 		Bind          string
@@ -118,18 +115,18 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 		HttpBind      string   `yaml:"http-bind"`
 		Peers         []PeerConfig
 	}{
-		Bind:          "127.0.0.1:9042",
-		RPCAddr:       "127.0.0.1",
+		Bind:          proxy1BindAddr,
+		RPCAddr:       proxy1Addr,
 		DataCenter:    "dc-1",
-		Port:          testClusterPort,
-		ContactPoints: []string{testClusterContactPoint},
+		Port:          clusterPort,
+		ContactPoints: []string{clusterAddr},
 		HealthCheck:   true,
-		HttpBind:      testProxyHTTPBind,
+		HttpBind:      httpBindAddr,
 		Peers: []PeerConfig{{
-			RPCAddr: "127.0.0.1",
+			RPCAddr: proxy1Addr,
 			DC:      "dc-1",
 		}, {
-			RPCAddr: "127.0.0.2",
+			RPCAddr: proxy2Addr,
 			DC:      "dc-2",
 		}},
 	})
@@ -145,21 +142,25 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 		wg.Done()
 	}()
 
-	waitUntil(10*time.Second, func() bool {
-		res, err := http.Get(fmt.Sprintf("http://%s%s", testProxyHTTPBind, livenessPath))
-		return err == nil && res.StatusCode == http.StatusOK
-	})
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
 
-	cl := connectTestClient(t, ctx)
+	require.True(t, waitUntil(10*time.Second, func() bool {
+		return checkLiveness(httpBindAddr)
+	}))
+
+	cl := connectTestClient(t, ctx, proxy1BindAddr)
 
 	rs, err := cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
 		Query: "SELECT rpc_address, data_center, tokens FROM system.local",
 	})
 	require.Equal(t, rs.RowCount(), 1)
 
-	rpcAddress, err := rs.Row(0).InetByName("rpc_address")
+	rpcAddr, err := rs.Row(0).InetByName("rpc_address")
 	require.NoError(t, err)
-	assert.Equal(t, "127.0.0.1", rpcAddress.String())
+	assert.Equal(t, proxy1Addr, rpcAddr.String())
 
 	dataCenter, err := rs.Row(0).StringByName("data_center")
 	require.NoError(t, err)
@@ -176,9 +177,9 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 	})
 	require.Equal(t, rs.RowCount(), 1)
 
-	rpcAddress, err = rs.Row(0).InetByName("rpc_address")
+	rpcAddr, err = rs.Row(0).InetByName("rpc_address")
 	require.NoError(t, err)
-	assert.Equal(t, "127.0.0.2", rpcAddress.String())
+	assert.Equal(t, proxy2Addr, rpcAddr.String())
 
 	dataCenter, err = rs.Row(0).StringByName("data_center")
 	require.NoError(t, err)
@@ -189,21 +190,19 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 	tokens = val.([]*string)
 	assert.NotEmpty(t, tokens)
 	assert.Equal(t, "-3074457345618258602", *tokens[0])
-
-	cancel()
-	wg.Wait()
 }
 
 func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+	proxy1Addr, proxy2Addr := testAddr, generateTestAddr(testAddr, 1)
+	clusterPort, clusterAddr, proxy1BindAddr, httpBindAddr := generateTestAddrs(testAddr)
+
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
+	defer cluster.Shutdown()
 
 	err := cluster.Add(ctx, 1)
 	require.NoError(t, err)
-
-	defer cluster.Shutdown()
 
 	configFileName, err := writeTempYaml(struct {
 		Bind          string
@@ -216,16 +215,16 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 		HttpBind      string   `yaml:"http-bind"`
 		Peers         []PeerConfig
 	}{
-		Bind:          "127.0.0.1:9042",
-		RPCAddr:       "127.0.0.1",
+		Bind:          proxy1BindAddr,
+		RPCAddr:       proxy1Addr,
 		DataCenter:    "dc-1",
 		Tokens:        []string{"0", "1"}, // Provide custom tokens
-		Port:          testClusterPort,
-		ContactPoints: []string{testClusterContactPoint},
+		Port:          clusterPort,
+		ContactPoints: []string{clusterAddr},
 		HealthCheck:   true,
-		HttpBind:      testProxyHTTPBind,
+		HttpBind:      httpBindAddr,
 		Peers: []PeerConfig{{
-			RPCAddr: "127.0.0.2",
+			RPCAddr: proxy2Addr,
 			Tokens:  []string{"42", "613"}, // Same here
 		}},
 	})
@@ -241,21 +240,25 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 		wg.Done()
 	}()
 
-	waitUntil(10*time.Second, func() bool {
-		res, err := http.Get(fmt.Sprintf("http://%s%s", testProxyHTTPBind, livenessPath))
-		return err == nil && res.StatusCode == http.StatusOK
-	})
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
 
-	cl := connectTestClient(t, ctx)
+	require.True(t, waitUntil(10*time.Second, func() bool {
+		return checkLiveness(httpBindAddr)
+	}))
+
+	cl := connectTestClient(t, ctx, proxy1BindAddr)
 
 	rs, err := cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
 		Query: "SELECT rpc_address, tokens FROM system.local",
 	})
 	require.Equal(t, rs.RowCount(), 1)
 
-	rpcAddress, err := rs.Row(0).InetByName("rpc_address")
+	rpcAddr, err := rs.Row(0).InetByName("rpc_address")
 	require.NoError(t, err)
-	assert.Equal(t, "127.0.0.1", rpcAddress.String())
+	assert.Equal(t, proxy1Addr, rpcAddr.String())
 
 	val, err := rs.Row(0).ByName("tokens")
 	require.NoError(t, err)
@@ -269,9 +272,9 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 	})
 	require.Equal(t, rs.RowCount(), 1)
 
-	rpcAddress, err = rs.Row(0).InetByName("rpc_address")
+	rpcAddr, err = rs.Row(0).InetByName("rpc_address")
 	require.NoError(t, err)
-	assert.Equal(t, "127.0.0.2", rpcAddress.String())
+	assert.Equal(t, proxy2Addr, rpcAddr.String())
 
 	val, err = rs.Row(0).ByName("tokens")
 	require.NoError(t, err)
@@ -279,21 +282,19 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 	assert.NotEmpty(t, tokens)
 	assert.Equal(t, "42", *tokens[0])
 	assert.Equal(t, "613", *tokens[1])
-
-	cancel()
-	wg.Wait()
 }
 
 func TestRun_ConfigFileWithPeersAndNoRPCAddr(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+	proxy1Addr, proxy2Addr := testAddr, generateTestAddr(testAddr, 1)
+	clusterPort, clusterAddr, proxy1BindAddr, _ := generateTestAddrs(proxy1Addr)
 
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
+	defer cluster.Shutdown()
 	err := cluster.Add(ctx, 1)
 	require.NoError(t, err)
-
-	defer cluster.Shutdown()
 
 	configFileName, err := writeTempYaml(struct {
 		Bind          string
@@ -303,12 +304,12 @@ func TestRun_ConfigFileWithPeersAndNoRPCAddr(t *testing.T) {
 		ContactPoints []string `yaml:"contact-points"`
 		Peers         []PeerConfig
 	}{
-		ContactPoints: []string{testClusterContactPoint},
-		Port:          testClusterPort,
-		Bind:          "127.0.0.1:9042",
+		Bind:          proxy1BindAddr,
+		ContactPoints: []string{clusterAddr},
+		Port:          clusterPort,
 		// No RPC address, but using peers
 		Peers: []PeerConfig{{
-			RPCAddr: "127.0.0.2",
+			RPCAddr: proxy2Addr,
 			DC:      "dc-2",
 		}},
 	})
@@ -324,7 +325,10 @@ func TestRun_ConfigFileWithNoPeerTokens(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+	proxy1Addr, proxy2Addr := testAddr, generateTestAddr(testAddr, 1)
+	clusterPort, clusterAddr, proxy1BindAddr, _ := generateTestAddrs(proxy1Addr)
+
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
 
 	err := cluster.Add(ctx, 1)
 	require.NoError(t, err)
@@ -340,13 +344,13 @@ func TestRun_ConfigFileWithNoPeerTokens(t *testing.T) {
 		ContactPoints []string `yaml:"contact-points"`
 		Peers         []PeerConfig
 	}{
-		ContactPoints: []string{testClusterContactPoint},
-		Port:          testClusterPort,
-		Bind:          "127.0.0.1:9042",
-		RPCAddr:       "127.0.0.1",
+		Bind:          proxy1BindAddr,
+		ContactPoints: []string{clusterAddr},
+		Port:          clusterPort,
+		RPCAddr:       proxy1Addr,
 		Tokens:        []string{"0"}, // Local tokens set
 		Peers: []PeerConfig{{
-			RPCAddr: "127.0.0.2",
+			RPCAddr: proxy2Addr,
 			DC:      "dc-2",
 			// No peer tokens
 		}},
@@ -363,7 +367,10 @@ func TestRun_ConfigFileWithInvalidPeer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
+	proxy1Addr := testAddr
+	clusterPort, clusterAddr, proxy1BindAddr, _ := generateTestAddrs(proxy1Addr)
+
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
 
 	err := cluster.Add(ctx, 1)
 	require.NoError(t, err)
@@ -380,10 +387,10 @@ func TestRun_ConfigFileWithInvalidPeer(t *testing.T) {
 		HttpBind      string   `yaml:"http-bind"`
 		Peers         []PeerConfig
 	}{
-		ContactPoints: []string{"127.0.0.1"},
-		Bind:          "127.0.0.1:9042",
-		RPCAddr:       "127.0.0.1",
-		Port:          testClusterPort,
+		ContactPoints: []string{clusterAddr},
+		Bind:          proxy1BindAddr,
+		RPCAddr:       proxy1Addr,
+		Port:          clusterPort,
 		Peers: []PeerConfig{{
 			RPCAddr: "", // Empty
 			DC:      "dc-2",
@@ -417,8 +424,17 @@ func writeTempYaml(o interface{}) (name string, err error) {
 	return f.Name(), nil
 }
 
-func checkReadiness(t *testing.T) (outage time.Duration, status int) {
-	res, err := http.Get(fmt.Sprintf("http://%s%s", testProxyHTTPBind, readinessPath))
+func checkLiveness(host string) bool {
+	res, err := http.Get(fmt.Sprintf("http://%s%s", host, livenessPath))
+	if err == nil {
+		_ = res.Body.Close()
+		return res.StatusCode == http.StatusOK
+	}
+	return false
+}
+
+func checkReadiness(t *testing.T, host string) (outage time.Duration, status int) {
+	res, err := http.Get(fmt.Sprintf("http://%s%s", host, readinessPath))
 	require.NoError(t, err)
 
 	defer res.Body.Close()

@@ -263,21 +263,25 @@ func listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *z
 
 	// Listen is called first to set up the listening server connection and establish initial client connections to the
 	// backend cluster so that when the readiness check is hit the proxy is actually ready.
-	err = p.Listen(config.Bind)
+
+	err = p.Connect()
 	if err != nil {
 		return err
 	}
 
-	var listener *net.TCPListener
+	proxyListener, err := resolveAndListen(config.Bind)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("proxy is listening", zap.Stringer("address", proxyListener.Addr()))
+
+	var httpListener net.Listener
 
 	if config.HealthCheck {
 		numServers++ // Add the HTTP server
 
-		tcpAddr, err := net.ResolveTCPAddr("tcp", config.HttpBind)
-		if err != nil {
-			return err
-		}
-		listener, err = net.ListenTCP("tcp", tcpAddr)
+		httpListener, err = resolveAndListen(config.HttpBind)
 		if err != nil {
 			return err
 		}
@@ -305,7 +309,7 @@ func listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *z
 
 	go func() {
 		defer wg.Done()
-		err := p.Serve()
+		err := p.Serve(proxyListener)
 		if err != nil && err != ErrProxyClosed {
 			ch <- err
 		}
@@ -314,7 +318,7 @@ func listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *z
 	if config.HealthCheck {
 		go func() {
 			defer wg.Done()
-			err := server.Serve(listener)
+			err := server.Serve(httpListener)
 			if err != nil && err != http.ErrServerClosed {
 				ch <- err
 			}
@@ -329,4 +333,12 @@ func listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *z
 	}
 
 	return err
+}
+
+func resolveAndListen(address string) (net.Listener, error) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	return net.ListenTCP("tcp", tcpAddr)
 }
