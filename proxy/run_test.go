@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +49,9 @@ func TestRun_HealthChecks(t *testing.T) {
 
 	defer cluster.Shutdown()
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
 		rc := Run(ctx, []string{
 			"--contact-points", testClusterContactPoint,
@@ -56,7 +60,8 @@ func TestRun_HealthChecks(t *testing.T) {
 			"--http-bind", testProxyHTTPBind,
 			"--readiness-timeout", "200ms", // Use short timeout for the test
 		})
-		require.Equal(t, 0, rc)
+		assert.Equal(t, 0, rc)
+		wg.Done()
 	}()
 
 	waitUntil(10*time.Second, func() bool {
@@ -87,6 +92,9 @@ func TestRun_HealthChecks(t *testing.T) {
 		outage, status = checkReadiness(t)
 		return outage == 0 && status == http.StatusOK
 	})
+
+	cancel()
+	wg.Wait()
 }
 
 func TestRun_ConfigFileWithPeers(t *testing.T) {
@@ -126,11 +134,15 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 		}},
 	})
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
 		rc := Run(ctx, []string{
 			"--config", configFileName,
 		})
-		require.Equal(t, 0, rc)
+		assert.Equal(t, 0, rc)
+		wg.Done()
 	}()
 
 	waitUntil(10*time.Second, func() bool {
@@ -177,6 +189,9 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 	tokens = val.([]*string)
 	assert.NotEmpty(t, tokens)
 	assert.Equal(t, "-3074457345618258602", *tokens[0])
+
+	cancel()
+	wg.Wait()
 }
 
 func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
@@ -215,11 +230,15 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 		}},
 	})
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
 		rc := Run(ctx, []string{
 			"--config", configFileName,
 		})
-		require.Equal(t, 0, rc)
+		assert.Equal(t, 0, rc)
+		wg.Done()
 	}()
 
 	waitUntil(10*time.Second, func() bool {
@@ -260,6 +279,9 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 	assert.NotEmpty(t, tokens)
 	assert.Equal(t, "42", *tokens[0])
 	assert.Equal(t, "613", *tokens[1])
+
+	cancel()
+	wg.Wait()
 }
 
 func TestRun_ConfigFileWithPeersAndNoRPCAddr(t *testing.T) {
