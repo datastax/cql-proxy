@@ -110,11 +110,11 @@ All configuration keys match their command-line flag counterpart, e.g. `--astra-
 
 Multi-region failover with DC-aware load balancing policy is the most useful case for a multiple proxy setup.
 
-When configuration `peers:` it is required to set `--rpc-address` (or `rpc-address:` in the yaml) for each proxy and it must match is correspond `peers:` entry. Also, `peers:` is only available in the configuration file and cannot be set using a command-line flag.
+When configuring `peers:` it is required to set `--rpc-address` (or `rpc-address:` in the yaml) for each proxy and it must match is corresponding `peers:` entry. Also, `peers:` is only available in the configuration file and cannot be set using a command-line flag.
 
 ##### Multi-region setup
 
-Here's an example of configuring multi-region failover with two proxies. A proxy is started for each region in the cluster and connects to it using that region's bundle. They all share a common configuration file that contains the full list of proxies. 
+Here's an example of configuring multi-region failover with two proxies. A proxy is started for each region of the cluster connecting to it using that region's bundle. They all share a common configuration file that contains the full list of proxies.
 
 *Note:* Only bundles are supported for multi-region setups.
 
