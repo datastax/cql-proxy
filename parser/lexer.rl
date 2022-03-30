@@ -26,6 +26,9 @@ const (
 	tkBegin
 	tkApply
 	tkBatch
+	tkCreate
+	tkAlter
+	tkDrop
 	tkInto
 	tkFrom
 	tkUse
@@ -152,6 +155,9 @@ func (l *lexer) next() token {
             /batch/i => { tk = tkBatch; fbreak; };
             /begin/i => { tk = tkBegin; fbreak; };
             /apply/i => { tk = tkApply; fbreak; };
+            /create/i => { tk = tkCreate; fbreak; };
+            /alter/i => { tk = tkAlter; fbreak; };
+            /drop/i => { tk = tkDrop; fbreak; };
             /into/i => { tk = tkInto; fbreak; };
             /from/i => { tk = tkFrom; fbreak; };
             /use/i => { tk = tkUse; fbreak; };
