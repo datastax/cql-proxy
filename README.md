@@ -108,9 +108,7 @@ All configuration keys match their command-line flag counterpart, e.g. `--astra-
 
 #### Setting up peer proxies
 
-There a couple cases when it is useful to setup multiple proxies:
-* Multi-region failover with DC-aware load balancing policy. 
-* Compatibility with drivers that require a replication factor number of nodes (proxies) in a cluster for token-aware load balancing. This is not a problem for most drivers as they print a warning when there's less than replication factor nodes, and fallback to round-robin load balancing. The `gocql` driver is a notable exception, it panics when there's not enough proxies. In this case, it is best to configure the round-robin load balancing policy, but if that can't be done then multiple proxies should be used.
+Multi-region failover with DC-aware load balancing policy is the most useful case for a multiple proxy setup.
 
 When configuration `peers:` it is required to set `--rpc-address` (or `rpc-address:` in the yaml) for each proxy and it must match is correspond `peers:` entry. Also, `peers:` is only available in the configuration file and cannot be set using a command-line flag.
 
@@ -141,32 +139,6 @@ peers:
 ```
 
 *Note:* It's okay for the `peers:` to contain entries for the current proxy itself because they'll just be omitted.
-
-##### Token-aware bypass setup
-
-This setup is similar to the multi-region setup but is simpler because all proxy instances share the same data center value which can just use the default value (`dc1`). Replication factor is often set to `3`, so it will require creating three instances of the proxy, but this may be different for your application. 
-
-```sh
-cql-proxy --astra-token <astra-token> --astra-database-id <astra-database-id> \
-  --bind 127.0.0.1:9042 --rpc-address 127.0.0.1 --config proxy.yaml
-```
-
-```sh
-cql-proxy --astra-token <astra-token> --astra-database-id <astra-database-id> \
-1 --bind 127.0.0.2:9042 --rpc-address 127.0.0.2 --config proxy.yaml
-```
-
-```sh
-cql-proxy --astra-token <astra-token> --astra-database-id <astra-database-id> \
-  --bind 127.0.0.3:9042 --rpc-address 127.0.0.3 --config proxy.yaml
-```
-
-```yaml
-peers:
-  - rpc-address: 127.0.0.1
-  - rpc-address: 127.0.0.2
-  - rpc-address: 127.0.0.3
-```
 
 ## Getting started
 
