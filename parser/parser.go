@@ -90,7 +90,7 @@ func isIdempotentStmt(l *lexer, t token) (idempotent bool, err error) {
 	switch t {
 	case tkSelect:
 		return true, nil
-	case tkUse:
+	case tkUse, tkCreate, tkAlter, tkDrop:
 		return false, nil
 	case tkInsert:
 		idempotent, t, err = isIdempotentInsertStmt(l)

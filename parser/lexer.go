@@ -27,6 +27,9 @@ const (
 	tkBegin
 	tkApply
 	tkBatch
+	tkCreate
+	tkAlter
+	tkDrop
 	tkInto
 	tkFrom
 	tkUse
@@ -78,14 +81,14 @@ const (
 	tkRangle = tkGt
 )
 
-//line lexer.go:85
+//line lexer.go:88
 const lex_start int = 90
 const lex_first_final int = 90
 const lex_error int = -1
 
 const lex_en_main int = 90
 
-//line lexer.rl:84
+//line lexer.rl:87
 
 type lexer struct {
 	data     string
@@ -131,7 +134,7 @@ func (l *lexer) next() token {
 		return tkEOF
 	}
 
-//line lexer.go:141
+//line lexer.go:144
 	{
 		cs = lex_start
 		ts = 0
@@ -139,7 +142,7 @@ func (l *lexer) next() token {
 		act = 0
 	}
 
-//line lexer.go:149
+//line lexer.go:152
 	{
 		if p == pe {
 			goto _test_eof
@@ -601,6 +604,26 @@ func (l *lexer) next() token {
 			goto st_case_226
 		case 227:
 			goto st_case_227
+		case 228:
+			goto st_case_228
+		case 229:
+			goto st_case_229
+		case 230:
+			goto st_case_230
+		case 231:
+			goto st_case_231
+		case 232:
+			goto st_case_232
+		case 233:
+			goto st_case_233
+		case 234:
+			goto st_case_234
+		case 235:
+			goto st_case_235
+		case 236:
+			goto st_case_236
+		case 237:
+			goto st_case_237
 		}
 		goto st_out
 	tr0:
@@ -679,7 +702,7 @@ func (l *lexer) next() token {
 		case 8:
 			{
 				p = (te) - 1
-				tk = tkInto
+				tk = tkCreate
 				{
 					p++
 					cs = 90
@@ -689,7 +712,7 @@ func (l *lexer) next() token {
 		case 9:
 			{
 				p = (te) - 1
-				tk = tkFrom
+				tk = tkAlter
 				{
 					p++
 					cs = 90
@@ -699,7 +722,7 @@ func (l *lexer) next() token {
 		case 10:
 			{
 				p = (te) - 1
-				tk = tkUse
+				tk = tkDrop
 				{
 					p++
 					cs = 90
@@ -709,7 +732,7 @@ func (l *lexer) next() token {
 		case 11:
 			{
 				p = (te) - 1
-				tk = tkUsing
+				tk = tkInto
 				{
 					p++
 					cs = 90
@@ -719,7 +742,7 @@ func (l *lexer) next() token {
 		case 12:
 			{
 				p = (te) - 1
-				tk = tkIf
+				tk = tkFrom
 				{
 					p++
 					cs = 90
@@ -729,7 +752,7 @@ func (l *lexer) next() token {
 		case 13:
 			{
 				p = (te) - 1
-				tk = tkWhere
+				tk = tkUse
 				{
 					p++
 					cs = 90
@@ -739,7 +762,7 @@ func (l *lexer) next() token {
 		case 14:
 			{
 				p = (te) - 1
-				tk = tkAnd
+				tk = tkUsing
 				{
 					p++
 					cs = 90
@@ -749,7 +772,17 @@ func (l *lexer) next() token {
 		case 15:
 			{
 				p = (te) - 1
-				tk = tkIs
+				tk = tkIf
+				{
+					p++
+					cs = 90
+					goto _out
+				}
+			}
+		case 16:
+			{
+				p = (te) - 1
+				tk = tkWhere
 				{
 					p++
 					cs = 90
@@ -759,7 +792,7 @@ func (l *lexer) next() token {
 		case 17:
 			{
 				p = (te) - 1
-				tk = tkNot
+				tk = tkAnd
 				{
 					p++
 					cs = 90
@@ -769,17 +802,7 @@ func (l *lexer) next() token {
 		case 18:
 			{
 				p = (te) - 1
-				tk = tkToken
-				{
-					p++
-					cs = 90
-					goto _out
-				}
-			}
-		case 19:
-			{
-				p = (te) - 1
-				tk = tkBool
+				tk = tkIs
 				{
 					p++
 					cs = 90
@@ -789,27 +812,37 @@ func (l *lexer) next() token {
 		case 20:
 			{
 				p = (te) - 1
+				tk = tkNot
+				{
+					p++
+					cs = 90
+					goto _out
+				}
+			}
+		case 21:
+			{
+				p = (te) - 1
+				tk = tkToken
+				{
+					p++
+					cs = 90
+					goto _out
+				}
+			}
+		case 22:
+			{
+				p = (te) - 1
+				tk = tkBool
+				{
+					p++
+					cs = 90
+					goto _out
+				}
+			}
+		case 23:
+			{
+				p = (te) - 1
 				tk = tkNull
-				{
-					p++
-					cs = 90
-					goto _out
-				}
-			}
-		case 42:
-			{
-				p = (te) - 1
-				tk = tkNan
-				{
-					p++
-					cs = 90
-					goto _out
-				}
-			}
-		case 43:
-			{
-				p = (te) - 1
-				tk = tkInfinity
 				{
 					p++
 					cs = 90
@@ -819,7 +852,7 @@ func (l *lexer) next() token {
 		case 45:
 			{
 				p = (te) - 1
-				tk = tkStringLiteral
+				tk = tkNan
 				{
 					p++
 					cs = 90
@@ -829,17 +862,17 @@ func (l *lexer) next() token {
 		case 46:
 			{
 				p = (te) - 1
-				tk = tkInteger
+				tk = tkInfinity
 				{
 					p++
 					cs = 90
 					goto _out
 				}
 			}
-		case 47:
+		case 48:
 			{
 				p = (te) - 1
-				tk = tkFloat
+				tk = tkStringLiteral
 				{
 					p++
 					cs = 90
@@ -849,6 +882,26 @@ func (l *lexer) next() token {
 		case 49:
 			{
 				p = (te) - 1
+				tk = tkInteger
+				{
+					p++
+					cs = 90
+					goto _out
+				}
+			}
+		case 50:
+			{
+				p = (te) - 1
+				tk = tkFloat
+				{
+					p++
+					cs = 90
+					goto _out
+				}
+			}
+		case 52:
+			{
+				p = (te) - 1
 				tk = tkDuration
 				{
 					p++
@@ -856,7 +909,7 @@ func (l *lexer) next() token {
 					goto _out
 				}
 			}
-		case 51:
+		case 54:
 			{
 				p = (te) - 1
 				tk = tkIdentifier
@@ -867,7 +920,7 @@ func (l *lexer) next() token {
 					goto _out
 				}
 			}
-		case 54:
+		case 57:
 			{
 				p = (te) - 1
 				tk = tkInvalid
@@ -881,7 +934,7 @@ func (l *lexer) next() token {
 
 		goto st90
 	tr2:
-//line lexer.rl:198
+//line lexer.rl:204
 		te = p + 1
 		{
 			tk = tkIdentifier
@@ -894,7 +947,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr11:
-//line lexer.rl:196
+//line lexer.rl:202
 		p = (te) - 1
 		{
 			tk = tkDuration
@@ -906,7 +959,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr17:
-//line lexer.rl:186
+//line lexer.rl:192
 		p = (te) - 1
 		{
 			tk = tkSub
@@ -918,7 +971,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr24:
-//line lexer.rl:190
+//line lexer.rl:196
 		te = p + 1
 		{
 			tk = tkInfinity
@@ -930,7 +983,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr26:
-//line lexer.rl:189
+//line lexer.rl:195
 		te = p + 1
 		{
 			tk = tkNan
@@ -942,7 +995,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr30:
-//line lexer.rl:196
+//line lexer.rl:202
 		te = p + 1
 		{
 			tk = tkDuration
@@ -954,7 +1007,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr82:
-//line lexer.rl:197
+//line lexer.rl:203
 		te = p + 1
 		{
 			tk = tkUuid
@@ -966,7 +1019,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr84:
-//line lexer.rl:193
+//line lexer.rl:199
 		p = (te) - 1
 		{
 			tk = tkInteger
@@ -978,7 +1031,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr109:
-//line lexer.rl:201
+//line lexer.rl:207
 		te = p + 1
 		{
 			tk = tkInvalid
@@ -990,19 +1043,19 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr110:
-//line lexer.rl:200
+//line lexer.rl:206
 		te = p + 1
 		{ /* Skip */
 		}
 		goto st90
 	tr111:
-//line lexer.rl:199
+//line lexer.rl:205
 		te = p + 1
 		{ /* Skip */
 		}
 		goto st90
 	tr117:
-//line lexer.rl:173
+//line lexer.rl:179
 		te = p + 1
 		{
 			tk = tkLparen
@@ -1014,7 +1067,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr118:
-//line lexer.rl:174
+//line lexer.rl:180
 		te = p + 1
 		{
 			tk = tkRparen
@@ -1026,7 +1079,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr119:
-//line lexer.rl:168
+//line lexer.rl:174
 		te = p + 1
 		{
 			tk = tkStar
@@ -1038,7 +1091,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr121:
-//line lexer.rl:169
+//line lexer.rl:175
 		te = p + 1
 		{
 			tk = tkComma
@@ -1050,7 +1103,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr123:
-//line lexer.rl:170
+//line lexer.rl:176
 		te = p + 1
 		{
 			tk = tkDot
@@ -1062,7 +1115,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr126:
-//line lexer.rl:171
+//line lexer.rl:177
 		te = p + 1
 		{
 			tk = tkColon
@@ -1074,7 +1127,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr127:
-//line lexer.rl:191
+//line lexer.rl:197
 		te = p + 1
 		{
 			tk = tkEOS
@@ -1086,7 +1139,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr129:
-//line lexer.rl:179
+//line lexer.rl:185
 		te = p + 1
 		{
 			tk = tkEqual
@@ -1098,7 +1151,7 @@ func (l *lexer) next() token {
 		}
 		goto st90
 	tr131:
-//line lexer.rl:172
+//line lexer.rl:178
 		te = p + 1
 		{
 			tk = tkQMark
@@ -1109,8 +1162,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr145:
-//line lexer.rl:175
+	tr146:
+//line lexer.rl:181
 		te = p + 1
 		{
 			tk = tkLsquare
@@ -1121,8 +1174,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr146:
-//line lexer.rl:176
+	tr147:
+//line lexer.rl:182
 		te = p + 1
 		{
 			tk = tkRsquare
@@ -1133,8 +1186,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr147:
-//line lexer.rl:177
+	tr148:
+//line lexer.rl:183
 		te = p + 1
 		{
 			tk = tkLcurly
@@ -1145,8 +1198,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr148:
-//line lexer.rl:178
+	tr149:
+//line lexer.rl:184
 		te = p + 1
 		{
 			tk = tkRcurly
@@ -1157,8 +1210,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr149:
-//line lexer.rl:201
+	tr150:
+//line lexer.rl:207
 		te = p
 		p--
 		{
@@ -1170,8 +1223,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr150:
-//line lexer.rl:184
+	tr151:
+//line lexer.rl:190
 		te = p + 1
 		{
 			tk = tkNotEqual
@@ -1182,8 +1235,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr151:
-//line lexer.rl:192
+	tr152:
+//line lexer.rl:198
 		te = p
 		p--
 		{
@@ -1195,8 +1248,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr152:
-//line lexer.rl:185
+	tr153:
+//line lexer.rl:191
 		te = p
 		p--
 		{
@@ -1208,8 +1261,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr153:
-//line lexer.rl:187
+	tr154:
+//line lexer.rl:193
 		te = p + 1
 		{
 			tk = tkAddEqual
@@ -1220,8 +1273,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr154:
-//line lexer.rl:186
+	tr155:
+//line lexer.rl:192
 		te = p
 		p--
 		{
@@ -1233,8 +1286,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr156:
-//line lexer.rl:188
+	tr157:
+//line lexer.rl:194
 		te = p + 1
 		{
 			tk = tkSubEqual
@@ -1245,8 +1298,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr160:
-//line lexer.rl:193
+	tr161:
+//line lexer.rl:199
 		te = p
 		p--
 		{
@@ -1258,8 +1311,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr163:
-//line lexer.rl:194
+	tr164:
+//line lexer.rl:200
 		te = p
 		p--
 		{
@@ -1271,8 +1324,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr164:
-//line lexer.rl:196
+	tr165:
+//line lexer.rl:202
 		te = p
 		p--
 		{
@@ -1284,8 +1337,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr189:
-//line lexer.rl:195
+	tr190:
+//line lexer.rl:201
 		te = p
 		p--
 		{
@@ -1297,8 +1350,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr190:
-//line lexer.rl:182
+	tr191:
+//line lexer.rl:188
 		te = p
 		p--
 		{
@@ -1310,8 +1363,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr191:
-//line lexer.rl:180
+	tr192:
+//line lexer.rl:186
 		te = p + 1
 		{
 			tk = tkLtEqual
@@ -1322,8 +1375,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr192:
-//line lexer.rl:183
+	tr193:
+//line lexer.rl:189
 		te = p
 		p--
 		{
@@ -1335,8 +1388,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr193:
-//line lexer.rl:181
+	tr194:
+//line lexer.rl:187
 		te = p + 1
 		{
 			tk = tkGtEqual
@@ -1347,8 +1400,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr194:
-//line lexer.rl:198
+	tr195:
+//line lexer.rl:204
 		te = p
 		p--
 		{
@@ -1361,8 +1414,8 @@ func (l *lexer) next() token {
 			}
 		}
 		goto st90
-	tr231:
-//line lexer.rl:163
+	tr244:
+//line lexer.rl:169
 		te = p
 		p--
 		{
@@ -1385,7 +1438,7 @@ func (l *lexer) next() token {
 //line NONE:1
 		ts = p
 
-//line lexer.go:928
+//line lexer.go:960
 		switch data[p] {
 		case 9:
 			goto tr110
@@ -1434,75 +1487,73 @@ func (l *lexer) next() token {
 		case 65:
 			goto st141
 		case 66:
-			goto st154
+			goto st157
+		case 67:
+			goto st164
 		case 68:
-			goto st162
+			goto st169
+		case 69:
+			goto st176
 		case 70:
-			goto st167
+			goto st177
 		case 73:
-			goto st173
+			goto st183
 		case 78:
-			goto st184
+			goto st194
 		case 80:
-			goto st189
+			goto st199
 		case 83:
-			goto st206
-		case 84:
-			goto st211
-		case 85:
 			goto st216
+		case 84:
+			goto st221
+		case 85:
+			goto st226
 		case 87:
-			goto st224
+			goto st234
 		case 91:
-			goto tr145
-		case 93:
 			goto tr146
+		case 93:
+			goto tr147
 		case 97:
 			goto st141
 		case 98:
-			goto st154
+			goto st157
+		case 99:
+			goto st164
 		case 100:
-			goto st162
+			goto st169
+		case 101:
+			goto st176
 		case 102:
-			goto st167
+			goto st177
 		case 105:
-			goto st173
+			goto st183
 		case 110:
-			goto st184
+			goto st194
 		case 115:
-			goto st206
-		case 116:
-			goto st211
-		case 117:
 			goto st216
+		case 116:
+			goto st221
+		case 117:
+			goto st226
 		case 119:
-			goto st224
+			goto st234
 		case 123:
-			goto tr147
-		case 125:
 			goto tr148
+		case 125:
+			goto tr149
 		}
 		switch {
 		case data[p] < 71:
-			switch {
-			case data[p] > 57:
-				if 67 <= data[p] && data[p] <= 69 {
-					goto st161
-				}
-			case data[p] >= 49:
+			if 49 <= data[p] && data[p] <= 57 {
 				goto tr125
 			}
 		case data[p] > 90:
-			switch {
-			case data[p] > 101:
-				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
-				}
-			case data[p] >= 99:
-				goto st161
+			if 103 <= data[p] && data[p] <= 122 {
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
 		goto tr109
 	st91:
@@ -1513,36 +1564,36 @@ func (l *lexer) next() token {
 		if data[p] == 10 {
 			goto tr111
 		}
-		goto tr149
+		goto tr150
 	st92:
 		if p++; p == pe {
 			goto _test_eof92
 		}
 	st_case_92:
 		if data[p] == 61 {
-			goto tr150
+			goto tr151
 		}
-		goto tr149
+		goto tr150
 	tr4:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:198
-		act = 51
+//line lexer.rl:204
+		act = 54
 		goto st93
 	tr114:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:201
-		act = 54
+//line lexer.rl:207
+		act = 57
 		goto st93
 	st93:
 		if p++; p == pe {
 			goto _test_eof93
 		}
 	st_case_93:
-//line lexer.go:1085
+//line lexer.go:1115
 		switch data[p] {
 		case 10:
 			goto tr0
@@ -1590,15 +1641,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:201
-		act = 54
+//line lexer.rl:207
+		act = 57
 		goto st94
 	st94:
 		if p++; p == pe {
 			goto _test_eof94
 		}
 	st_case_94:
-//line lexer.go:1141
+//line lexer.go:1171
 		if data[p] == 36 {
 			goto tr6
 		}
@@ -1616,32 +1667,32 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
-		act = 45
+//line lexer.rl:198
+		act = 48
 		goto st95
 	st95:
 		if p++; p == pe {
 			goto _test_eof95
 		}
 	st_case_95:
-//line lexer.go:1167
+//line lexer.go:1197
 		if data[p] == 36 {
 			goto st2
 		}
-		goto tr151
+		goto tr152
 	tr116:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:201
-		act = 54
+//line lexer.rl:207
+		act = 57
 		goto st96
 	st96:
 		if p++; p == pe {
 			goto _test_eof96
 		}
 	st_case_96:
-//line lexer.go:1184
+//line lexer.go:1214
 		if data[p] == 39 {
 			goto tr8
 		}
@@ -1659,28 +1710,28 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:192
-		act = 45
+//line lexer.rl:198
+		act = 48
 		goto st97
 	st97:
 		if p++; p == pe {
 			goto _test_eof97
 		}
 	st_case_97:
-//line lexer.go:1210
+//line lexer.go:1240
 		if data[p] == 39 {
 			goto st3
 		}
-		goto tr151
+		goto tr152
 	st98:
 		if p++; p == pe {
 			goto _test_eof98
 		}
 	st_case_98:
 		if data[p] == 61 {
-			goto tr153
+			goto tr154
 		}
-		goto tr152
+		goto tr153
 	tr122:
 //line NONE:1
 		te = p + 1
@@ -1691,41 +1742,41 @@ func (l *lexer) next() token {
 			goto _test_eof99
 		}
 	st_case_99:
-//line lexer.go:1234
+//line lexer.go:1264
 		switch data[p] {
 		case 61:
-			goto tr156
+			goto tr157
 		case 73:
 			goto st9
 		case 78:
 			goto st16
 		case 80:
-			goto tr159
+			goto tr160
 		case 105:
 			goto st9
 		case 110:
 			goto st16
 		}
 		if 48 <= data[p] && data[p] <= 57 {
-			goto tr155
+			goto tr156
 		}
-		goto tr154
-	tr155:
+		goto tr155
+	tr156:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st100
 	st100:
 		if p++; p == pe {
 			goto _test_eof100
 		}
 	st_case_100:
-//line lexer.go:1265
+//line lexer.go:1295
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr13
 		case 69:
@@ -1766,22 +1817,22 @@ func (l *lexer) next() token {
 			goto st8
 		}
 		if 48 <= data[p] && data[p] <= 57 {
-			goto tr155
+			goto tr156
 		}
-		goto tr160
-	tr161:
+		goto tr161
+	tr162:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st101
 	st101:
 		if p++; p == pe {
 			goto _test_eof101
 		}
 	st_case_101:
-//line lexer.go:1324
+//line lexer.go:1354
 		switch data[p] {
 		case 69:
 			goto st4
@@ -1789,9 +1840,9 @@ func (l *lexer) next() token {
 			goto st4
 		}
 		if 48 <= data[p] && data[p] <= 57 {
-			goto tr161
+			goto tr162
 		}
-		goto tr163
+		goto tr164
 	st4:
 		if p++; p == pe {
 			goto _test_eof4
@@ -1824,24 +1875,24 @@ func (l *lexer) next() token {
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st102
 		}
-		goto tr163
+		goto tr164
 	tr13:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st103
 	st103:
 		if p++; p == pe {
 			goto _test_eof103
 		}
 	st_case_103:
-//line lexer.go:1380
+//line lexer.go:1410
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st6
 		}
-		goto tr164
+		goto tr165
 	st6:
 		if p++; p == pe {
 			goto _test_eof6
@@ -1891,15 +1942,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st104
 	st104:
 		if p++; p == pe {
 			goto _test_eof104
 		}
 	st_case_104:
-//line lexer.go:1442
+//line lexer.go:1472
 		switch data[p] {
 		case 79:
 			goto tr13
@@ -1913,7 +1964,7 @@ func (l *lexer) next() token {
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st6
 		}
-		goto tr164
+		goto tr165
 	st7:
 		if p++; p == pe {
 			goto _test_eof7
@@ -2043,26 +2094,26 @@ func (l *lexer) next() token {
 			goto tr26
 		}
 		goto tr17
-	tr159:
+	tr160:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st105
 	st105:
 		if p++; p == pe {
 			goto _test_eof105
 		}
 	st_case_105:
-//line lexer.go:1598
+//line lexer.go:1628
 		if data[p] == 84 {
-			goto tr166
+			goto tr167
 		}
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st18
 		}
-		goto tr164
+		goto tr165
 	st18:
 		if p++; p == pe {
 			goto _test_eof18
@@ -2292,10 +2343,10 @@ func (l *lexer) next() token {
 		}
 	st_case_106:
 		if data[p] == 84 {
-			goto tr166
+			goto tr167
 		}
-		goto tr164
-	tr166:
+		goto tr165
+	tr167:
 //line NONE:1
 		te = p + 1
 
@@ -2305,11 +2356,11 @@ func (l *lexer) next() token {
 			goto _test_eof107
 		}
 	st_case_107:
-//line lexer.go:1848
+//line lexer.go:1878
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st37
 		}
-		goto tr164
+		goto tr165
 	st37:
 		if p++; p == pe {
 			goto _test_eof37
@@ -2337,11 +2388,11 @@ func (l *lexer) next() token {
 			goto _test_eof108
 		}
 	st_case_108:
-//line lexer.go:1880
+//line lexer.go:1910
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st38
 		}
-		goto tr164
+		goto tr165
 	st38:
 		if p++; p == pe {
 			goto _test_eof38
@@ -2367,11 +2418,11 @@ func (l *lexer) next() token {
 			goto _test_eof109
 		}
 	st_case_109:
-//line lexer.go:1910
+//line lexer.go:1940
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st39
 		}
-		goto tr164
+		goto tr165
 	st39:
 		if p++; p == pe {
 			goto _test_eof39
@@ -2394,14 +2445,14 @@ func (l *lexer) next() token {
 			goto _test_eof110
 		}
 	st_case_110:
-//line lexer.go:1937
+//line lexer.go:1967
 		if data[p] == 84 {
-			goto tr166
+			goto tr167
 		}
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st40
 		}
-		goto tr164
+		goto tr165
 	st40:
 		if p++; p == pe {
 			goto _test_eof40
@@ -2424,14 +2475,14 @@ func (l *lexer) next() token {
 			goto _test_eof111
 		}
 	st_case_111:
-//line lexer.go:1967
+//line lexer.go:1997
 		if data[p] == 84 {
-			goto tr166
+			goto tr167
 		}
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st41
 		}
-		goto tr164
+		goto tr165
 	st41:
 		if p++; p == pe {
 			goto _test_eof41
@@ -2451,20 +2502,20 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st112
 	st112:
 		if p++; p == pe {
 			goto _test_eof112
 		}
 	st_case_112:
-//line lexer.go:2002
+//line lexer.go:2032
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
-			goto tr169
+			goto tr170
 		case 69:
 			goto st89
 		case 72:
@@ -2480,7 +2531,7 @@ func (l *lexer) next() token {
 		case 88:
 			goto st137
 		case 100:
-			goto tr169
+			goto tr170
 		case 101:
 			goto st89
 		case 104:
@@ -2506,7 +2557,7 @@ func (l *lexer) next() token {
 					goto st87
 				}
 			case data[p] >= 48:
-				goto tr167
+				goto tr168
 			}
 		case data[p] > 89:
 			switch {
@@ -2520,25 +2571,25 @@ func (l *lexer) next() token {
 		default:
 			goto tr13
 		}
-		goto tr160
-	tr167:
+		goto tr161
+	tr168:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st113
 	st113:
 		if p++; p == pe {
 			goto _test_eof113
 		}
 	st_case_113:
-//line lexer.go:2076
+//line lexer.go:2106
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
-			goto tr173
+			goto tr174
 		case 69:
 			goto st86
 		case 72:
@@ -2556,7 +2607,7 @@ func (l *lexer) next() token {
 		case 89:
 			goto tr13
 		case 100:
-			goto tr173
+			goto tr174
 		case 101:
 			goto st86
 		case 104:
@@ -2579,7 +2630,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr172
+				goto tr173
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -2588,23 +2639,23 @@ func (l *lexer) next() token {
 		default:
 			goto st84
 		}
-		goto tr160
-	tr172:
+		goto tr161
+	tr173:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st114
 	st114:
 		if p++; p == pe {
 			goto _test_eof114
 		}
 	st_case_114:
-//line lexer.go:2144
+//line lexer.go:2174
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr107
 		case 69:
@@ -2647,7 +2698,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr175
+				goto tr176
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -2656,23 +2707,23 @@ func (l *lexer) next() token {
 		default:
 			goto st81
 		}
-		goto tr160
-	tr175:
+		goto tr161
+	tr176:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st115
 	st115:
 		if p++; p == pe {
 			goto _test_eof115
 		}
 	st_case_115:
-//line lexer.go:2212
+//line lexer.go:2242
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr103
 		case 69:
@@ -2715,7 +2766,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr177
+				goto tr178
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -2724,23 +2775,23 @@ func (l *lexer) next() token {
 		default:
 			goto st78
 		}
-		goto tr160
-	tr177:
+		goto tr161
+	tr178:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st116
 	st116:
 		if p++; p == pe {
 			goto _test_eof116
 		}
 	st_case_116:
-//line lexer.go:2280
+//line lexer.go:2310
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr99
 		case 69:
@@ -2783,7 +2834,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr179
+				goto tr180
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -2792,23 +2843,23 @@ func (l *lexer) next() token {
 		default:
 			goto st75
 		}
-		goto tr160
-	tr179:
+		goto tr161
+	tr180:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st117
 	st117:
 		if p++; p == pe {
 			goto _test_eof117
 		}
 	st_case_117:
-//line lexer.go:2348
+//line lexer.go:2378
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr95
 		case 69:
@@ -2851,7 +2902,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr181
+				goto tr182
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -2860,23 +2911,23 @@ func (l *lexer) next() token {
 		default:
 			goto st72
 		}
-		goto tr160
-	tr181:
+		goto tr161
+	tr182:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st118
 	st118:
 		if p++; p == pe {
 			goto _test_eof118
 		}
 	st_case_118:
-//line lexer.go:2416
+//line lexer.go:2446
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr91
 		case 69:
@@ -2919,7 +2970,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr183
+				goto tr184
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -2928,25 +2979,25 @@ func (l *lexer) next() token {
 		default:
 			goto st69
 		}
-		goto tr160
-	tr183:
+		goto tr161
+	tr184:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st119
 	st119:
 		if p++; p == pe {
 			goto _test_eof119
 		}
 	st_case_119:
-//line lexer.go:2484
+//line lexer.go:2514
 		switch data[p] {
 		case 45:
 			goto st42
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
 			goto tr13
 		case 69:
@@ -2987,9 +3038,9 @@ func (l *lexer) next() token {
 			goto st8
 		}
 		if 48 <= data[p] && data[p] <= 57 {
-			goto tr155
+			goto tr156
 		}
-		goto tr160
+		goto tr161
 	st42:
 		if p++; p == pe {
 			goto _test_eof42
@@ -3462,22 +3513,22 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st120
 	st120:
 		if p++; p == pe {
 			goto _test_eof120
 		}
 	st_case_120:
-//line lexer.go:3013
+//line lexer.go:3043
 		if data[p] == 45 {
 			goto st42
 		}
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st6
 		}
-		goto tr164
+		goto tr165
 	st70:
 		if p++; p == pe {
 			goto _test_eof70
@@ -3515,19 +3566,19 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st121
 	st121:
 		if p++; p == pe {
 			goto _test_eof121
 		}
 	st_case_121:
-//line lexer.go:3066
+//line lexer.go:3096
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr185
+				goto tr186
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -3536,24 +3587,24 @@ func (l *lexer) next() token {
 		default:
 			goto st44
 		}
-		goto tr163
-	tr185:
+		goto tr164
+	tr186:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st122
 	st122:
 		if p++; p == pe {
 			goto _test_eof122
 		}
 	st_case_122:
-//line lexer.go:3092
+//line lexer.go:3122
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr186
+				goto tr187
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -3562,24 +3613,24 @@ func (l *lexer) next() token {
 		default:
 			goto st45
 		}
-		goto tr163
-	tr186:
+		goto tr164
+	tr187:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st123
 	st123:
 		if p++; p == pe {
 			goto _test_eof123
 		}
 	st_case_123:
-//line lexer.go:3118
+//line lexer.go:3148
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr187
+				goto tr188
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -3588,27 +3639,27 @@ func (l *lexer) next() token {
 		default:
 			goto st46
 		}
-		goto tr163
-	tr187:
+		goto tr164
+	tr188:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st124
 	st124:
 		if p++; p == pe {
 			goto _test_eof124
 		}
 	st_case_124:
-//line lexer.go:3144
+//line lexer.go:3174
 		if data[p] == 45 {
 			goto st47
 		}
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st102
 		}
-		goto tr163
+		goto tr164
 	st72:
 		if p++; p == pe {
 			goto _test_eof72
@@ -3631,15 +3682,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st125
 	st125:
 		if p++; p == pe {
 			goto _test_eof125
 		}
 	st_case_125:
-//line lexer.go:3182
+//line lexer.go:3212
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3652,7 +3703,7 @@ func (l *lexer) next() token {
 		default:
 			goto st69
 		}
-		goto tr164
+		goto tr165
 	st73:
 		if p++; p == pe {
 			goto _test_eof73
@@ -3728,22 +3779,22 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st126
 	st126:
 		if p++; p == pe {
 			goto _test_eof126
 		}
 	st_case_126:
-//line lexer.go:3279
+//line lexer.go:3309
 		if data[p] == 45 {
 			goto st42
 		}
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st102
 		}
-		goto tr163
+		goto tr164
 	st75:
 		if p++; p == pe {
 			goto _test_eof75
@@ -3766,15 +3817,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st127
 	st127:
 		if p++; p == pe {
 			goto _test_eof127
 		}
 	st_case_127:
-//line lexer.go:3317
+//line lexer.go:3347
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3787,7 +3838,7 @@ func (l *lexer) next() token {
 		default:
 			goto st72
 		}
-		goto tr164
+		goto tr165
 	st76:
 		if p++; p == pe {
 			goto _test_eof76
@@ -3870,15 +3921,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st128
 	st128:
 		if p++; p == pe {
 			goto _test_eof128
 		}
 	st_case_128:
-//line lexer.go:3421
+//line lexer.go:3451
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3891,7 +3942,7 @@ func (l *lexer) next() token {
 		default:
 			goto st69
 		}
-		goto tr163
+		goto tr164
 	st78:
 		if p++; p == pe {
 			goto _test_eof78
@@ -3914,15 +3965,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st129
 	st129:
 		if p++; p == pe {
 			goto _test_eof129
 		}
 	st_case_129:
-//line lexer.go:3465
+//line lexer.go:3495
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -3935,7 +3986,7 @@ func (l *lexer) next() token {
 		default:
 			goto st75
 		}
-		goto tr164
+		goto tr165
 	st79:
 		if p++; p == pe {
 			goto _test_eof79
@@ -4018,15 +4069,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st130
 	st130:
 		if p++; p == pe {
 			goto _test_eof130
 		}
 	st_case_130:
-//line lexer.go:3569
+//line lexer.go:3599
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4039,7 +4090,7 @@ func (l *lexer) next() token {
 		default:
 			goto st72
 		}
-		goto tr163
+		goto tr164
 	st81:
 		if p++; p == pe {
 			goto _test_eof81
@@ -4062,15 +4113,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st131
 	st131:
 		if p++; p == pe {
 			goto _test_eof131
 		}
 	st_case_131:
-//line lexer.go:3613
+//line lexer.go:3643
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4083,7 +4134,7 @@ func (l *lexer) next() token {
 		default:
 			goto st78
 		}
-		goto tr164
+		goto tr165
 	st82:
 		if p++; p == pe {
 			goto _test_eof82
@@ -4166,15 +4217,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st132
 	st132:
 		if p++; p == pe {
 			goto _test_eof132
 		}
 	st_case_132:
-//line lexer.go:3717
+//line lexer.go:3747
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4187,7 +4238,7 @@ func (l *lexer) next() token {
 		default:
 			goto st75
 		}
-		goto tr163
+		goto tr164
 	st84:
 		if p++; p == pe {
 			goto _test_eof84
@@ -4206,19 +4257,19 @@ func (l *lexer) next() token {
 			goto st81
 		}
 		goto tr0
-	tr173:
+	tr174:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st133
 	st133:
 		if p++; p == pe {
 			goto _test_eof133
 		}
 	st_case_133:
-//line lexer.go:3761
+//line lexer.go:3791
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4231,7 +4282,7 @@ func (l *lexer) next() token {
 		default:
 			goto st81
 		}
-		goto tr164
+		goto tr165
 	st85:
 		if p++; p == pe {
 			goto _test_eof85
@@ -4314,15 +4365,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st134
 	st134:
 		if p++; p == pe {
 			goto _test_eof134
 		}
 	st_case_134:
-//line lexer.go:3865
+//line lexer.go:3895
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4335,7 +4386,7 @@ func (l *lexer) next() token {
 		default:
 			goto st78
 		}
-		goto tr163
+		goto tr164
 	st87:
 		if p++; p == pe {
 			goto _test_eof87
@@ -4354,19 +4405,19 @@ func (l *lexer) next() token {
 			goto st84
 		}
 		goto tr84
-	tr169:
+	tr170:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st135
 	st135:
 		if p++; p == pe {
 			goto _test_eof135
 		}
 	st_case_135:
-//line lexer.go:3909
+//line lexer.go:3939
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4379,7 +4430,7 @@ func (l *lexer) next() token {
 		default:
 			goto st84
 		}
-		goto tr164
+		goto tr165
 	st88:
 		if p++; p == pe {
 			goto _test_eof88
@@ -4462,15 +4513,15 @@ func (l *lexer) next() token {
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:194
-		act = 47
+//line lexer.rl:200
+		act = 50
 		goto st136
 	st136:
 		if p++; p == pe {
 			goto _test_eof136
 		}
 	st_case_136:
-//line lexer.go:4013
+//line lexer.go:4043
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
@@ -4483,7 +4534,7 @@ func (l *lexer) next() token {
 		default:
 			goto st81
 		}
-		goto tr163
+		goto tr164
 	st137:
 		if p++; p == pe {
 			goto _test_eof137
@@ -4501,25 +4552,25 @@ func (l *lexer) next() token {
 		default:
 			goto st137
 		}
-		goto tr189
+		goto tr190
 	tr125:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:193
-		act = 46
+//line lexer.rl:199
+		act = 49
 		goto st138
 	st138:
 		if p++; p == pe {
 			goto _test_eof138
 		}
 	st_case_138:
-//line lexer.go:4057
+//line lexer.go:4087
 		switch data[p] {
 		case 46:
-			goto tr161
+			goto tr162
 		case 68:
-			goto tr169
+			goto tr170
 		case 69:
 			goto st89
 		case 72:
@@ -4537,7 +4588,7 @@ func (l *lexer) next() token {
 		case 89:
 			goto tr13
 		case 100:
-			goto tr169
+			goto tr170
 		case 101:
 			goto st89
 		case 104:
@@ -4560,7 +4611,7 @@ func (l *lexer) next() token {
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr167
+				goto tr168
 			}
 		case data[p] > 70:
 			if 97 <= data[p] && data[p] <= 102 {
@@ -4569,41 +4620,45 @@ func (l *lexer) next() token {
 		default:
 			goto st87
 		}
-		goto tr160
+		goto tr161
 	st139:
 		if p++; p == pe {
 			goto _test_eof139
 		}
 	st_case_139:
 		if data[p] == 61 {
-			goto tr191
+			goto tr192
 		}
-		goto tr190
+		goto tr191
 	st140:
 		if p++; p == pe {
 			goto _test_eof140
 		}
 	st_case_140:
 		if data[p] == 61 {
-			goto tr193
+			goto tr194
 		}
-		goto tr192
+		goto tr193
 	st141:
 		if p++; p == pe {
 			goto _test_eof141
 		}
 	st_case_141:
 		switch data[p] {
+		case 76:
+			goto st150
 		case 78:
-			goto st150
+			goto st153
 		case 80:
-			goto st151
+			goto st154
 		case 95:
-			goto tr137
-		case 110:
+			goto tr138
+		case 108:
 			goto st150
+		case 110:
+			goto st153
 		case 112:
-			goto st151
+			goto st154
 		}
 		switch {
 		case data[p] < 71:
@@ -4619,22 +4674,22 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st142
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st142:
 		if p++; p == pe {
 			goto _test_eof142
 		}
 	st_case_142:
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 71:
@@ -4650,22 +4705,22 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st143
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st143:
 		if p++; p == pe {
 			goto _test_eof143
 		}
 	st_case_143:
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 71:
@@ -4681,22 +4736,22 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st144
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st144:
 		if p++; p == pe {
 			goto _test_eof144
 		}
 	st_case_144:
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 71:
@@ -4712,22 +4767,22 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st145
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st145:
 		if p++; p == pe {
 			goto _test_eof145
 		}
 	st_case_145:
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 71:
@@ -4743,22 +4798,22 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st146
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st146:
 		if p++; p == pe {
 			goto _test_eof146
 		}
 	st_case_146:
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 71:
@@ -4774,259 +4829,280 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st147
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st147:
 		if p++; p == pe {
 			goto _test_eof147
 		}
 	st_case_147:
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 71:
 			switch {
 			case data[p] > 57:
 				if 65 <= data[p] && data[p] <= 70 {
-					goto tr203
+					goto tr205
 				}
 			case data[p] >= 48:
-				goto tr203
+				goto tr205
 			}
 		case data[p] > 90:
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
-				goto tr203
+				goto tr205
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	tr203:
+		goto tr195
+	tr205:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:198
-		act = 51
+//line lexer.rl:204
+		act = 54
 		goto st148
 	st148:
 		if p++; p == pe {
 			goto _test_eof148
 		}
 	st_case_148:
-//line lexer.go:4369
+//line lexer.go:4403
 		switch data[p] {
 		case 45:
 			goto st42
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	tr137:
+		goto tr195
+	tr138:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:198
-		act = 51
+//line lexer.rl:204
+		act = 54
 		goto st149
-	tr256:
+	tr269:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:196
-		act = 49
+//line lexer.rl:202
+		act = 52
 		goto st149
-	tr204:
+	tr208:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:161
-		act = 14
+//line lexer.rl:159
+		act = 9
 		goto st149
-	tr207:
+	tr209:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:154
-		act = 7
+//line lexer.rl:167
+		act = 17
 		goto st149
 	tr212:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:152
-		act = 5
+//line lexer.rl:157
+		act = 7
 		goto st149
-	tr215:
+	tr217:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:153
-		act = 6
+//line lexer.rl:155
+		act = 5
 		goto st149
 	tr220:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:151
-		act = 4
+//line lexer.rl:156
+		act = 6
 		goto st149
 	tr225:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:166
-		act = 19
+//line lexer.rl:158
+		act = 8
 		goto st149
-	tr227:
+	tr231:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:156
-		act = 9
+//line lexer.rl:154
+		act = 4
 		goto st149
-	tr228:
+	tr233:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:159
-		act = 12
+//line lexer.rl:160
+		act = 10
 		goto st149
-	tr230:
+	tr238:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:172
+		act = 22
+		goto st149
+	tr240:
 //line NONE:1
 		te = p + 1
 
 //line lexer.rl:162
+		act = 12
+		goto st149
+	tr241:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:165
 		act = 15
-		goto st149
-	tr239:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:190
-		act = 43
-		goto st149
-	tr242:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:149
-		act = 2
 		goto st149
 	tr243:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:155
-		act = 8
+//line lexer.rl:168
+		act = 18
 		goto st149
-	tr247:
+	tr252:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:189
-		act = 42
+//line lexer.rl:196
+		act = 46
 		goto st149
-	tr248:
+	tr255:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:152
+		act = 2
+		goto st149
+	tr256:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:161
+		act = 11
+		goto st149
+	tr260:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:195
+		act = 45
+		goto st149
+	tr261:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:170
+		act = 20
+		goto st149
+	tr263:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:173
+		act = 23
+		goto st149
+	tr285:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:151
+		act = 1
+		goto st149
+	tr290:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:171
+		act = 21
+		goto st149
+	tr296:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:153
+		act = 3
+		goto st149
+	tr297:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:163
+		act = 13
+		goto st149
+	tr300:
 //line NONE:1
 		te = p + 1
 
 //line lexer.rl:164
-		act = 17
+		act = 14
 		goto st149
-	tr250:
+	tr304:
 //line NONE:1
 		te = p + 1
 
-//line lexer.rl:167
-		act = 20
-		goto st149
-	tr272:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:148
-		act = 1
-		goto st149
-	tr277:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:165
-		act = 18
-		goto st149
-	tr283:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:150
-		act = 3
-		goto st149
-	tr284:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:157
-		act = 10
-		goto st149
-	tr287:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:158
-		act = 11
-		goto st149
-	tr291:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:160
-		act = 13
+//line lexer.rl:166
+		act = 16
 		goto st149
 	st149:
 		if p++; p == pe {
 			goto _test_eof149
 		}
 	st_case_149:
-//line lexer.go:4555
+//line lexer.go:4610
 		if data[p] == 95 {
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
 		goto tr0
 	st150:
@@ -5035,120 +5111,198 @@ func (l *lexer) next() token {
 		}
 	st_case_150:
 		switch data[p] {
-		case 68:
-			goto tr204
+		case 84:
+			goto st151
 		case 95:
-			goto tr137
-		case 100:
-			goto tr204
+			goto tr138
+		case 116:
+			goto st151
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st151:
 		if p++; p == pe {
 			goto _test_eof151
 		}
 	st_case_151:
 		switch data[p] {
-		case 80:
+		case 69:
 			goto st152
 		case 95:
-			goto tr137
-		case 112:
+			goto tr138
+		case 101:
 			goto st152
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st152:
 		if p++; p == pe {
 			goto _test_eof152
 		}
 	st_case_152:
 		switch data[p] {
-		case 76:
-			goto st153
+		case 82:
+			goto tr208
 		case 95:
-			goto tr137
-		case 108:
-			goto st153
+			goto tr138
+		case 114:
+			goto tr208
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st153:
 		if p++; p == pe {
 			goto _test_eof153
 		}
 	st_case_153:
 		switch data[p] {
-		case 89:
-			goto tr207
+		case 68:
+			goto tr209
 		case 95:
-			goto tr137
-		case 121:
-			goto tr207
+			goto tr138
+		case 100:
+			goto tr209
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st154:
 		if p++; p == pe {
 			goto _test_eof154
 		}
 	st_case_154:
 		switch data[p] {
-		case 65:
+		case 80:
 			goto st155
-		case 69:
-			goto st158
 		case 95:
-			goto tr137
-		case 97:
+			goto tr138
+		case 112:
 			goto st155
-		case 101:
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st155:
+		if p++; p == pe {
+			goto _test_eof155
+		}
+	st_case_155:
+		switch data[p] {
+		case 76:
+			goto st156
+		case 95:
+			goto tr138
+		case 108:
+			goto st156
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st156:
+		if p++; p == pe {
+			goto _test_eof156
+		}
+	st_case_156:
+		switch data[p] {
+		case 89:
+			goto tr212
+		case 95:
+			goto tr138
+		case 121:
+			goto tr212
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st157:
+		if p++; p == pe {
+			goto _test_eof157
+		}
+	st_case_157:
+		switch data[p] {
+		case 65:
 			goto st158
+		case 69:
+			goto st161
+		case 95:
+			goto tr138
+		case 97:
+			goto st158
+		case 101:
+			goto st161
 		}
 		switch {
 		case data[p] < 71:
@@ -5164,27 +5318,27 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 98:
 				goto st142
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st155:
+		goto tr195
+	st158:
 		if p++; p == pe {
-			goto _test_eof155
+			goto _test_eof158
 		}
-	st_case_155:
+	st_case_158:
 		switch data[p] {
 		case 84:
-			goto st156
+			goto st159
 		case 95:
-			goto tr137
+			goto tr138
 		case 116:
-			goto st156
+			goto st159
 		}
 		switch {
 		case data[p] < 71:
@@ -5200,79 +5354,79 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st143
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st156:
+		goto tr195
+	st159:
 		if p++; p == pe {
-			goto _test_eof156
+			goto _test_eof159
 		}
-	st_case_156:
+	st_case_159:
 		switch data[p] {
 		case 67:
-			goto st157
+			goto st160
 		case 95:
-			goto tr137
+			goto tr138
 		case 99:
-			goto st157
+			goto st160
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st157:
+		goto tr195
+	st160:
 		if p++; p == pe {
-			goto _test_eof157
+			goto _test_eof160
 		}
-	st_case_157:
+	st_case_160:
 		switch data[p] {
 		case 72:
-			goto tr212
+			goto tr217
 		case 95:
-			goto tr137
+			goto tr138
 		case 104:
-			goto tr212
+			goto tr217
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st158:
+		goto tr195
+	st161:
 		if p++; p == pe {
-			goto _test_eof158
+			goto _test_eof161
 		}
-	st_case_158:
+	st_case_161:
 		switch data[p] {
 		case 71:
-			goto st159
+			goto st162
 		case 95:
-			goto tr137
+			goto tr138
 		case 103:
-			goto st159
+			goto st162
 		}
 		switch {
 		case data[p] < 72:
@@ -5288,110 +5442,79 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 104 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st143
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st159:
-		if p++; p == pe {
-			goto _test_eof159
-		}
-	st_case_159:
-		switch data[p] {
-		case 73:
-			goto st160
-		case 95:
-			goto tr137
-		case 105:
-			goto st160
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st160:
-		if p++; p == pe {
-			goto _test_eof160
-		}
-	st_case_160:
-		switch data[p] {
-		case 78:
-			goto tr215
-		case 95:
-			goto tr137
-		case 110:
-			goto tr215
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st161:
-		if p++; p == pe {
-			goto _test_eof161
-		}
-	st_case_161:
-		if data[p] == 95 {
-			goto tr137
-		}
-		switch {
-		case data[p] < 71:
-			switch {
-			case data[p] > 57:
-				if 65 <= data[p] && data[p] <= 70 {
-					goto st142
-				}
-			case data[p] >= 48:
-				goto st142
-			}
-		case data[p] > 90:
-			switch {
-			case data[p] > 102:
-				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
-				}
-			case data[p] >= 97:
-				goto st142
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
+		goto tr195
 	st162:
 		if p++; p == pe {
 			goto _test_eof162
 		}
 	st_case_162:
 		switch data[p] {
-		case 69:
+		case 73:
 			goto st163
 		case 95:
-			goto tr137
-		case 101:
+			goto tr138
+		case 105:
 			goto st163
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st163:
+		if p++; p == pe {
+			goto _test_eof163
+		}
+	st_case_163:
+		switch data[p] {
+		case 78:
+			goto tr220
+		case 95:
+			goto tr138
+		case 110:
+			goto tr220
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st164:
+		if p++; p == pe {
+			goto _test_eof164
+		}
+	st_case_164:
+		switch data[p] {
+		case 82:
+			goto st165
+		case 95:
+			goto tr138
+		case 114:
+			goto st165
 		}
 		switch {
 		case data[p] < 71:
@@ -5407,27 +5530,171 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st142
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st163:
+		goto tr195
+	st165:
 		if p++; p == pe {
-			goto _test_eof163
+			goto _test_eof165
 		}
-	st_case_163:
+	st_case_165:
+		switch data[p] {
+		case 69:
+			goto st166
+		case 95:
+			goto tr138
+		case 101:
+			goto st166
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st166:
+		if p++; p == pe {
+			goto _test_eof166
+		}
+	st_case_166:
+		switch data[p] {
+		case 65:
+			goto st167
+		case 95:
+			goto tr138
+		case 97:
+			goto st167
+		}
+		switch {
+		case data[p] < 66:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 98 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st167:
+		if p++; p == pe {
+			goto _test_eof167
+		}
+	st_case_167:
+		switch data[p] {
+		case 84:
+			goto st168
+		case 95:
+			goto tr138
+		case 116:
+			goto st168
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st168:
+		if p++; p == pe {
+			goto _test_eof168
+		}
+	st_case_168:
+		switch data[p] {
+		case 69:
+			goto tr225
+		case 95:
+			goto tr138
+		case 101:
+			goto tr225
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st169:
+		if p++; p == pe {
+			goto _test_eof169
+		}
+	st_case_169:
+		switch data[p] {
+		case 69:
+			goto st170
+		case 82:
+			goto st174
+		case 95:
+			goto tr138
+		case 101:
+			goto st170
+		case 114:
+			goto st174
+		}
+		switch {
+		case data[p] < 71:
+			switch {
+			case data[p] > 57:
+				if 65 <= data[p] && data[p] <= 70 {
+					goto st142
+				}
+			case data[p] >= 48:
+				goto st142
+			}
+		case data[p] > 90:
+			switch {
+			case data[p] > 102:
+				if 103 <= data[p] && data[p] <= 122 {
+					goto tr138
+				}
+			case data[p] >= 97:
+				goto st142
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st170:
+		if p++; p == pe {
+			goto _test_eof170
+		}
+	st_case_170:
 		switch data[p] {
 		case 76:
-			goto st164
+			goto st171
 		case 95:
-			goto tr137
+			goto tr138
 		case 108:
-			goto st164
+			goto st171
 		}
 		switch {
 		case data[p] < 71:
@@ -5443,109 +5710,192 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st143
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st164:
+		goto tr195
+	st171:
 		if p++; p == pe {
-			goto _test_eof164
+			goto _test_eof171
 		}
-	st_case_164:
+	st_case_171:
 		switch data[p] {
 		case 69:
-			goto st165
+			goto st172
 		case 95:
-			goto tr137
+			goto tr138
 		case 101:
-			goto st165
+			goto st172
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st165:
+		goto tr195
+	st172:
 		if p++; p == pe {
-			goto _test_eof165
+			goto _test_eof172
 		}
-	st_case_165:
+	st_case_172:
 		switch data[p] {
 		case 84:
-			goto st166
+			goto st173
 		case 95:
-			goto tr137
+			goto tr138
 		case 116:
-			goto st166
+			goto st173
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st166:
+		goto tr195
+	st173:
 		if p++; p == pe {
-			goto _test_eof166
+			goto _test_eof173
 		}
-	st_case_166:
+	st_case_173:
 		switch data[p] {
 		case 69:
-			goto tr220
+			goto tr231
 		case 95:
-			goto tr137
+			goto tr138
 		case 101:
-			goto tr220
+			goto tr231
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st167:
+		goto tr195
+	st174:
 		if p++; p == pe {
-			goto _test_eof167
+			goto _test_eof174
 		}
-	st_case_167:
+	st_case_174:
+		switch data[p] {
+		case 79:
+			goto st175
+		case 95:
+			goto tr138
+		case 111:
+			goto st175
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st175:
+		if p++; p == pe {
+			goto _test_eof175
+		}
+	st_case_175:
+		switch data[p] {
+		case 80:
+			goto tr233
+		case 95:
+			goto tr138
+		case 112:
+			goto tr233
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st176:
+		if p++; p == pe {
+			goto _test_eof176
+		}
+	st_case_176:
+		if data[p] == 95 {
+			goto tr138
+		}
+		switch {
+		case data[p] < 71:
+			switch {
+			case data[p] > 57:
+				if 65 <= data[p] && data[p] <= 70 {
+					goto st142
+				}
+			case data[p] >= 48:
+				goto st142
+			}
+		case data[p] > 90:
+			switch {
+			case data[p] > 102:
+				if 103 <= data[p] && data[p] <= 122 {
+					goto tr138
+				}
+			case data[p] >= 97:
+				goto st142
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st177:
+		if p++; p == pe {
+			goto _test_eof177
+		}
+	st_case_177:
 		switch data[p] {
 		case 65:
-			goto st168
+			goto st178
 		case 82:
-			goto st171
+			goto st181
 		case 95:
-			goto tr137
+			goto tr138
 		case 97:
-			goto st168
+			goto st178
 		case 114:
-			goto st171
+			goto st181
 		}
 		switch {
 		case data[p] < 71:
@@ -5561,27 +5911,27 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 98:
 				goto st142
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st168:
+		goto tr195
+	st178:
 		if p++; p == pe {
-			goto _test_eof168
+			goto _test_eof178
 		}
-	st_case_168:
+	st_case_178:
 		switch data[p] {
 		case 76:
-			goto st169
+			goto st179
 		case 95:
-			goto tr137
+			goto tr138
 		case 108:
-			goto st169
+			goto st179
 		}
 		switch {
 		case data[p] < 71:
@@ -5597,317 +5947,41 @@ func (l *lexer) next() token {
 			switch {
 			case data[p] > 102:
 				if 103 <= data[p] && data[p] <= 122 {
-					goto tr137
+					goto tr138
 				}
 			case data[p] >= 97:
 				goto st143
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	st169:
-		if p++; p == pe {
-			goto _test_eof169
-		}
-	st_case_169:
-		switch data[p] {
-		case 83:
-			goto st170
-		case 95:
-			goto tr137
-		case 115:
-			goto st170
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st170:
-		if p++; p == pe {
-			goto _test_eof170
-		}
-	st_case_170:
-		switch data[p] {
-		case 69:
-			goto tr225
-		case 95:
-			goto tr137
-		case 101:
-			goto tr225
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st171:
-		if p++; p == pe {
-			goto _test_eof171
-		}
-	st_case_171:
-		switch data[p] {
-		case 79:
-			goto st172
-		case 95:
-			goto tr137
-		case 111:
-			goto st172
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st172:
-		if p++; p == pe {
-			goto _test_eof172
-		}
-	st_case_172:
-		switch data[p] {
-		case 77:
-			goto tr227
-		case 95:
-			goto tr137
-		case 109:
-			goto tr227
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st173:
-		if p++; p == pe {
-			goto _test_eof173
-		}
-	st_case_173:
-		switch data[p] {
-		case 70:
-			goto tr228
-		case 78:
-			goto st174
-		case 83:
-			goto tr230
-		case 95:
-			goto tr137
-		case 102:
-			goto tr228
-		case 110:
-			goto st174
-		case 115:
-			goto tr230
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st174:
-		if p++; p == pe {
-			goto _test_eof174
-		}
-	st_case_174:
-		switch data[p] {
-		case 70:
-			goto st175
-		case 83:
-			goto st180
-		case 84:
-			goto st183
-		case 95:
-			goto tr137
-		case 102:
-			goto st175
-		case 115:
-			goto st180
-		case 116:
-			goto st183
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr231
-	st175:
-		if p++; p == pe {
-			goto _test_eof175
-		}
-	st_case_175:
-		switch data[p] {
-		case 73:
-			goto st176
-		case 95:
-			goto tr137
-		case 105:
-			goto st176
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st176:
-		if p++; p == pe {
-			goto _test_eof176
-		}
-	st_case_176:
-		switch data[p] {
-		case 78:
-			goto st177
-		case 95:
-			goto tr137
-		case 110:
-			goto st177
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st177:
-		if p++; p == pe {
-			goto _test_eof177
-		}
-	st_case_177:
-		switch data[p] {
-		case 73:
-			goto st178
-		case 95:
-			goto tr137
-		case 105:
-			goto st178
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
-	st178:
-		if p++; p == pe {
-			goto _test_eof178
-		}
-	st_case_178:
-		switch data[p] {
-		case 84:
-			goto st179
-		case 95:
-			goto tr137
-		case 116:
-			goto st179
-		}
-		switch {
-		case data[p] < 65:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
-			}
-		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
-			}
-		default:
-			goto tr137
-		}
-		goto tr194
+		goto tr195
 	st179:
 		if p++; p == pe {
 			goto _test_eof179
 		}
 	st_case_179:
 		switch data[p] {
-		case 89:
-			goto tr239
+		case 83:
+			goto st180
 		case 95:
-			goto tr137
-		case 121:
-			goto tr239
+			goto tr138
+		case 115:
+			goto st180
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st180:
 		if p++; p == pe {
 			goto _test_eof180
@@ -5915,552 +5989,557 @@ func (l *lexer) next() token {
 	st_case_180:
 		switch data[p] {
 		case 69:
-			goto st181
+			goto tr238
 		case 95:
-			goto tr137
+			goto tr138
 		case 101:
-			goto st181
+			goto tr238
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st181:
 		if p++; p == pe {
 			goto _test_eof181
 		}
 	st_case_181:
 		switch data[p] {
-		case 82:
+		case 79:
 			goto st182
 		case 95:
-			goto tr137
-		case 114:
+			goto tr138
+		case 111:
 			goto st182
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st182:
 		if p++; p == pe {
 			goto _test_eof182
 		}
 	st_case_182:
 		switch data[p] {
-		case 84:
-			goto tr242
+		case 77:
+			goto tr240
 		case 95:
-			goto tr137
-		case 116:
-			goto tr242
+			goto tr138
+		case 109:
+			goto tr240
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st183:
 		if p++; p == pe {
 			goto _test_eof183
 		}
 	st_case_183:
 		switch data[p] {
-		case 79:
+		case 70:
+			goto tr241
+		case 78:
+			goto st184
+		case 83:
 			goto tr243
 		case 95:
-			goto tr137
-		case 111:
+			goto tr138
+		case 102:
+			goto tr241
+		case 110:
+			goto st184
+		case 115:
 			goto tr243
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st184:
 		if p++; p == pe {
 			goto _test_eof184
 		}
 	st_case_184:
 		switch data[p] {
-		case 65:
+		case 70:
 			goto st185
-		case 79:
-			goto st186
-		case 85:
-			goto st187
+		case 83:
+			goto st190
+		case 84:
+			goto st193
 		case 95:
-			goto tr137
-		case 97:
+			goto tr138
+		case 102:
 			goto st185
-		case 111:
-			goto st186
-		case 117:
-			goto st187
+		case 115:
+			goto st190
+		case 116:
+			goto st193
 		}
 		switch {
-		case data[p] < 66:
+		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
-			if 98 <= data[p] && data[p] <= 122 {
-				goto tr137
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr244
 	st185:
 		if p++; p == pe {
 			goto _test_eof185
 		}
 	st_case_185:
 		switch data[p] {
-		case 78:
-			goto tr247
+		case 73:
+			goto st186
 		case 95:
-			goto tr137
-		case 110:
-			goto tr247
+			goto tr138
+		case 105:
+			goto st186
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st186:
 		if p++; p == pe {
 			goto _test_eof186
 		}
 	st_case_186:
 		switch data[p] {
-		case 84:
-			goto tr248
+		case 78:
+			goto st187
 		case 95:
-			goto tr137
-		case 116:
-			goto tr248
+			goto tr138
+		case 110:
+			goto st187
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st187:
 		if p++; p == pe {
 			goto _test_eof187
 		}
 	st_case_187:
 		switch data[p] {
-		case 76:
+		case 73:
 			goto st188
 		case 95:
-			goto tr137
-		case 108:
+			goto tr138
+		case 105:
 			goto st188
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st188:
 		if p++; p == pe {
 			goto _test_eof188
 		}
 	st_case_188:
 		switch data[p] {
-		case 76:
-			goto tr250
+		case 84:
+			goto st189
 		case 95:
-			goto tr137
-		case 108:
-			goto tr250
+			goto tr138
+		case 116:
+			goto st189
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st189:
 		if p++; p == pe {
 			goto _test_eof189
 		}
 	st_case_189:
 		switch data[p] {
-		case 84:
-			goto st196
+		case 89:
+			goto tr252
 		case 95:
-			goto tr137
+			goto tr138
+		case 121:
+			goto tr252
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st190
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
 	st190:
 		if p++; p == pe {
 			goto _test_eof190
 		}
 	st_case_190:
 		switch data[p] {
-		case 68:
-			goto st195
-		case 77:
-			goto st202
-		case 87:
-			goto tr256
-		case 89:
-			goto st204
+		case 69:
+			goto st191
 		case 95:
-			goto tr137
+			goto tr138
+		case 101:
+			goto st191
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st191
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st191:
 		if p++; p == pe {
 			goto _test_eof191
 		}
 	st_case_191:
 		switch data[p] {
-		case 68:
-			goto st195
-		case 77:
-			goto st202
-		case 87:
-			goto tr256
-		case 89:
-			goto st204
+		case 82:
+			goto st192
 		case 95:
-			goto tr137
+			goto tr138
+		case 114:
+			goto st192
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st192
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st192:
 		if p++; p == pe {
 			goto _test_eof192
 		}
 	st_case_192:
 		switch data[p] {
-		case 68:
-			goto st195
-		case 77:
-			goto st202
-		case 87:
-			goto tr256
-		case 89:
-			goto st204
+		case 84:
+			goto tr255
 		case 95:
-			goto tr137
+			goto tr138
+		case 116:
+			goto tr255
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr259
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
-	tr259:
-//line NONE:1
-		te = p + 1
-
-//line lexer.rl:198
-		act = 51
-		goto st193
+		goto tr195
 	st193:
 		if p++; p == pe {
 			goto _test_eof193
 		}
 	st_case_193:
-//line lexer.go:5819
 		switch data[p] {
-		case 45:
-			goto st22
-		case 68:
-			goto st195
-		case 77:
-			goto st202
-		case 87:
+		case 79:
 			goto tr256
-		case 89:
-			goto st204
 		case 95:
-			goto tr137
+			goto tr138
+		case 111:
+			goto tr256
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st194
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st194:
 		if p++; p == pe {
 			goto _test_eof194
 		}
 	st_case_194:
 		switch data[p] {
-		case 68:
+		case 65:
 			goto st195
-		case 77:
-			goto st202
-		case 87:
-			goto tr256
-		case 89:
-			goto st204
+		case 79:
+			goto st196
+		case 85:
+			goto st197
 		case 95:
-			goto tr137
+			goto tr138
+		case 97:
+			goto st195
+		case 111:
+			goto st196
+		case 117:
+			goto st197
 		}
 		switch {
-		case data[p] < 65:
+		case data[p] < 66:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st194
+				goto tr138
 			}
 		case data[p] > 90:
-			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+			if 98 <= data[p] && data[p] <= 122 {
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st195:
 		if p++; p == pe {
 			goto _test_eof195
 		}
 	st_case_195:
 		switch data[p] {
-		case 84:
-			goto st196
+		case 78:
+			goto tr260
 		case 95:
-			goto tr137
+			goto tr138
+		case 110:
+			goto tr260
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
 	st196:
 		if p++; p == pe {
 			goto _test_eof196
 		}
 	st_case_196:
-		if data[p] == 95 {
-			goto tr137
+		switch data[p] {
+		case 84:
+			goto tr261
+		case 95:
+			goto tr138
+		case 116:
+			goto tr261
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st197
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
 	st197:
 		if p++; p == pe {
 			goto _test_eof197
 		}
 	st_case_197:
 		switch data[p] {
-		case 72:
+		case 76:
 			goto st198
-		case 77:
-			goto st200
-		case 83:
-			goto tr256
 		case 95:
-			goto tr137
+			goto tr138
+		case 108:
+			goto st198
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st197
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st198:
 		if p++; p == pe {
 			goto _test_eof198
 		}
 	st_case_198:
-		if data[p] == 95 {
-			goto tr137
+		switch data[p] {
+		case 76:
+			goto tr263
+		case 95:
+			goto tr138
+		case 108:
+			goto tr263
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st199
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
 	st199:
 		if p++; p == pe {
 			goto _test_eof199
 		}
 	st_case_199:
 		switch data[p] {
-		case 77:
-			goto st200
-		case 83:
-			goto tr256
+		case 84:
+			goto st206
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st199
+				goto st200
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st200:
 		if p++; p == pe {
 			goto _test_eof200
 		}
 	st_case_200:
-		if data[p] == 95 {
-			goto tr137
+		switch data[p] {
+		case 68:
+			goto st205
+		case 77:
+			goto st212
+		case 87:
+			goto tr269
+		case 89:
+			goto st214
+		case 95:
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
@@ -6469,718 +6548,989 @@ func (l *lexer) next() token {
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
 	st201:
 		if p++; p == pe {
 			goto _test_eof201
 		}
 	st_case_201:
 		switch data[p] {
-		case 83:
-			goto tr256
+		case 68:
+			goto st205
+		case 77:
+			goto st212
+		case 87:
+			goto tr269
+		case 89:
+			goto st214
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st201
+				goto st202
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st202:
 		if p++; p == pe {
 			goto _test_eof202
 		}
 	st_case_202:
 		switch data[p] {
-		case 84:
-			goto st196
+		case 68:
+			goto st205
+		case 77:
+			goto st212
+		case 87:
+			goto tr269
+		case 89:
+			goto st214
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st203
+				goto tr272
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
+	tr272:
+//line NONE:1
+		te = p + 1
+
+//line lexer.rl:204
+		act = 54
+		goto st203
 	st203:
 		if p++; p == pe {
 			goto _test_eof203
 		}
 	st_case_203:
+//line lexer.go:6148
 		switch data[p] {
+		case 45:
+			goto st22
 		case 68:
-			goto st195
+			goto st205
+		case 77:
+			goto st212
+		case 87:
+			goto tr269
+		case 89:
+			goto st214
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st203
+				goto st204
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st204:
 		if p++; p == pe {
 			goto _test_eof204
 		}
 	st_case_204:
 		switch data[p] {
-		case 84:
-			goto st196
+		case 68:
+			goto st205
+		case 77:
+			goto st212
+		case 87:
+			goto tr269
+		case 89:
+			goto st214
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st205
+				goto st204
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr164
+		goto tr195
 	st205:
 		if p++; p == pe {
 			goto _test_eof205
 		}
 	st_case_205:
 		switch data[p] {
-		case 68:
-			goto st195
-		case 77:
-			goto st202
+		case 84:
+			goto st206
 		case 95:
-			goto tr137
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto st205
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st206:
 		if p++; p == pe {
 			goto _test_eof206
 		}
 	st_case_206:
-		switch data[p] {
-		case 69:
-			goto st207
-		case 95:
-			goto tr137
-		case 101:
-			goto st207
+		if data[p] == 95 {
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st207
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st207:
 		if p++; p == pe {
 			goto _test_eof207
 		}
 	st_case_207:
 		switch data[p] {
-		case 76:
+		case 72:
 			goto st208
+		case 77:
+			goto st210
+		case 83:
+			goto tr269
 		case 95:
-			goto tr137
-		case 108:
-			goto st208
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st207
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st208:
 		if p++; p == pe {
 			goto _test_eof208
 		}
 	st_case_208:
-		switch data[p] {
-		case 69:
-			goto st209
-		case 95:
-			goto tr137
-		case 101:
-			goto st209
+		if data[p] == 95 {
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st209
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st209:
 		if p++; p == pe {
 			goto _test_eof209
 		}
 	st_case_209:
 		switch data[p] {
-		case 67:
+		case 77:
 			goto st210
+		case 83:
+			goto tr269
 		case 95:
-			goto tr137
-		case 99:
-			goto st210
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st209
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st210:
 		if p++; p == pe {
 			goto _test_eof210
 		}
 	st_case_210:
-		switch data[p] {
-		case 84:
-			goto tr272
-		case 95:
-			goto tr137
-		case 116:
-			goto tr272
+		if data[p] == 95 {
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st211
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st211:
 		if p++; p == pe {
 			goto _test_eof211
 		}
 	st_case_211:
 		switch data[p] {
-		case 79:
-			goto st212
-		case 82:
-			goto st215
+		case 83:
+			goto tr269
 		case 95:
-			goto tr137
-		case 111:
-			goto st212
-		case 114:
-			goto st215
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st211
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st212:
 		if p++; p == pe {
 			goto _test_eof212
 		}
 	st_case_212:
 		switch data[p] {
-		case 75:
-			goto st213
+		case 84:
+			goto st206
 		case 95:
-			goto tr137
-		case 107:
-			goto st213
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st213
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st213:
 		if p++; p == pe {
 			goto _test_eof213
 		}
 	st_case_213:
 		switch data[p] {
-		case 69:
-			goto st214
+		case 68:
+			goto st205
 		case 95:
-			goto tr137
-		case 101:
-			goto st214
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st213
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st214:
 		if p++; p == pe {
 			goto _test_eof214
 		}
 	st_case_214:
 		switch data[p] {
-		case 78:
-			goto tr277
+		case 84:
+			goto st206
 		case 95:
-			goto tr137
-		case 110:
-			goto tr277
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st215
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr165
 	st215:
 		if p++; p == pe {
 			goto _test_eof215
 		}
 	st_case_215:
 		switch data[p] {
-		case 85:
-			goto st170
+		case 68:
+			goto st205
+		case 77:
+			goto st212
 		case 95:
-			goto tr137
-		case 117:
-			goto st170
+			goto tr138
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto st215
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st216:
 		if p++; p == pe {
 			goto _test_eof216
 		}
 	st_case_216:
 		switch data[p] {
-		case 80:
+		case 69:
 			goto st217
-		case 83:
-			goto st221
 		case 95:
-			goto tr137
-		case 112:
+			goto tr138
+		case 101:
 			goto st217
-		case 115:
-			goto st221
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st217:
 		if p++; p == pe {
 			goto _test_eof217
 		}
 	st_case_217:
 		switch data[p] {
-		case 68:
+		case 76:
 			goto st218
 		case 95:
-			goto tr137
-		case 100:
+			goto tr138
+		case 108:
 			goto st218
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st218:
 		if p++; p == pe {
 			goto _test_eof218
 		}
 	st_case_218:
 		switch data[p] {
-		case 65:
+		case 69:
 			goto st219
 		case 95:
-			goto tr137
-		case 97:
+			goto tr138
+		case 101:
 			goto st219
 		}
 		switch {
-		case data[p] < 66:
+		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
-			if 98 <= data[p] && data[p] <= 122 {
-				goto tr137
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st219:
 		if p++; p == pe {
 			goto _test_eof219
 		}
 	st_case_219:
 		switch data[p] {
-		case 84:
+		case 67:
 			goto st220
 		case 95:
-			goto tr137
-		case 116:
+			goto tr138
+		case 99:
 			goto st220
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st220:
 		if p++; p == pe {
 			goto _test_eof220
 		}
 	st_case_220:
 		switch data[p] {
-		case 69:
-			goto tr283
+		case 84:
+			goto tr285
 		case 95:
-			goto tr137
-		case 101:
-			goto tr283
+			goto tr138
+		case 116:
+			goto tr285
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st221:
 		if p++; p == pe {
 			goto _test_eof221
 		}
 	st_case_221:
 		switch data[p] {
-		case 69:
-			goto tr284
-		case 73:
+		case 79:
 			goto st222
+		case 82:
+			goto st225
 		case 95:
-			goto tr137
-		case 101:
-			goto tr284
-		case 105:
+			goto tr138
+		case 111:
 			goto st222
+		case 114:
+			goto st225
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st222:
 		if p++; p == pe {
 			goto _test_eof222
 		}
 	st_case_222:
 		switch data[p] {
-		case 78:
+		case 75:
 			goto st223
 		case 95:
-			goto tr137
-		case 110:
+			goto tr138
+		case 107:
 			goto st223
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st223:
 		if p++; p == pe {
 			goto _test_eof223
 		}
 	st_case_223:
 		switch data[p] {
-		case 71:
-			goto tr287
+		case 69:
+			goto st224
 		case 95:
-			goto tr137
-		case 103:
-			goto tr287
+			goto tr138
+		case 101:
+			goto st224
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st224:
 		if p++; p == pe {
 			goto _test_eof224
 		}
 	st_case_224:
 		switch data[p] {
-		case 72:
-			goto st225
+		case 78:
+			goto tr290
 		case 95:
-			goto tr137
-		case 104:
-			goto st225
+			goto tr138
+		case 110:
+			goto tr290
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st225:
 		if p++; p == pe {
 			goto _test_eof225
 		}
 	st_case_225:
 		switch data[p] {
-		case 69:
-			goto st226
+		case 85:
+			goto st180
 		case 95:
-			goto tr137
-		case 101:
-			goto st226
+			goto tr138
+		case 117:
+			goto st180
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st226:
 		if p++; p == pe {
 			goto _test_eof226
 		}
 	st_case_226:
 		switch data[p] {
-		case 82:
+		case 80:
 			goto st227
+		case 83:
+			goto st231
 		case 95:
-			goto tr137
-		case 114:
+			goto tr138
+		case 112:
 			goto st227
+		case 115:
+			goto st231
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
 	st227:
 		if p++; p == pe {
 			goto _test_eof227
 		}
 	st_case_227:
 		switch data[p] {
-		case 69:
-			goto tr291
+		case 68:
+			goto st228
 		case 95:
-			goto tr137
-		case 101:
-			goto tr291
+			goto tr138
+		case 100:
+			goto st228
 		}
 		switch {
 		case data[p] < 65:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr137
+				goto tr138
 			}
 		case data[p] > 90:
 			if 97 <= data[p] && data[p] <= 122 {
-				goto tr137
+				goto tr138
 			}
 		default:
-			goto tr137
+			goto tr138
 		}
-		goto tr194
+		goto tr195
+	st228:
+		if p++; p == pe {
+			goto _test_eof228
+		}
+	st_case_228:
+		switch data[p] {
+		case 65:
+			goto st229
+		case 95:
+			goto tr138
+		case 97:
+			goto st229
+		}
+		switch {
+		case data[p] < 66:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 98 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st229:
+		if p++; p == pe {
+			goto _test_eof229
+		}
+	st_case_229:
+		switch data[p] {
+		case 84:
+			goto st230
+		case 95:
+			goto tr138
+		case 116:
+			goto st230
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st230:
+		if p++; p == pe {
+			goto _test_eof230
+		}
+	st_case_230:
+		switch data[p] {
+		case 69:
+			goto tr296
+		case 95:
+			goto tr138
+		case 101:
+			goto tr296
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st231:
+		if p++; p == pe {
+			goto _test_eof231
+		}
+	st_case_231:
+		switch data[p] {
+		case 69:
+			goto tr297
+		case 73:
+			goto st232
+		case 95:
+			goto tr138
+		case 101:
+			goto tr297
+		case 105:
+			goto st232
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st232:
+		if p++; p == pe {
+			goto _test_eof232
+		}
+	st_case_232:
+		switch data[p] {
+		case 78:
+			goto st233
+		case 95:
+			goto tr138
+		case 110:
+			goto st233
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st233:
+		if p++; p == pe {
+			goto _test_eof233
+		}
+	st_case_233:
+		switch data[p] {
+		case 71:
+			goto tr300
+		case 95:
+			goto tr138
+		case 103:
+			goto tr300
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st234:
+		if p++; p == pe {
+			goto _test_eof234
+		}
+	st_case_234:
+		switch data[p] {
+		case 72:
+			goto st235
+		case 95:
+			goto tr138
+		case 104:
+			goto st235
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st235:
+		if p++; p == pe {
+			goto _test_eof235
+		}
+	st_case_235:
+		switch data[p] {
+		case 69:
+			goto st236
+		case 95:
+			goto tr138
+		case 101:
+			goto st236
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st236:
+		if p++; p == pe {
+			goto _test_eof236
+		}
+	st_case_236:
+		switch data[p] {
+		case 82:
+			goto st237
+		case 95:
+			goto tr138
+		case 114:
+			goto st237
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
+	st237:
+		if p++; p == pe {
+			goto _test_eof237
+		}
+	st_case_237:
+		switch data[p] {
+		case 69:
+			goto tr304
+		case 95:
+			goto tr138
+		case 101:
+			goto tr304
+		}
+		switch {
+		case data[p] < 65:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr138
+			}
+		case data[p] > 90:
+			if 97 <= data[p] && data[p] <= 122 {
+				goto tr138
+			}
+		default:
+			goto tr138
+		}
+		goto tr195
 	st_out:
 	_test_eof90:
 		cs = 90
@@ -7866,6 +8216,36 @@ func (l *lexer) next() token {
 	_test_eof227:
 		cs = 227
 		goto _test_eof
+	_test_eof228:
+		cs = 228
+		goto _test_eof
+	_test_eof229:
+		cs = 229
+		goto _test_eof
+	_test_eof230:
+		cs = 230
+		goto _test_eof
+	_test_eof231:
+		cs = 231
+		goto _test_eof
+	_test_eof232:
+		cs = 232
+		goto _test_eof
+	_test_eof233:
+		cs = 233
+		goto _test_eof
+	_test_eof234:
+		cs = 234
+		goto _test_eof
+	_test_eof235:
+		cs = 235
+		goto _test_eof
+	_test_eof236:
+		cs = 236
+		goto _test_eof
+	_test_eof237:
+		cs = 237
+		goto _test_eof
 
 	_test_eof:
 		{
@@ -7873,9 +8253,9 @@ func (l *lexer) next() token {
 		if p == eof {
 			switch cs {
 			case 91:
-				goto tr149
+				goto tr150
 			case 92:
-				goto tr149
+				goto tr150
 			case 93:
 				goto tr0
 			case 0:
@@ -7883,37 +8263,37 @@ func (l *lexer) next() token {
 			case 1:
 				goto tr0
 			case 94:
-				goto tr149
+				goto tr150
 			case 2:
 				goto tr0
 			case 95:
-				goto tr151
+				goto tr152
 			case 96:
-				goto tr149
+				goto tr150
 			case 3:
 				goto tr0
 			case 97:
-				goto tr151
-			case 98:
 				goto tr152
+			case 98:
+				goto tr153
 			case 99:
-				goto tr154
+				goto tr155
 			case 100:
-				goto tr160
+				goto tr161
 			case 101:
-				goto tr163
+				goto tr164
 			case 4:
 				goto tr0
 			case 5:
 				goto tr0
 			case 102:
-				goto tr163
-			case 103:
 				goto tr164
+			case 103:
+				goto tr165
 			case 6:
 				goto tr11
 			case 104:
-				goto tr164
+				goto tr165
 			case 7:
 				goto tr0
 			case 8:
@@ -7937,7 +8317,7 @@ func (l *lexer) next() token {
 			case 17:
 				goto tr17
 			case 105:
-				goto tr164
+				goto tr165
 			case 18:
 				goto tr11
 			case 19:
@@ -7977,43 +8357,43 @@ func (l *lexer) next() token {
 			case 36:
 				goto tr11
 			case 106:
-				goto tr164
+				goto tr165
 			case 107:
-				goto tr164
+				goto tr165
 			case 37:
 				goto tr11
 			case 108:
-				goto tr164
+				goto tr165
 			case 38:
 				goto tr11
 			case 109:
-				goto tr164
+				goto tr165
 			case 39:
 				goto tr11
 			case 110:
-				goto tr164
+				goto tr165
 			case 40:
 				goto tr11
 			case 111:
-				goto tr164
+				goto tr165
 			case 41:
 				goto tr11
 			case 112:
-				goto tr160
+				goto tr161
 			case 113:
-				goto tr160
+				goto tr161
 			case 114:
-				goto tr160
+				goto tr161
 			case 115:
-				goto tr160
+				goto tr161
 			case 116:
-				goto tr160
+				goto tr161
 			case 117:
-				goto tr160
+				goto tr161
 			case 118:
-				goto tr160
+				goto tr161
 			case 119:
-				goto tr160
+				goto tr161
 			case 42:
 				goto tr0
 			case 43:
@@ -8071,261 +8451,281 @@ func (l *lexer) next() token {
 			case 69:
 				goto tr0
 			case 120:
-				goto tr164
+				goto tr165
 			case 70:
 				goto tr84
 			case 71:
 				goto tr84
 			case 121:
-				goto tr163
+				goto tr164
 			case 122:
-				goto tr163
+				goto tr164
 			case 123:
-				goto tr163
+				goto tr164
 			case 124:
-				goto tr163
+				goto tr164
 			case 72:
 				goto tr0
 			case 125:
-				goto tr164
+				goto tr165
 			case 73:
 				goto tr11
 			case 74:
 				goto tr84
 			case 126:
-				goto tr163
+				goto tr164
 			case 75:
 				goto tr0
 			case 127:
-				goto tr164
+				goto tr165
 			case 76:
 				goto tr11
 			case 77:
 				goto tr84
 			case 128:
-				goto tr163
+				goto tr164
 			case 78:
 				goto tr0
 			case 129:
-				goto tr164
+				goto tr165
 			case 79:
 				goto tr11
 			case 80:
 				goto tr84
 			case 130:
-				goto tr163
+				goto tr164
 			case 81:
 				goto tr0
 			case 131:
-				goto tr164
+				goto tr165
 			case 82:
 				goto tr11
 			case 83:
 				goto tr84
 			case 132:
-				goto tr163
+				goto tr164
 			case 84:
 				goto tr0
 			case 133:
-				goto tr164
+				goto tr165
 			case 85:
 				goto tr11
 			case 86:
 				goto tr84
 			case 134:
-				goto tr163
+				goto tr164
 			case 87:
 				goto tr84
 			case 135:
-				goto tr164
+				goto tr165
 			case 88:
 				goto tr11
 			case 89:
 				goto tr84
 			case 136:
-				goto tr163
+				goto tr164
 			case 137:
-				goto tr189
-			case 138:
-				goto tr160
-			case 139:
 				goto tr190
+			case 138:
+				goto tr161
+			case 139:
+				goto tr191
 			case 140:
-				goto tr192
+				goto tr193
 			case 141:
-				goto tr194
+				goto tr195
 			case 142:
-				goto tr194
+				goto tr195
 			case 143:
-				goto tr194
+				goto tr195
 			case 144:
-				goto tr194
+				goto tr195
 			case 145:
-				goto tr194
+				goto tr195
 			case 146:
-				goto tr194
+				goto tr195
 			case 147:
-				goto tr194
+				goto tr195
 			case 148:
-				goto tr194
+				goto tr195
 			case 149:
 				goto tr0
 			case 150:
-				goto tr194
+				goto tr195
 			case 151:
-				goto tr194
+				goto tr195
 			case 152:
-				goto tr194
+				goto tr195
 			case 153:
-				goto tr194
+				goto tr195
 			case 154:
-				goto tr194
+				goto tr195
 			case 155:
-				goto tr194
+				goto tr195
 			case 156:
-				goto tr194
+				goto tr195
 			case 157:
-				goto tr194
+				goto tr195
 			case 158:
-				goto tr194
+				goto tr195
 			case 159:
-				goto tr194
+				goto tr195
 			case 160:
-				goto tr194
+				goto tr195
 			case 161:
-				goto tr194
+				goto tr195
 			case 162:
-				goto tr194
+				goto tr195
 			case 163:
-				goto tr194
+				goto tr195
 			case 164:
-				goto tr194
+				goto tr195
 			case 165:
-				goto tr194
+				goto tr195
 			case 166:
-				goto tr194
+				goto tr195
 			case 167:
-				goto tr194
+				goto tr195
 			case 168:
-				goto tr194
+				goto tr195
 			case 169:
-				goto tr194
+				goto tr195
 			case 170:
-				goto tr194
+				goto tr195
 			case 171:
-				goto tr194
+				goto tr195
 			case 172:
-				goto tr194
+				goto tr195
 			case 173:
-				goto tr194
+				goto tr195
 			case 174:
-				goto tr231
+				goto tr195
 			case 175:
-				goto tr194
+				goto tr195
 			case 176:
-				goto tr194
+				goto tr195
 			case 177:
-				goto tr194
+				goto tr195
 			case 178:
-				goto tr194
+				goto tr195
 			case 179:
-				goto tr194
+				goto tr195
 			case 180:
-				goto tr194
+				goto tr195
 			case 181:
-				goto tr194
+				goto tr195
 			case 182:
-				goto tr194
+				goto tr195
 			case 183:
-				goto tr194
+				goto tr195
 			case 184:
-				goto tr194
+				goto tr244
 			case 185:
-				goto tr194
+				goto tr195
 			case 186:
-				goto tr194
+				goto tr195
 			case 187:
-				goto tr194
+				goto tr195
 			case 188:
-				goto tr194
+				goto tr195
 			case 189:
-				goto tr164
+				goto tr195
 			case 190:
-				goto tr194
+				goto tr195
 			case 191:
-				goto tr194
+				goto tr195
 			case 192:
-				goto tr194
+				goto tr195
 			case 193:
-				goto tr194
+				goto tr195
 			case 194:
-				goto tr194
+				goto tr195
 			case 195:
-				goto tr164
+				goto tr195
 			case 196:
-				goto tr164
+				goto tr195
 			case 197:
-				goto tr194
+				goto tr195
 			case 198:
-				goto tr164
+				goto tr195
 			case 199:
-				goto tr194
+				goto tr165
 			case 200:
-				goto tr164
+				goto tr195
 			case 201:
-				goto tr194
+				goto tr195
 			case 202:
-				goto tr164
+				goto tr195
 			case 203:
-				goto tr194
+				goto tr195
 			case 204:
-				goto tr164
+				goto tr195
 			case 205:
-				goto tr194
+				goto tr165
 			case 206:
-				goto tr194
+				goto tr165
 			case 207:
-				goto tr194
+				goto tr195
 			case 208:
-				goto tr194
+				goto tr165
 			case 209:
-				goto tr194
+				goto tr195
 			case 210:
-				goto tr194
+				goto tr165
 			case 211:
-				goto tr194
+				goto tr195
 			case 212:
-				goto tr194
+				goto tr165
 			case 213:
-				goto tr194
+				goto tr195
 			case 214:
-				goto tr194
+				goto tr165
 			case 215:
-				goto tr194
+				goto tr195
 			case 216:
-				goto tr194
+				goto tr195
 			case 217:
-				goto tr194
+				goto tr195
 			case 218:
-				goto tr194
+				goto tr195
 			case 219:
-				goto tr194
+				goto tr195
 			case 220:
-				goto tr194
+				goto tr195
 			case 221:
-				goto tr194
+				goto tr195
 			case 222:
-				goto tr194
+				goto tr195
 			case 223:
-				goto tr194
+				goto tr195
 			case 224:
-				goto tr194
+				goto tr195
 			case 225:
-				goto tr194
+				goto tr195
 			case 226:
-				goto tr194
+				goto tr195
 			case 227:
-				goto tr194
+				goto tr195
+			case 228:
+				goto tr195
+			case 229:
+				goto tr195
+			case 230:
+				goto tr195
+			case 231:
+				goto tr195
+			case 232:
+				goto tr195
+			case 233:
+				goto tr195
+			case 234:
+				goto tr195
+			case 235:
+				goto tr195
+			case 236:
+				goto tr195
+			case 237:
+				goto tr195
 			}
 		}
 
@@ -8334,7 +8734,7 @@ func (l *lexer) next() token {
 		}
 	}
 
-//line lexer.rl:206
+//line lexer.rl:212
 
 	l.p = p
 
