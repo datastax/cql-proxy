@@ -11,6 +11,8 @@
   - [Locally build and run](https://github.com/datastax/cql-proxy#locally-build-and-run)
   - [Run a `cql-proxy` docker image](https://github.com/datastax/cql-proxy#run-a-cql-proxy-docker-image)
   - [Use Kubernetes](https://github.com/datastax/cql-proxy#use-kubernetes)
+- [Known issues](https://github.com/datastax/cql-proxy#known-issues)
+    - [Token-aware load balancing](https://github.com/datastax/cql-proxy#token-aware-load-balancing)
 
 
 ## What is `cql-proxy`?
@@ -200,6 +202,11 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
     ```sh
     kubectl logs <deployment-name>
     ```
+## Known issues
+
+### Token-aware load balancing
+
+Drivers that use token-aware load balancing may print a warning or may not work when using cql-proxy. Because cql-proxy abstracts the backend cluster as a single endpoint this doesn't always work well with token-aware drivers that expect there to be at least "replication factor" number of nodes in the cluster. Many drivers print a warning (which can be ignored) and fallback to something like round-robin, but other drivers might fail with an error. For the drivers that fail with an error it is required that they disable token-aware or configure the round-robin load balancing policy.
 
 [astra]: https://astra.datastax.com/
 [drivers]: https://docs.datastax.com/en/driver-matrix/doc/driver_matrix/common/driverMatrix.html
@@ -210,5 +217,3 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 [dse]: https://www.datastax.com/products/datastax-enterprise
 [instructions]: https://docs.datastax.com/en/astra/docs/manage-application-tokens.html
 [bundle]: https://docs.datastax.com/en/astra/docs/obtaining-database-credentials.html#_getting_your_secure_connect_bundle
-
-
