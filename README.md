@@ -206,7 +206,7 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 
 ### Token-aware load balancing
 
-Drivers that use token-aware load balancing may print a warning or may not work when using cql-proxy. Because cql-proxy abstracts the backend cluster as a single endpoint this doesn't always work well with token-aware drivers that expect there to be at least "replication factor" number of nodes in the cluster. Many drivers print a warning (which can be ignored) and fallback to something like round-robin, but other drivers error out. For the drivers that error out it is required that they disable token-aware or configure the round-robin load balancing policy.
+Drivers that use token-aware load balancing may print a warning or may not work when using cql-proxy. Because cql-proxy abstracts the backend cluster as a single endpoint this doesn't always work well with token-aware drivers that expect there to be at least "replication factor" number of nodes in the cluster. Many drivers print a warning (which can be ignored) and fallback to something like round-robin, but other drivers might fail with an error. For the drivers that fail with an error it is required that they disable token-aware or configure the round-robin load balancing policy.
 
 [astra]: https://astra.datastax.com/
 [drivers]: https://docs.datastax.com/en/driver-matrix/doc/driver_matrix/common/driverMatrix.html
