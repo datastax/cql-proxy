@@ -104,7 +104,7 @@ bind: 127.0.0.1:9042
 ```
 
 All configuration keys match their command-line flag counterpart, e.g. `--astra-bundle` is
-`astra-bundle`,  `--contact-points` is `contact-points` etc.
+`astra-bundle:`,  `--contact-points` is `contact-points:` etc.
 
 #### Setting up peer proxies
 
