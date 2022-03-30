@@ -54,7 +54,7 @@ func (l *roundRobinLoadBalancer) OnEvent(event Event) {
 	case *RemoveEvent:
 		cpy := l.copy()
 		for i, h := range cpy {
-			if h.Endpoint().Key() == evt.Host.Key() {
+			if h.Key() == evt.Host.Key() {
 				l.hosts.Store(append(cpy[:i], cpy[i+1:]...))
 				break
 			}

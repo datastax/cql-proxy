@@ -16,6 +16,9 @@ package proxycore
 
 import (
 	"errors"
+	"fmt"
+	"net"
+
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
@@ -70,5 +73,41 @@ func (r Row) ByName(n string) (interface{}, error) {
 		return nil, ColumnNameNotFound
 	} else {
 		return r.ByPos(i)
+	}
+}
+
+func (r Row) StringByName(n string) (string, error) {
+	val, err := r.ByName(n)
+	if err != nil {
+		return "", err
+	}
+	if s, ok := val.(string); !ok {
+		return "", fmt.Errorf("'%s' is not a string", n)
+	} else {
+		return s, nil
+	}
+}
+
+func (r Row) InetByName(n string) (net.IP, error) {
+	val, err := r.ByName(n)
+	if err != nil {
+		return nil, err
+	}
+	if ip, ok := val.(net.IP); !ok {
+		return nil, fmt.Errorf("'%s' is not an inet", n)
+	} else {
+		return ip, nil
+	}
+}
+
+func (r Row) UUIDByName(n string) (primitive.UUID, error) {
+	val, err := r.ByName(n)
+	if err != nil {
+		return [16]byte{}, err
+	}
+	if u, ok := val.(primitive.UUID); !ok {
+		return [16]byte{}, fmt.Errorf("'%s' is not a uuid", n)
+	} else {
+		return u, nil
 	}
 }

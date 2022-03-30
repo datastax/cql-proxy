@@ -71,7 +71,7 @@ func TestConnectSession(t *testing.T) {
 	require.NoError(t, err)
 
 	newHost := func(addr string) *Host {
-		return &Host{endpoint: &defaultEndpoint{addr: addr}}
+		return &Host{Endpoint: &defaultEndpoint{addr: addr}}
 	}
 
 	var wg sync.WaitGroup

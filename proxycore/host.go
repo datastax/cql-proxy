@@ -15,21 +15,17 @@
 package proxycore
 
 type Host struct {
-	endpoint Endpoint
+	Endpoint
 }
 
-func NewHostFromRow(endpoint Endpoint, _ Row) (*Host, error) {
+func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
 	return &Host{endpoint}, nil
 }
 
-func (h *Host) Endpoint() Endpoint {
-	return h.endpoint
-}
-
 func (h *Host) Key() string {
-	return h.endpoint.Key()
+	return h.Endpoint.Key()
 }
 
 func (h *Host) String() string {
-	return h.endpoint.String()
+	return h.Endpoint.String()
 }
