@@ -16,10 +16,15 @@ package proxycore
 
 type Host struct {
 	Endpoint
+	DC string
 }
 
 func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
-	return &Host{endpoint}, nil
+	dc, err := row.StringByName("data_center")
+	if err != nil {
+		return nil, err
+	}
+	return &Host{endpoint, dc}, nil
 }
 
 func (h *Host) Key() string {
