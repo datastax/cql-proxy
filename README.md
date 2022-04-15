@@ -121,12 +121,12 @@ Here's an example of configuring multi-region failover with two proxies. A proxy
 *Note:* Only bundles are supported for multi-region setups.
 
 ```sh
-cql-proxy --astra-bundle astra-region1-bundle.zip --username token --passowrd <astra-token> \
+cql-proxy --astra-bundle astra-region1-bundle.zip --username token --password <astra-token> \
   --bind 127.0.0.1:9042 --rpc-address 127.0.0.1 --data-center dc-1 --config proxy.yaml
 ```
 
 ```sh
-cql-proxy ---astra-bundle astra-region2-bundle.zip --username token --passowrd <astra-token> \
+cql-proxy ---astra-bundle astra-region2-bundle.zip --username token --password <astra-token> \
   --bind 127.0.0.2:9042 --rpc-address 127.0.0.2 --data-center dc-2 --config proxy.yaml
 ```
 
