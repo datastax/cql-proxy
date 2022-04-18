@@ -66,6 +66,7 @@ type Config struct {
 	Resolver          proxycore.EndpointResolver
 	ReconnectPolicy   proxycore.ReconnectPolicy
 	RetryPolicy       RetryPolicy
+	Idempotent        bool
 	NumConns          int
 	Logger            *zap.Logger
 	HeartBeatInterval time.Duration
@@ -97,6 +98,7 @@ type Proxy struct {
 	closingMu           sync.Mutex
 	localNode           *node
 	nodes               []*node
+	onceUsingGraphLog   sync.Once
 }
 
 type node struct {
@@ -463,6 +465,12 @@ func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.M
 	}
 }
 
+func (p *Proxy) maybeLogUsingGraph() {
+	p.onceUsingGraphLog.Do(func() {
+		p.logger.Warn("graph queries default to *not* being considered idempotent and will not be retried automatically. Use `idempotent` flag to override.")
+	})
+}
+
 type client struct {
 	ctx                 context.Context
 	proxy               *Proxy
@@ -512,9 +520,9 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
-		c.handleExecute(raw, msg)
+		c.handleExecute(raw, msg, body.CustomPayload)
 	case *partialQuery:
-		c.handleQuery(raw, msg)
+		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
 		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
@@ -594,16 +602,16 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	}
 }
 
-func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute) {
+func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customPayload map[string][]byte) {
 	id := preparedIdKey(msg.queryId)
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
-		c.execute(raw, notDetermined, "", msg)
+		c.execute(raw, c.getDefaultIdempotency(customPayload), "", msg)
 	}
 }
 
-func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
+func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
 	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
@@ -616,8 +624,19 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery) {
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
-		c.execute(raw, notDetermined, c.keyspace, msg)
+		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
 	}
+}
+
+func (c *client) getDefaultIdempotency(customPayload map[string][]byte) idempotentState {
+	state := notDetermined
+	if c.proxy.config.Idempotent {
+		state = isIdempotent
+	} else if _, ok := customPayload["graph-source"]; ok { // Graph queries default to non-idempotent unless overridden
+		c.proxy.maybeLogUsingGraph()
+		state = notIdempotent
+	}
+	return state
 }
 
 func (c *client) filterSystemLocalValues(stmt *parser.SelectStatement) (row []message.Column, err error) {
