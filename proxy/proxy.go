@@ -418,6 +418,7 @@ func (p *Proxy) buildLocalRow() {
 		"cql_version":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.CQLVersion),
 		"schema_version":          p.encodeTypeFatal(datatype.Uuid, schemaVersion), // TODO: Make this match the downstream cluster(s)
 		"native_protocol_version": p.encodeTypeFatal(datatype.Varchar, p.cluster.NegotiatedVersion.String()),
+		"dse_version":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.DSEVersion),
 	}
 }
 
@@ -639,8 +640,8 @@ func (c *client) getDefaultIdempotency(customPayload map[string][]byte) idempote
 	return state
 }
 
-func (c *client) filterSystemLocalValues(stmt *parser.SelectStatement) (row []message.Column, err error) {
-	return parser.FilterValues(stmt, parser.SystemLocalColumns, func(name string) (value message.Column, err error) {
+func (c *client) filterSystemLocalValues(stmt *parser.SelectStatement, filtered []*message.ColumnMetadata) (row []message.Column, err error) {
+	return parser.FilterValues(stmt, filtered, func(name string) (value message.Column, err error) {
 		if name == "rpc_address" {
 			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, c.localIP())
 		} else if name == "host_id" {
@@ -670,8 +671,8 @@ func (c *client) localIP() net.IP {
 	}
 }
 
-func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, peer *node, peerCount int) (row []message.Column, err error) {
-	return parser.FilterValues(stmt, parser.SystemPeersColumns, func(name string) (value message.Column, err error) {
+func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, filtered []*message.ColumnMetadata, peer *node, peerCount int) (row []message.Column, err error) {
+	return parser.FilterValues(stmt, filtered, func(name string) (value message.Column, err error) {
 		if name == "data_center" {
 			return proxycore.EncodeType(datatype.Varchar, c.proxy.cluster.NegotiatedVersion, peer.dc)
 		} else if name == "host_id" {
@@ -696,9 +697,13 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 	switch s := stmt.(type) {
 	case *parser.SelectStatement:
 		if s.Table == "local" {
-			if columns, err := parser.FilterColumns(s, parser.SystemLocalColumns); err != nil {
+			localColumns := parser.SystemLocalColumns
+			if len(c.proxy.cluster.Info.DSEVersion) > 0 {
+				localColumns = parser.DseSystemLocalColumns
+			}
+			if columns, err := parser.FilterColumns(s, localColumns); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
-			} else if row, err := c.filterSystemLocalValues(s); err != nil {
+			} else if row, err := c.filterSystemLocalValues(s, columns); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				c.send(hdr, &message.RowsResult{
@@ -710,14 +715,18 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 				})
 			}
 		} else if s.Table == "peers" {
-			if columns, err := parser.FilterColumns(s, parser.SystemPeersColumns); err != nil {
+			peersColumns := parser.SystemPeersColumns
+			if len(c.proxy.cluster.Info.DSEVersion) > 0 {
+				peersColumns = parser.DseSystemPeersColumns
+			}
+			if columns, err := parser.FilterColumns(s, peersColumns); err != nil {
 				c.send(hdr, &message.Invalid{ErrorMessage: err.Error()})
 			} else {
 				var data []message.Row
 				for _, n := range c.proxy.nodes {
 					if n != c.proxy.localNode {
 						var row message.Row
-						row, err = c.filterSystemPeerValues(s, n, len(c.proxy.nodes)-1)
+						row, err = c.filterSystemPeerValues(s, columns, n, len(c.proxy.nodes)-1)
 						if err != nil {
 							break
 						}
