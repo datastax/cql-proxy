@@ -103,7 +103,6 @@ func NewMockRequestHandlers(overrides MockRequestHandlers) MockRequestHandlers {
 }
 
 type MockClient struct {
-	id         uint64
 	server     *MockServer
 	conn       *Conn
 	keyspace   string
@@ -111,9 +110,8 @@ type MockClient struct {
 	events     chan message.Event
 }
 
-func newMockClient(id uint64, server *MockServer) *MockClient {
+func newMockClient(server *MockServer) *MockClient {
 	return &MockClient{
-		id:     id,
 		server: server,
 		events: make(chan message.Event),
 	}
@@ -178,10 +176,14 @@ func (c *MockClient) InterceptQuery(hdr *frame.Header, msg *message.Query) messa
 		switch s := stmt.(type) {
 		case *parser.SelectStatement:
 			if s.Table == "local" {
-				vals := makeSystemLocalValues(hdr.Version, c.server.local.IP, c.server.local.HostID, mockSchemaVersion)
-				if columns, err := parser.FilterColumns(s, parser.SystemLocalColumns); err != nil {
+				vals := c.makeSystemLocalValues(hdr.Version, mockSchemaVersion)
+				localColumns := parser.SystemLocalColumns
+				if len(c.server.DseVersion) > 0 {
+					localColumns = parser.DseSystemLocalColumns
+				}
+				if columns, err := parser.FilterColumns(s, localColumns); err != nil {
 					return &message.Invalid{ErrorMessage: err.Error()}
-				} else if row, err := c.filterValues(hdr.Version, s, parser.SystemLocalColumns, vals, 1); err != nil {
+				} else if row, err := c.filterValues(hdr.Version, s, localColumns, vals, 1); err != nil {
 					return &message.Invalid{ErrorMessage: err.Error()}
 				} else {
 					return &message.RowsResult{
@@ -193,14 +195,18 @@ func (c *MockClient) InterceptQuery(hdr *frame.Header, msg *message.Query) messa
 					}
 				}
 			} else if s.Table == "peers" {
-				if columns, err := parser.FilterColumns(s, parser.SystemPeersColumns); err != nil {
+				peersColumns := parser.SystemPeersColumns
+				if len(c.server.DseVersion) > 0 {
+					peersColumns = parser.DseSystemPeersColumns
+				}
+				if columns, err := parser.FilterColumns(s, peersColumns); err != nil {
 					return &message.Invalid{ErrorMessage: err.Error()}
 				} else {
 					var data []message.Row
 					peers := c.server.copyPeers()
 					for _, peer := range peers {
-						vals := makeSystemPeerValues(hdr.Version, peer.IP, peer.HostID, mockSchemaVersion)
-						if row, err := c.filterValues(hdr.Version, s, parser.SystemPeersColumns, vals, len(peers)); err != nil {
+						vals := c.makeSystemPeerValues(hdr.Version, peer.IP, peer.HostID, mockSchemaVersion)
+						if row, err := c.filterValues(hdr.Version, s, peersColumns, vals, len(peers)); err != nil {
 							return &message.Invalid{ErrorMessage: err.Error()}
 						} else {
 							data = append(data, row)
@@ -233,20 +239,54 @@ func (c *MockClient) send(hdr *frame.Header, msg message.Message) {
 	}))
 }
 
-func (c MockClient) Closing(_ error) {
-	c.server.clients.Delete(c.id)
+func (c *MockClient) makeSystemLocalValues(version primitive.ProtocolVersion, schemaVersion *primitive.UUID) map[string]message.Column {
+	ip := net.ParseIP(c.server.local.IP)
+	values := c.makeSystemValues(version, ip, c.server.local.HostID, schemaVersion)
+	values["key"] = encodeTypeFatal(version, datatype.Varchar, "local")
+	values["partitioner"] = encodeTypeFatal(version, datatype.Varchar, "")
+	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "cql-proxy")
+	values["cql_version"] = encodeTypeFatal(version, datatype.Varchar, "3.4.5")
+	values["native_protocol_version"] = encodeTypeFatal(version, datatype.Varchar, version.String())
+	return values
+}
+
+func (c *MockClient) makeSystemPeerValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
+	ip := net.ParseIP(address)
+	values := c.makeSystemValues(version, ip, hostID, schemaVersion)
+	values["peer"] = encodeTypeFatal(version, datatype.Inet, ip)
+	return values
+}
+
+func (c *MockClient) makeSystemValues(version primitive.ProtocolVersion, address net.IP, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
+	values := map[string]message.Column{
+		"rpc_address":     encodeTypeFatal(version, datatype.Inet, address),
+		"data_center":     encodeTypeFatal(version, datatype.Varchar, "dc1"),
+		"rack":            encodeTypeFatal(version, datatype.Varchar, "rack1"),
+		"tokens":          encodeTypeFatal(version, datatype.NewListType(datatype.Varchar), []string{"0"}),
+		"release_version": encodeTypeFatal(version, datatype.Varchar, "3.11.10"),
+		"host_id":         encodeTypeFatal(version, datatype.Uuid, hostID),
+		"schema_version":  encodeTypeFatal(version, datatype.Uuid, schemaVersion),
+	}
+	if len(c.server.DseVersion) > 0 {
+		values["dse_version"] = encodeTypeFatal(version, datatype.Varchar, c.server.DseVersion)
+	}
+	return values
+}
+
+func (c *MockClient) Closing(_ error) {
+	c.server.clients.Delete(c)
 }
 
 type MockServer struct {
-	wg          sync.WaitGroup
-	cancel      context.CancelFunc
-	clients     sync.Map
-	clientIdGen uint64
-	maxVersion  primitive.ProtocolVersion
-	local       MockHost
-	peers       []MockHost
-	mu          sync.Mutex
-	Handlers    map[primitive.OpCode]MockRequestHandler
+	wg         sync.WaitGroup
+	cancel     context.CancelFunc
+	clients    sync.Map
+	maxVersion primitive.ProtocolVersion
+	local      MockHost
+	peers      []MockHost
+	mu         sync.Mutex
+	DseVersion string
+	Handlers   map[primitive.OpCode]MockRequestHandler
 }
 
 func (s *MockServer) Add(host MockHost) {
@@ -292,8 +332,8 @@ func (s *MockServer) Shutdown() {
 }
 
 func (s *MockServer) Event(evt message.Event) {
-	s.clients.Range(func(_, value interface{}) bool {
-		cl := value.(*MockClient)
+	s.clients.Range(func(key, _ interface{}) bool {
+		cl := key.(*MockClient)
 		cl.events <- evt
 		return true
 	})
@@ -355,8 +395,7 @@ func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVer
 				s.wg.Done()
 				break
 			}
-			id := atomic.AddUint64(&s.clientIdGen, 1)
-			cl := newMockClient(id, s)
+			cl := newMockClient(s)
 			cl.conn = NewConn(c, cl)
 			go func(cl *MockClient) {
 				done := false
@@ -374,7 +413,7 @@ func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVer
 					}
 				}
 			}(cl)
-			s.clients.Store(id, cl)
+			s.clients.Store(cl, struct{}{})
 			cl.conn.Start()
 		}
 	}()
@@ -383,8 +422,8 @@ func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVer
 		select {
 		case <-ctx.Done():
 			_ = listener.Close()
-			s.clients.Range(func(key, value interface{}) bool {
-				cl := value.(*MockClient)
+			s.clients.Range(func(key, _ interface{}) bool {
+				cl := key.(*MockClient)
 				_ = cl.conn.Close()
 				return true
 			})
@@ -400,6 +439,7 @@ type MockCluster struct {
 	port        int
 	hosts       []MockHost
 	servers     map[string]*MockServer
+	DseVersion  string
 	Handlers    map[primitive.OpCode]MockRequestHandler
 }
 
@@ -444,7 +484,7 @@ func (c *MockCluster) Add(ctx context.Context, n int) error {
 func (c *MockCluster) maybeStart(ctx context.Context, host MockHost) error {
 	key := host.String()
 	if _, ok := c.servers[key]; !ok {
-		server := &MockServer{Handlers: c.Handlers}
+		server := &MockServer{DseVersion: c.DseVersion, Handlers: c.Handlers}
 		err := server.Serve(ctx, primitive.ProtocolVersion4, host, c.hosts)
 		if err != nil {
 			return err
@@ -485,36 +525,6 @@ func (c *MockCluster) Stop(n int) {
 func (c *MockCluster) Shutdown() {
 	for _, server := range c.servers {
 		server.Shutdown()
-	}
-}
-
-func makeSystemLocalValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
-	ip := net.ParseIP(address)
-	values := makeSystemValues(version, ip, hostID, schemaVersion)
-	values["key"] = encodeTypeFatal(version, datatype.Varchar, "local")
-	values["partitioner"] = encodeTypeFatal(version, datatype.Varchar, "")
-	values["cluster_name"] = encodeTypeFatal(version, datatype.Varchar, "cql-proxy")
-	values["cql_version"] = encodeTypeFatal(version, datatype.Varchar, "3.4.5")
-	values["native_protocol_version"] = encodeTypeFatal(version, datatype.Varchar, version.String())
-	return values
-}
-
-func makeSystemPeerValues(version primitive.ProtocolVersion, address string, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
-	ip := net.ParseIP(address)
-	values := makeSystemValues(version, ip, hostID, schemaVersion)
-	values["peer"] = encodeTypeFatal(version, datatype.Inet, ip)
-	return values
-}
-
-func makeSystemValues(version primitive.ProtocolVersion, address net.IP, hostID, schemaVersion *primitive.UUID) map[string]message.Column {
-	return map[string]message.Column{
-		"rpc_address":     encodeTypeFatal(version, datatype.Inet, address),
-		"data_center":     encodeTypeFatal(version, datatype.Varchar, "dc1"),
-		"rack":            encodeTypeFatal(version, datatype.Varchar, "rack1"),
-		"tokens":          encodeTypeFatal(version, datatype.NewListType(datatype.Varchar), []string{"0"}),
-		"release_version": encodeTypeFatal(version, datatype.Varchar, "3.11.10"),
-		"host_id":         encodeTypeFatal(version, datatype.Uuid, hostID),
-		"schema_version":  encodeTypeFatal(version, datatype.Uuid, schemaVersion),
 	}
 }
 

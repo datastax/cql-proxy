@@ -206,6 +206,45 @@ func TestProxy_NegotiateProtocolV5(t *testing.T) {
 	assert.Equal(t, primitive.ProtocolVersion4, version) // Expected to be negotiated to v4
 }
 
+func TestProxy_DseVersion(t *testing.T) {
+	const dseVersion = "6.8.3"
+	const protocol = primitive.ProtocolVersion4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Fake a peer so that "SELECT ... system.peers" returns at least one row
+	cluster, proxy := setupProxyTestWithConfig(t, ctx, 1, &proxyTestConfig{
+		dseVersion: dseVersion,
+		rpcAddr:    "127.0.0.1",
+		peers: []PeerConfig{{
+			RPCAddr: "127.0.0.2",
+		}}})
+
+	defer func() {
+		cluster.Shutdown()
+		_ = proxy.Close()
+	}()
+
+	cl := connectTestClient(t, ctx)
+
+	checkDseVersion := func(resp *frame.Frame, err error) {
+		require.NoError(t, err)
+		assert.Equal(t, primitive.OpCodeResult, resp.Header.OpCode)
+		rows, ok := resp.Body.Message.(*message.RowsResult)
+		assert.True(t, ok, "expected rows result")
+
+		rs := proxycore.NewResultSet(rows, protocol)
+		require.GreaterOrEqual(t, rs.RowCount(), 1)
+		actualDseVersion, err := rs.Row(0).StringByName("dse_version")
+		require.NoError(t, err)
+		assert.Equal(t, dseVersion, actualDseVersion)
+	}
+
+	checkDseVersion(cl.SendAndReceive(ctx, frame.NewFrame(protocol, 0, &message.Query{Query: "SELECT dse_version FROM system.local"})))
+	checkDseVersion(cl.SendAndReceive(ctx, frame.NewFrame(primitive.ProtocolVersion4, 0, &message.Query{Query: "SELECT dse_version FROM system.peers"})))
+}
+
 func queryTestHosts(ctx context.Context, cl *proxycore.ClientConn) (map[string]struct{}, error) {
 	hosts := make(map[string]struct{})
 	for i := 0; i < 3; i++ {
@@ -226,10 +265,30 @@ func queryTestHosts(ctx context.Context, cl *proxycore.ClientConn) (map[string]s
 }
 
 func setupProxyTest(t *testing.T, ctx context.Context, numNodes int, handlers proxycore.MockRequestHandlers) (*proxycore.MockCluster, *Proxy) {
+	return setupProxyTestWithConfig(t, ctx, numNodes, &proxyTestConfig{handlers: handlers})
+}
+
+type proxyTestConfig struct {
+	handlers   proxycore.MockRequestHandlers
+	dseVersion string
+	rpcAddr    string
+	peers      []PeerConfig
+	idempotent bool
+}
+
+func setupProxyTestWithConfig(t *testing.T, ctx context.Context, numNodes int, cfg *proxyTestConfig) (*proxycore.MockCluster, *Proxy) {
 	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
-	if handlers != nil {
-		cluster.Handlers = proxycore.NewMockRequestHandlers(handlers)
+
+	if cfg == nil {
+		cfg = &proxyTestConfig{}
 	}
+
+	cluster.DseVersion = cfg.dseVersion
+
+	if cfg.handlers != nil {
+		cluster.Handlers = proxycore.NewMockRequestHandlers(cfg.handlers)
+	}
+
 	for i := 1; i <= numNodes; i++ {
 		err := cluster.Add(ctx, i)
 		require.NoError(t, err)
@@ -242,6 +301,9 @@ func setupProxyTest(t *testing.T, ctx context.Context, numNodes int, handlers pr
 		NumConns:          2,
 		HeartBeatInterval: 30 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		RPCAddr:           cfg.rpcAddr,
+		Peers:             cfg.peers,
+		Idempotent:        cfg.idempotent,
 	})
 
 	err := proxy.Listen(testProxyContactPoint)

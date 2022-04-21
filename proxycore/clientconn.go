@@ -204,14 +204,18 @@ func (c *ClientConn) Inflight() int32 {
 }
 
 func (c *ClientConn) Query(ctx context.Context, version primitive.ProtocolVersion, query message.Message) (*ResultSet, error) {
-	response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, query))
+	return c.QueryFrame(ctx, frame.NewFrame(version, -1, query))
+}
+
+func (c *ClientConn) QueryFrame(ctx context.Context, frm *frame.Frame) (*ResultSet, error) {
+	response, err := c.SendAndReceive(ctx, frm)
 	if err != nil {
 		return nil, err
 	}
 
 	switch msg := response.Body.Message.(type) {
 	case *message.RowsResult:
-		return NewResultSet(msg, version), nil
+		return NewResultSet(msg, response.Header.Version), nil
 	case *message.VoidResult, *message.PreparedResult:
 		return nil, nil // TODO: Make empty result set
 	case message.Error:
