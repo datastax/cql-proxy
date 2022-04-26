@@ -31,7 +31,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/datastax/cql-proxy/parser"
@@ -50,6 +49,8 @@ var (
 )
 
 var ErrProxyClosed = errors.New("proxy closed")
+var ErrProxyAlreadyConnected = errors.New("proxy already connected")
+var ErrProxyNotConnected = errors.New("proxy not connected")
 
 const preparedIdSize = 16
 
@@ -83,18 +84,19 @@ type Proxy struct {
 	ctx                 context.Context
 	config              Config
 	logger              *zap.Logger
-	listener            *net.TCPListener
 	cluster             *proxycore.Cluster
 	sessions            [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
-	sessMu              sync.Mutex
-	schemaEventClients  sync.Map
+	mu                  sync.Mutex
+	isConnected         bool
+	isClosing           bool
+	clients             map[*client]struct{}
+	listeners           map[*net.Listener]struct{}
+	eventClients        sync.Map
 	preparedCache       proxycore.PreparedCache
 	preparedIdempotence sync.Map
-	clientIdGen         uint64
 	lb                  proxycore.LoadBalancer
 	systemLocalValues   map[string]message.Column
 	closed              chan struct{}
-	closingMu           sync.Mutex
 	localNode           *node
 	nodes               []*node
 }
@@ -109,8 +111,8 @@ func (p *Proxy) OnEvent(event proxycore.Event) {
 	switch evt := event.(type) {
 	case *proxycore.SchemaChangeEvent:
 		frm := frame.NewFrame(p.cluster.NegotiatedVersion, -1, evt.Message)
-		p.schemaEventClients.Range(func(key, value interface{}) bool {
-			cl := value.(*client)
+		p.eventClients.Range(func(key, _ interface{}) bool {
+			cl := key.(*client)
 			err := cl.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
 				return codec.EncodeFrame(frm, writer)
 			}))
@@ -118,7 +120,6 @@ func (p *Proxy) OnEvent(event proxycore.Event) {
 			if err != nil {
 				p.logger.Error("unable to send schema change event",
 					zap.Stringer("client", cl.conn.RemoteAddr()),
-					zap.Uint64("id", cl.id),
 					zap.Error(err))
 				_ = cl.conn.Close()
 			}
@@ -138,24 +139,24 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 		config.RetryPolicy = NewDefaultRetryPolicy()
 	}
 	return &Proxy{
-		ctx:    ctx,
-		config: config,
-		logger: proxycore.GetOrCreateNopLogger(config.Logger),
-		closed: make(chan struct{}),
+		ctx:       ctx,
+		config:    config,
+		logger:    proxycore.GetOrCreateNopLogger(config.Logger),
+		clients:   make(map[*client]struct{}),
+		listeners: make(map[*net.Listener]struct{}),
+		closed:    make(chan struct{}),
 	}
 }
 
-func (p *Proxy) ListenAndServe(address string) error {
-	err := p.Listen(address)
-	if err != nil {
-		return err
-	}
-	return p.Serve()
-}
+func (p *Proxy) Connect() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-func (p *Proxy) Listen(address string) error {
+	if p.isConnected {
+		return ErrProxyAlreadyConnected
+	}
+
 	var err error
-
 	p.preparedCache, err = getOrCreateDefaultPreparedCache(p.config.PreparedCache)
 	if err != nil {
 		return fmt.Errorf("unable to create prepared cache %w", err)
@@ -210,23 +211,23 @@ func (p *Proxy) Listen(address string) error {
 
 	p.sessions[p.cluster.NegotiatedVersion].Store("", sess) // No keyspace
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", address)
-	if err != nil {
-		return err
-	}
-	p.listener, err = net.ListenTCP("tcp", tcpAddr)
-	if err != nil {
-		return err
-	}
-
-	p.logger.Info("proxy is listening", zap.Stringer("address", p.listener.Addr()))
-
+	p.isConnected = true
 	return nil
 }
 
-func (p *Proxy) Serve() error {
+// Serve the proxy using the specified listener. It can be called multiple times with different listeners allowing
+// them to share the same backend clusters.
+func (p *Proxy) Serve(l net.Listener) (err error) {
+	l = &closeOnceListener{Listener: l}
+	defer l.Close()
+
+	if err = p.addListener(&l); err != nil {
+		return err
+	}
+	defer p.removeListener(&l)
+
 	for {
-		conn, err := p.listener.AcceptTCP()
+		conn, err := l.Accept()
 		if err != nil {
 			select {
 			case <-p.closed:
@@ -239,15 +240,45 @@ func (p *Proxy) Serve() error {
 	}
 }
 
+func (p *Proxy) addListener(l *net.Listener) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.isClosing {
+		return ErrProxyClosed
+	}
+	if !p.isConnected {
+		return ErrProxyNotConnected
+	}
+	p.listeners[l] = struct{}{}
+	return nil
+}
+
+func (p *Proxy) removeListener(l *net.Listener) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.listeners, l)
+}
+
 func (p *Proxy) Close() error {
-	p.closingMu.Lock()
-	defer p.closingMu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	select {
 	case <-p.closed:
 	default:
 		close(p.closed)
 	}
-	return p.listener.Close()
+	var err error
+	for l := range p.listeners {
+		if closeErr := (*l).Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}
+	for cl := range p.clients {
+		_ = cl.conn.Close()
+		p.eventClients.Delete(cl)
+		delete(p.clients, cl)
+	}
+	return err
 }
 
 func (p *Proxy) Ready() bool {
@@ -258,28 +289,29 @@ func (p *Proxy) OutageDuration() time.Duration {
 	return p.cluster.OutageDuration()
 }
 
-func (p *Proxy) handle(conn *net.TCPConn) {
-	if err := conn.SetKeepAlive(false); err != nil {
-		p.logger.Warn("failed to disable keepalive on connection", zap.Error(err))
-	}
-
-	if err := conn.SetNoDelay(true); err != nil {
-		p.logger.Warn("failed to set TCP_NODELAY on connection", zap.Error(err))
+func (p *Proxy) handle(conn net.Conn) {
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		if err := tcpConn.SetKeepAlive(false); err != nil {
+			p.logger.Warn("failed to disable keepalive on connection", zap.Error(err))
+		}
+		if err := tcpConn.SetNoDelay(true); err != nil {
+			p.logger.Warn("failed to set TCP_NODELAY on connection", zap.Error(err))
+		}
 	}
 
 	cl := &client{
 		ctx:                 p.ctx,
 		proxy:               p,
-		id:                  atomic.AddUint64(&p.clientIdGen, 1),
 		preparedSystemQuery: make(map[[preparedIdSize]byte]interface{}),
 	}
+	p.addClient(cl)
 	cl.conn = proxycore.NewConn(conn, cl)
 	cl.conn.Start()
 }
 
 func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace string) (*proxycore.Session, error) {
-	p.sessMu.Lock()
-	defer p.sessMu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if cachedSession, ok := p.sessions[version].Load(keyspace); ok {
 		return cachedSession.(*proxycore.Session), nil
 	} else {
@@ -463,12 +495,30 @@ func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.M
 	}
 }
 
+func (p *Proxy) addClient(cl *client) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.clients[cl] = struct{}{}
+}
+
+func (p *Proxy) registerForEvents(cl *client) {
+	p.eventClients.Store(cl, struct{}{})
+}
+
+func (p *Proxy) removeClient(cl *client) {
+	p.eventClients.Delete(cl)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.clients, cl)
+
+}
+
 type client struct {
 	ctx                 context.Context
 	proxy               *Proxy
 	conn                *proxycore.Conn
 	keyspace            string
-	id                  uint64
 	preparedSystemQuery map[[16]byte]interface{}
 }
 
@@ -505,7 +555,7 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Register:
 		for _, t := range msg.EventTypes {
 			if t == primitive.EventTypeSchemaChange {
-				c.proxy.schemaEventClients.Store(c.id, c)
+				c.proxy.registerForEvents(c)
 			}
 		}
 		c.send(raw.Header, &message.Ready{})
@@ -746,7 +796,7 @@ func (c *client) send(hdr *frame.Header, msg message.Message) {
 }
 
 func (c *client) Closing(_ error) {
-	c.proxy.schemaEventClients.Delete(c.id)
+	c.proxy.removeClient(c)
 }
 
 func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.PreparedCache, error) {
@@ -818,3 +868,17 @@ func compareIPAddr(a *net.IPAddr, b *net.IPAddr) int {
 
 	return 0
 }
+
+// Wrap the listener so that if it's closed in the serve loop it doesn't race with proxy Close()
+type closeOnceListener struct {
+	net.Listener
+	once     sync.Once
+	closeErr error
+}
+
+func (oc *closeOnceListener) Close() error {
+	oc.once.Do(oc.close)
+	return oc.closeErr
+}
+
+func (oc *closeOnceListener) close() { oc.closeErr = oc.Listener.Close() }

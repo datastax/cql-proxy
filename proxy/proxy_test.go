@@ -17,6 +17,8 @@ package proxy
 import (
 	"context"
 	"errors"
+	"log"
+	"math/big"
 	"net"
 	"strconv"
 	"sync"
@@ -34,17 +36,44 @@ import (
 )
 
 const (
-	testClusterContactPoint = "127.0.0.1:8000"
-	testClusterPort         = 8000
-	testClusterStartIP      = "127.0.0.0"
-	testProxyContactPoint   = "127.0.0.1:9042"
+	testAddr      = "127.0.0.1"
+	testStartAddr = "127.0.0.0"
 )
+
+func generateTestPort() int {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		log.Panicf("failed to resolve for local port: %v", err)
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		log.Panicf("failed to listen for local port: %v", err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func generateTestAddr(baseAddress string, n int) string {
+	ip := make(net.IP, net.IPv6len)
+	new(big.Int).Add(new(big.Int).SetBytes(net.ParseIP(baseAddress)), big.NewInt(int64(n))).FillBytes(ip)
+	return ip.String()
+}
+
+func generateTestAddrs(host string) (clusterPort int, clusterAddr, proxyAddr, httpAddr string) {
+	clusterPort = generateTestPort()
+	clusterAddr = net.JoinHostPort(host, strconv.Itoa(clusterPort))
+	proxyPort := generateTestPort()
+	proxyAddr = net.JoinHostPort(host, strconv.Itoa(proxyPort))
+	httpPort := generateTestPort()
+	httpAddr = net.JoinHostPort(host, strconv.Itoa(httpPort))
+	return clusterPort, clusterAddr, proxyAddr, httpAddr
+}
 
 func TestProxy_ListenAndServe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	cluster, proxy := setupProxyTest(t, ctx, 3, proxycore.MockRequestHandlers{
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 3, proxycore.MockRequestHandlers{
 		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
 			if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
 				return msg
@@ -73,17 +102,18 @@ func TestProxy_ListenAndServe(t *testing.T) {
 		},
 	})
 	defer func() {
-		cluster.Shutdown()
-		_ = proxy.Close()
+		cancel()
+		tester.shutdown()
 	}()
+	require.NoError(t, err)
 
-	cl := connectTestClient(t, ctx)
+	cl := connectTestClient(t, ctx, proxyContactPoint)
 
 	hosts, err := queryTestHosts(ctx, cl)
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(hosts))
 
-	cluster.Stop(1)
+	tester.cluster.Stop(1)
 
 	removed := waitUntil(10*time.Second, func() bool {
 		hosts, err := queryTestHosts(ctx, cl)
@@ -92,7 +122,7 @@ func TestProxy_ListenAndServe(t *testing.T) {
 	})
 	assert.True(t, removed)
 
-	err = cluster.Start(ctx, 1)
+	err = tester.cluster.Start(ctx, 1)
 	require.NoError(t, err)
 
 	added := waitUntil(10*time.Second, func() bool {
@@ -104,17 +134,14 @@ func TestProxy_ListenAndServe(t *testing.T) {
 }
 
 func TestProxy_Unprepared(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	const numNodes = 3
-
 	const version = primitive.ProtocolVersion4
 
 	preparedId := []byte("abc")
 	var prepared sync.Map
 
-	cluster, proxy := setupProxyTest(t, ctx, numNodes, proxycore.MockRequestHandlers{
+	ctx, cancel := context.WithCancel(context.Background())
+	tester, proxyContactPoint, err := setupProxyTest(ctx, numNodes, proxycore.MockRequestHandlers{
 		primitive.OpCodePrepare: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
 			prepared.Store(cl.Local().IP, true)
 			return &message.PreparedResult{
@@ -137,11 +164,12 @@ func TestProxy_Unprepared(t *testing.T) {
 		},
 	})
 	defer func() {
-		cluster.Shutdown()
-		_ = proxy.Close()
+		cancel()
+		tester.shutdown()
 	}()
+	require.NoError(t, err)
 
-	cl := connectTestClient(t, ctx)
+	cl := connectTestClient(t, ctx, proxyContactPoint)
 
 	// Only prepare on a single node
 	resp, err := cl.SendAndReceive(ctx, frame.NewFrame(version, 0, &message.Prepare{Query: "SELECT * FROM test.test"}))
@@ -169,15 +197,14 @@ func TestProxy_Unprepared(t *testing.T) {
 
 func TestProxy_UseKeyspace(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cluster, proxy := setupProxyTest(t, ctx, 1, nil)
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 1, nil)
 	defer func() {
-		cluster.Shutdown()
-		_ = proxy.Close()
+		cancel()
+		tester.shutdown()
 	}()
+	require.NoError(t, err)
 
-	cl := connectTestClient(t, ctx)
+	cl := connectTestClient(t, ctx, proxyContactPoint)
 
 	resp, err := cl.SendAndReceive(ctx, frame.NewFrame(primitive.ProtocolVersion4, 0, &message.Query{Query: "USE system"}))
 	require.NoError(t, err)
@@ -190,15 +217,14 @@ func TestProxy_UseKeyspace(t *testing.T) {
 
 func TestProxy_NegotiateProtocolV5(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cluster, proxy := setupProxyTest(t, ctx, 1, nil)
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 1, nil)
 	defer func() {
-		cluster.Shutdown()
-		_ = proxy.Close()
+		cancel()
+		tester.shutdown()
 	}()
+	require.NoError(t, err)
 
-	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(testProxyContactPoint), proxycore.ClientConnConfig{})
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, primitive.ProtocolVersion5, nil)
@@ -225,37 +251,67 @@ func queryTestHosts(ctx context.Context, cl *proxycore.ClientConn) (map[string]s
 	return hosts, nil
 }
 
-func setupProxyTest(t *testing.T, ctx context.Context, numNodes int, handlers proxycore.MockRequestHandlers) (*proxycore.MockCluster, *Proxy) {
-	cluster := proxycore.NewMockCluster(net.ParseIP(testClusterStartIP), testClusterPort)
-	if handlers != nil {
-		cluster.Handlers = proxycore.NewMockRequestHandlers(handlers)
-	}
-	for i := 1; i <= numNodes; i++ {
-		err := cluster.Add(ctx, i)
-		require.NoError(t, err)
+type proxyTester struct {
+	cluster *proxycore.MockCluster
+	proxy   *Proxy
+	wg      sync.WaitGroup
+}
+
+func (w *proxyTester) shutdown() {
+	w.cluster.Shutdown()
+	_ = w.proxy.Close()
+	w.wg.Wait()
+}
+
+func setupProxyTest(ctx context.Context, numNodes int, handlers proxycore.MockRequestHandlers) (tester *proxyTester, proxyContactPoint string, err error) {
+	tester = &proxyTester{
+		wg: sync.WaitGroup{},
 	}
 
-	proxy := NewProxy(ctx, Config{
+	clusterPort, clusterAddr, proxyAddr, _ := generateTestAddrs(testAddr)
+
+	tester.cluster = proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
+	if handlers != nil {
+		tester.cluster.Handlers = proxycore.NewMockRequestHandlers(handlers)
+	}
+	for i := 1; i <= numNodes; i++ {
+		err = tester.cluster.Add(ctx, i)
+		if err != nil {
+			return tester, proxyAddr, err
+		}
+	}
+
+	tester.proxy = NewProxy(ctx, Config{
 		Version:           primitive.ProtocolVersion4,
-		Resolver:          proxycore.NewResolverWithDefaultPort([]string{testClusterContactPoint}, testClusterPort),
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterAddr}, clusterPort),
 		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
 		NumConns:          2,
 		HeartBeatInterval: 30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	})
 
-	err := proxy.Listen(testProxyContactPoint)
-	require.NoError(t, err)
+	err = tester.proxy.Connect()
+	if err != nil {
+		return tester, proxyAddr, err
+	}
+
+	l, err := resolveAndListen(proxyAddr)
+	if err != nil {
+		return tester, proxyAddr, err
+	}
+
+	tester.wg.Add(1)
 
 	go func() {
-		_ = proxy.Serve()
+		_ = tester.proxy.Serve(l)
+		tester.wg.Done()
 	}()
 
-	return cluster, proxy
+	return tester, proxyAddr, nil
 }
 
-func connectTestClient(t *testing.T, ctx context.Context) *proxycore.ClientConn {
-	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(testProxyContactPoint), proxycore.ClientConnConfig{})
+func connectTestClient(t *testing.T, ctx context.Context, proxyContactPoint string) *proxycore.ClientConn {
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, primitive.ProtocolVersion4, nil)
