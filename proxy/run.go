@@ -261,8 +261,8 @@ func listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *z
 
 	numServers := 1 // Without the HTTP server
 
-	// Listen is called first to set up the listening server connection and establish initial client connections to the
-	// backend cluster so that when the readiness check is hit the proxy is actually ready.
+	// Connect and listen is called first to set up the listening server connection and establish initial client
+	// connections to the backend cluster so that when the readiness check is hit the proxy is actually ready.
 
 	err = p.Connect()
 	if err != nil {
