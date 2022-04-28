@@ -25,6 +25,7 @@ import (
 
 var (
 	ColumnNameNotFound = errors.New("column name not found")
+	ColumnIsNull       = errors.New("column is null")
 )
 
 type ResultSet struct {
@@ -81,7 +82,9 @@ func (r Row) StringByName(n string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if s, ok := val.(string); !ok {
+	if val == nil {
+		return "", ColumnIsNull
+	} else if s, ok := val.(string); !ok {
 		return "", fmt.Errorf("'%s' is not a string", n)
 	} else {
 		return s, nil
@@ -93,8 +96,10 @@ func (r Row) InetByName(n string) (net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ip, ok := val.(net.IP); !ok {
-		return nil, fmt.Errorf("'%s' is not an inet", n)
+	if val == nil {
+		return nil, ColumnIsNull
+	} else if ip, ok := val.(net.IP); !ok {
+		return nil, fmt.Errorf("'%s' is not an inet (or is null)", n)
 	} else {
 		return ip, nil
 	}
@@ -105,8 +110,10 @@ func (r Row) UUIDByName(n string) (primitive.UUID, error) {
 	if err != nil {
 		return [16]byte{}, err
 	}
-	if u, ok := val.(primitive.UUID); !ok {
-		return [16]byte{}, fmt.Errorf("'%s' is not a uuid", n)
+	if val == nil {
+		return [16]byte{}, ColumnIsNull
+	} else if u, ok := val.(primitive.UUID); !ok {
+		return [16]byte{}, fmt.Errorf("'%s' is not a uuid (or is null)", n)
 	} else {
 		return u, nil
 	}
