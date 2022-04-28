@@ -500,7 +500,7 @@ func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.M
 
 func (p *Proxy) maybeLogUsingGraph() {
 	p.onceUsingGraphLog.Do(func() {
-		p.logger.Warn("graph queries default to *not* being considered idempotent and will not be retried automatically. Use `idempotent` flag to override.")
+		p.logger.Warn("graph queries default to *not* being considered idempotent and will not be retried automatically. Use the idempotent graph flag to override.")
 	})
 }
 
