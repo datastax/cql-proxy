@@ -322,12 +322,11 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 	clusterPort, clusterAddr, proxyAddr, _ := generateTestAddrs(testAddr)
 
 	tester.cluster = proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
+	tester.cluster.DseVersion = cfg.dseVersion
 
 	if cfg == nil {
 		cfg = &proxyTestConfig{}
 	}
-
-	tester.cluster.DseVersion = cfg.dseVersion
 
 	if cfg.handlers != nil {
 		tester.cluster.Handlers = proxycore.NewMockRequestHandlers(cfg.handlers)
