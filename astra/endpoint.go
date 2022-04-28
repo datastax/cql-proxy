@@ -15,12 +15,12 @@
 package astra
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
@@ -33,6 +33,7 @@ type astraResolver struct {
 	region          string
 	bundle          *Bundle
 	mu              *sync.Mutex
+	timeout         time.Duration
 }
 
 type astraEndpoint struct {
@@ -41,28 +42,38 @@ type astraEndpoint struct {
 	tlsConfig *tls.Config
 }
 
-func NewResolver(bundle *Bundle) proxycore.EndpointResolver {
+func NewResolver(bundle *Bundle, timeout time.Duration) proxycore.EndpointResolver {
 	return &astraResolver{
-		bundle: bundle,
-		mu:     &sync.Mutex{},
+		bundle:  bundle,
+		mu:      &sync.Mutex{},
+		timeout: timeout,
 	}
 }
 
-func (r *astraResolver) Resolve() ([]proxycore.Endpoint, error) {
+func (r *astraResolver) Resolve(ctx context.Context) ([]proxycore.Endpoint, error) {
 	var metadata *astraMetadata
 
-	url := fmt.Sprintf("https://%s:%d/metadata", r.bundle.Host(), r.bundle.Port())
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	httpsClient := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: r.bundle.TLSConfig(),
+			TLSClientConfig: r.bundle.TlsConfig.Clone(),
 		},
 	}
-	response, err := httpsClient.Get(url)
+
+	url := fmt.Sprintf("https://%s:%d/metadata", r.bundle.Host, r.bundle.Port)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get metadata from %s: %v", url, err)
+		return nil, err
 	}
 
-	body, err := ioutil.ReadAll(response.Body)
+	response, err := httpsClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get metadata from %s: %w", url, err)
+	}
+
+	body, err := readAllWithTimeout(response.Body, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +156,7 @@ func (a astraEndpoint) TLSConfig() *tls.Config {
 }
 
 func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
-	tlsConfig := bundle.TLSConfig()
+	tlsConfig := bundle.TlsConfig.Clone()
 	tlsConfig.ServerName = serverName
 	tlsConfig.InsecureSkipVerify = true
 	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
@@ -161,7 +172,7 @@ func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
 		opts := x509.VerifyOptions{
 			Roots:         tlsConfig.RootCAs,
 			CurrentTime:   time.Now(),
-			DNSName:       bundle.Host(),
+			DNSName:       bundle.Host,
 			Intermediates: x509.NewCertPool(),
 		}
 		for _, cert := range certs[1:] {
