@@ -45,6 +45,8 @@ Flags:
                                                           ($ASTRA_TOKEN).
   -i, --astra-database-id=STRING                          Database ID of the Astra database. Requires '--astra-token' ($ASTRA_DATABASE_ID)
       --astra-api-url="https://api.astra.datastax.com"    URL for the Astra API ($ASTRA_API_URL)
+      --astra-host=STRING                                 Overrides the Astra DB host. It's useful when using a cloud private endpoint service ($ASTRA_HOST)
+      --astra-timeout=10s                                 Timeout for contacting Astra when retrieving the bundle and metadata ($ASTRA_TIMEOUT)
   -c, --contact-points=CONTACT-POINTS,...                 Contact points for cluster. Ignored if using the bundle path or token option ($CONTACT_POINTS).
   -u, --username=STRING                                   Username to use for authentication ($USERNAME)
   -p, --password=STRING                                   Password to use for authentication ($PASSWORD)
