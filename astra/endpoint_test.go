@@ -15,6 +15,7 @@
 package astra
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/datastax/cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
@@ -51,7 +53,7 @@ func TestMain(m *testing.M) {
 
 func TestAstraResolver_Resolve(t *testing.T) {
 	resolver := createResolver(t)
-	endpoints, err := resolver.Resolve()
+	endpoints, err := resolver.Resolve(context.Background())
 	require.NoError(t, err)
 
 	for _, endpoint := range endpoints {
@@ -63,7 +65,7 @@ func TestAstraResolver_Resolve(t *testing.T) {
 
 func TestAstraResolver_NewEndpoint(t *testing.T) {
 	resolver := createResolver(t)
-	_, err := resolver.Resolve()
+	_, err := resolver.Resolve(context.Background())
 	require.NoError(t, err)
 
 	const hostId = "a2e24181-d732-402a-ab06-894a8b2f6094"
@@ -101,7 +103,7 @@ func TestAstraResolver_NewEndpoint(t *testing.T) {
 
 func TestAstraResolver_NewEndpoint_Ignored(t *testing.T) {
 	resolver := createResolver(t)
-	_, err := resolver.Resolve()
+	_, err := resolver.Resolve(context.Background())
 	require.NoError(t, err)
 
 	const hostId = "a2e24181-d732-402a-ab06-894a8b2f6094"
@@ -138,7 +140,7 @@ func TestAstraResolver_NewEndpoint_Ignored(t *testing.T) {
 
 func TestAstraResolver_NewEndpointInvalidHostID(t *testing.T) {
 	resolver := createResolver(t)
-	_, err := resolver.Resolve()
+	_, err := resolver.Resolve(context.Background())
 	require.NoError(t, err)
 
 	rs := proxycore.NewResultSet(&message.RowsResult{
@@ -164,6 +166,15 @@ func TestAstraResolver_NewEndpointInvalidHostID(t *testing.T) {
 	assert.Error(t, err, "ignoring host because its `host_id` is not set or is invalid")
 }
 
+func TestAstraResolver_Timeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1) // Very short timeout
+	defer cancel()
+
+	resolver := createResolver(t)
+	_, err := resolver.Resolve(ctx)
+	assert.ErrorIs(t, err, context.DeadlineExceeded) // Expect a timeout
+}
+
 func createResolver(t *testing.T) proxycore.EndpointResolver {
 	path, err := writeBundle("127.0.0.1", 8080)
 	require.NoError(t, err)
@@ -171,7 +182,7 @@ func createResolver(t *testing.T) proxycore.EndpointResolver {
 	bundle, err := LoadBundleZipFromPath(path)
 	require.NoError(t, err)
 
-	return NewResolver(bundle)
+	return NewResolver(bundle, 10*time.Second)
 }
 
 func runTestMetaSvcAsync(sniProxyAddr string, contactPoints []string) (*http.Server, error) {

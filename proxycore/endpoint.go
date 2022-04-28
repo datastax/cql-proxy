@@ -15,6 +15,7 @@
 package proxycore
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -58,7 +59,7 @@ func (e defaultEndpoint) TlsConfig() *tls.Config {
 }
 
 type EndpointResolver interface {
-	Resolve() ([]Endpoint, error)
+	Resolve(ctx context.Context) ([]Endpoint, error)
 	NewEndpoint(row Row) (Endpoint, error)
 }
 
@@ -82,14 +83,15 @@ func NewResolverWithDefaultPort(contactPoints []string, defaultPort int) Endpoin
 	}
 }
 
-func (r *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
+func (r *defaultEndpointResolver) Resolve(ctx context.Context) ([]Endpoint, error) {
 	var endpoints []Endpoint
+	var resolver net.Resolver
 	for _, cp := range r.contactPoints {
 		host, port, err := net.SplitHostPort(cp)
 		if err != nil {
 			host = cp
 		}
-		addrs, err := net.LookupHost(host)
+		addrs, err := resolver.LookupHost(ctx, host)
 		if err != nil {
 			return nil, fmt.Errorf("unable to resolve contact point %s: %v", cp, err)
 		}

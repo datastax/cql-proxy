@@ -42,6 +42,8 @@ var config struct {
 	AstraToken         string        `yaml:"astra-token" help:"Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option." short:"t" env:"ASTRA_TOKEN"`
 	AstraDatabaseID    string        `yaml:"astra-database-id" help:"Database ID of the Astra database. Requires '--astra-token'" short:"i" env:"ASTRA_DATABASE_ID"`
 	AstraApiURL        string        `yaml:"astra-api-url" help:"URL for the Astra API" default:"https://api.astra.datastax.com" env:"ASTRA_API_URL"`
+	AstraHost          string        `yaml:"astra-host" help:"Overrides the Astra DB host. It's useful when using a cloud private endpoint service" env:"ASTRA_HOST"`
+	AstraTimeout       time.Duration `yaml:"astra-timeout" help:"Timeout for contacting Astra when retrieving the bundle and metadata" default:"10s" env:"ASTRA_TIMEOUT"`
 	ContactPoints      []string      `yaml:"contact-points" help:"Contact points for cluster. Ignored if using the bundle path or token option." short:"c" env:"CONTACT_POINTS"`
 	Username           string        `yaml:"username" help:"Username to use for authentication" short:"u" env:"USERNAME"`
 	Password           string        `yaml:"password" help:"Password to use for authentication" short:"p" env:"PASSWORD"`
@@ -94,21 +96,25 @@ func Run(ctx context.Context, args []string) int {
 
 	var resolver proxycore.EndpointResolver
 	if len(config.AstraBundle) > 0 {
-		if bundle, err := astra.LoadBundleZipFromPath(config.AstraBundle); err != nil {
+		var bundle *astra.Bundle
+		if bundle, err = astra.LoadBundleZipFromPath(config.AstraBundle); err != nil {
 			cliCtx.Errorf("unable to open bundle %s from file: %v", config.AstraBundle, err)
 			return 1
-		} else {
-			resolver = astra.NewResolver(bundle)
+		} else if len(config.AstraHost) > 0 {
+			bundle.Host = config.AstraHost
 		}
+		resolver = astra.NewResolver(bundle, config.AstraTimeout)
 	} else if len(config.AstraToken) > 0 {
 		if len(config.AstraDatabaseID) == 0 {
 			cliCtx.Fatalf("database ID is required when using a token")
 		}
-		bundle, err := astra.LoadBundleZipFromURL(config.AstraApiURL, config.AstraDatabaseID, config.AstraToken, 10*time.Second)
-		if err != nil {
+		var bundle *astra.Bundle
+		if bundle, err = astra.LoadBundleZipFromURL(config.AstraApiURL, config.AstraDatabaseID, config.AstraToken, config.AstraTimeout); err != nil {
 			cliCtx.Fatalf("unable to load bundle %s from astra: %v", config.AstraBundle, err)
+		} else if len(config.AstraHost) > 0 {
+			bundle.Host = config.AstraHost
 		}
-		resolver = astra.NewResolver(bundle)
+		resolver = astra.NewResolver(bundle, config.AstraTimeout)
 		config.Username = "token"
 		config.Password = config.AstraToken
 	} else if len(config.ContactPoints) > 0 {
