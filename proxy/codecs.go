@@ -41,8 +41,6 @@ func (c *partialQueryCodec) EncodedLength(_ message.Message, _ primitive.Protoco
 func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (message.Message, error) {
 	if query, err := primitive.ReadLongString(source); err != nil {
 		return nil, err
-	} else if query == "" {
-		return nil, fmt.Errorf("cannot read QUERY empty query string")
 	} else {
 		return &partialQuery{query}, nil
 	}

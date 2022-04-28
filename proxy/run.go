@@ -56,6 +56,7 @@ var config struct {
 	HeartbeatInterval  time.Duration `yaml:"heartbeat-interval" help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
 	IdleTimeout        time.Duration `yaml:"idle-timeout" help:"Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed" default:"60s" env:"IDLE_TIMEOUT"`
 	ReadinessTimeout   time.Duration `yaml:"readiness-timeout" help:"Duration the proxy is unable to connect to the backend cluster before it is considered not ready" default:"30s" env:"READINESS_TIMEOUT"`
+	IdempotentGraph    bool          `yaml:"idempotent-graph" help:"If true it will treat all graph queries as idempotent by default and retry them automatically. It may be dangerous to retry some graph queries -- use with caution." default:"false" env:"IDEMPOTENT_GRAPH"`
 	NumConns           int           `yaml:"num-conns" help:"Number of connection to create to each node of the backend cluster" default:"1" env:"NUM_CONNS"`
 	RpcAddress         string        `yaml:"rpc-address" help:"Address to advertise in the 'system.local' table for 'rpc_address'. It must be set if configuring peer proxies" env:"RPC_ADDRESS"`
 	DataCenter         string        `yaml:"data-center" help:"Data center to use in system tables" env:"DATA_CENTER"`
@@ -177,6 +178,7 @@ func Run(ctx context.Context, args []string) int {
 		DC:                config.DataCenter,
 		Tokens:            config.Tokens,
 		Peers:             config.Peers,
+		IdempotentGraph:   config.IdempotentGraph,
 	})
 
 	config.Bind = maybeAddPort(config.Bind, "9042")

@@ -39,8 +39,8 @@ Usage: cql-proxy
 
 Flags:
   -h, --help                                              Show context-sensitive help.
-  -b, --astra-bundle=STRING                               Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option
-                                                          ($ASTRA_BUNDLE).
+  -b, --astra-bundle=STRING                               Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points
+                                                          option ($ASTRA_BUNDLE).
   -t, --astra-token=STRING                                Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option
                                                           ($ASTRA_TOKEN).
   -i, --astra-database-id=STRING                          Database ID of the Astra database. Requires '--astra-token' ($ASTRA_DATABASE_ID)
@@ -59,6 +59,8 @@ Flags:
       --heartbeat-interval=30s                            Interval between performing heartbeats to the cluster ($HEARTBEAT_INTERVAL)
       --idle-timeout=60s                                  Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed ($IDLE_TIMEOUT)
       --readiness-timeout=30s                             Duration the proxy is unable to connect to the backend cluster before it is considered not ready ($READINESS_TIMEOUT)
+      --idempotent-graph                                  If true it will treat all graph queries as idempotent by default and retry them automatically. It may be dangerous to retry some graph
+                                                          queries -- use with caution ($IDEMPOTENT_GRAPH).
       --num-conns=1                                       Number of connection to create to each node of the backend cluster ($NUM_CONNS)
       --rpc-address=STRING                                Address to advertise in the 'system.local' table for 'rpc_address'. It must be set if configuring peer proxies ($RPC_ADDRESS)
       --data-center=STRING                                Data center to use in system tables ($DATA_CENTER)

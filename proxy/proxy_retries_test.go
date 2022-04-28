@@ -69,7 +69,7 @@ func TestProxy_Retries(t *testing.T) {
 			2, // Retried on all remaining nodes
 		},
 		{
-			"error response (truncate) w/ non-idempotent query, retry until succeeds or exhausts query plan",
+			"error response (truncate) w/ non-idempotent query, don't retry",
 			nonIdempotentQuery,
 			&message.TruncateError{ErrorMessage: "Truncate"},
 			1, // Tried the queried on the first node and it failed
@@ -316,13 +316,73 @@ func TestProxy_BatchRetries(t *testing.T) {
 	}
 }
 
-func testProxyRetry(t *testing.T, query message.Message, response message.Error, testMessage string) (numNodesTried, retryCount int, responseError error) {
+func TestProxy_RetryGraphQueries(t *testing.T) {
+	var tests = []struct {
+		msg           string
+		query         string
+		graph         bool
+		cfg           *proxyTestConfig
+		response      message.Error
+		numNodesTried int
+		retryCount    int
+	}{
+		{
+			"error response (truncate) w/ graph query, not retried",
+			"g.V().has('person', 'name', 'mike')",
+			true,
+			nil,
+			&message.TruncateError{ErrorMessage: "Truncate"},
+			1, // Tried on the first node and fails
+			0, // Not retried because graph queries are not considered idempotent
+		},
+		{
+			"error response (truncate) w/ graph query and idempotent override; retried on all nodes",
+			"g.V().has('person', 'name', 'mike')",
+			true,
+			&proxyTestConfig{idempotentGraph: true}, // Override to consider graph queries as idempotent
+			&message.TruncateError{ErrorMessage: "Truncate"},
+			3, // Tried on all nodes because of the idempotent override
+			2, // Retried twice after the initial failure
+		},
+		{
+			"error response (truncate) w/ non-idempotent, non-graph query, should *not* be retried",
+			nonIdempotentQuery,
+			false,
+			&proxyTestConfig{idempotentGraph: true}, // Override to consider graph queries as idempotent, but not CQL
+			&message.TruncateError{ErrorMessage: "Truncate"},
+			1, // Tried on the first node and fails
+			0, // Not retried because graph queries are not considered idempotent
+		},
+	}
+
+	for _, tt := range tests {
+		frm := frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{Query: tt.query})
+		if tt.graph {
+			frm.SetCustomPayload(map[string][]byte{"graph-source": []byte("g")}) // This is used by the proxy to determine if it's a graph query
+		}
+
+		numNodesTried, retryCount, err := testProxyRetryWithConfig(t, frm, tt.response, tt.cfg, tt.msg)
+
+		assert.Error(t, err, tt.msg)
+		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
+		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
+		assert.Equal(t, tt.retryCount, retryCount, tt.msg)
+	}
+}
+
+func testProxyRetryWithConfig(t *testing.T, query *frame.Frame, response message.Error, cfg *proxyTestConfig, testMessage string) (numNodesTried, retryCount int, responseError error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	var mu sync.Mutex
 	tried := make(map[string]int)
 	prepared := make(map[[16]byte]string)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tester, proxyContactPoint, err := setupProxyTest(ctx, 3, proxycore.MockRequestHandlers{
+	if cfg == nil {
+		cfg = &proxyTestConfig{}
+	}
+
+	cfg.handlers = proxycore.MockRequestHandlers{
 		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
 			if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
 				return msg
@@ -378,7 +438,9 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error,
 				PreparedQueryId: id[:],
 			}
 		},
-	})
+	}
+
+	tester, proxyContactPoint, err := setupProxyTestWithConfig(ctx, 3, cfg)
 	defer func() {
 		cancel()
 		tester.shutdown()
@@ -387,7 +449,7 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error,
 
 	cl := connectTestClient(t, ctx, proxyContactPoint)
 
-	_, err = cl.Query(ctx, primitive.ProtocolVersion4, query)
+	_, err = cl.QueryFrame(ctx, query)
 
 	if cqlErr, ok := err.(*proxycore.CqlError); ok {
 		if unprepared, ok := cqlErr.Message.(*message.Unprepared); ok {
@@ -397,7 +459,7 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error,
 			if err != nil {
 				return 0, 0, err
 			}
-			_, err = cl.Query(ctx, primitive.ProtocolVersion4, query)
+			_, err = cl.QueryFrame(ctx, query)
 		}
 	}
 
@@ -406,4 +468,8 @@ func testProxyRetry(t *testing.T, query message.Message, response message.Error,
 		retryCount += v
 	}
 	return len(tried), retryCount - 1, err
+}
+
+func testProxyRetry(t *testing.T, query message.Message, response message.Error, testMessage string) (numNodesTried, retryCount int, responseError error) {
+	return testProxyRetryWithConfig(t, frame.NewFrame(primitive.ProtocolVersion4, -1, query), response, nil, testMessage)
 }
