@@ -316,8 +316,8 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 		return nil, ClusterInfo{}, err
 	}
 
-	dseVersion, err := row.StringByName("dse_version") // It's okay if this doesn't exist
-	if err != nil && err != ColumnNameNotFound {
+	dseVersion, err := row.StringByName("dse_version") // It's okay if this doesn't exist (or is null)
+	if err != nil && err != ColumnNameNotFound && err != ColumnIsNull {
 		return nil, ClusterInfo{}, err
 	}
 
