@@ -315,39 +315,11 @@ func TestProxy_BatchRetries(t *testing.T) {
 	}
 }
 
-func TestProxy_IdempotentOverride(t *testing.T) {
+func TestProxy_RetryGraphQueries(t *testing.T) {
 	var tests = []struct {
 		msg           string
 		query         string
-		response      message.Error
-		numNodesTried int
-		retryCount    int
-	}{
-		{
-			"error response (truncate) w/ non-idempotent query, but it retries anyway because it's overridden",
-			nonIdempotentQuery, // NOT idempotent, but it's over
-			&message.TruncateError{ErrorMessage: "Truncate"},
-			3, // Tried on all nodes even though it's not idempotent
-			2, // Retried twice after the initial failure
-		},
-	}
-
-	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetryWithConfig(t,
-			frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{Query: tt.query}), tt.response,
-			&proxyTestConfig{idempotent: true}) // All statements are considered idempotent
-		assert.Error(t, err, tt.msg)
-		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
-		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
-		assert.Equal(t, tt.retryCount, retryCount, tt.msg)
-	}
-}
-
-func TestProxy_RetryGraphQueries(t *testing.T) {
-	const query = "g.V().has('person', 'name', 'mike')" // Doesn't really matter what query this is
-
-	var tests = []struct {
-		msg           string
+		graph         bool
 		cfg           *proxyTestConfig
 		response      message.Error
 		numNodesTried int
@@ -355,6 +327,8 @@ func TestProxy_RetryGraphQueries(t *testing.T) {
 	}{
 		{
 			"error response (truncate) w/ graph query, not retried",
+			"g.V().has('person', 'name', 'mike')",
+			true,
 			nil,
 			&message.TruncateError{ErrorMessage: "Truncate"},
 			1, // Tried on the first node and fails
@@ -362,16 +336,29 @@ func TestProxy_RetryGraphQueries(t *testing.T) {
 		},
 		{
 			"error response (truncate) w/ graph query and idempotent override; retried on all nodes",
-			&proxyTestConfig{idempotent: true}, // Override to consider all queries as idempotent
+			"g.V().has('person', 'name', 'mike')",
+			true,
+			&proxyTestConfig{idempotentGraph: true}, // Override to consider graph queries as idempotent
 			&message.TruncateError{ErrorMessage: "Truncate"},
 			3, // Tried on all nodes because of the idempotent override
 			2, // Retried twice after the initial failure
 		},
+		{
+			"error response (truncate) w/ non-idempotent, non-graph query, should *not* be retried",
+			nonIdempotentQuery,
+			false,
+			&proxyTestConfig{idempotentGraph: true}, // Override to consider graph queries as idempotent, but not CQL
+			&message.TruncateError{ErrorMessage: "Truncate"},
+			1, // Tried on the first node and fails
+			0, // Not retried because graph queries are not considered idempotent
+		},
 	}
 
 	for _, tt := range tests {
-		frm := frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{Query: query})
-		frm.SetCustomPayload(map[string][]byte{"graph-source": []byte("g")}) // This is used by the proxy to determine if it's a graph query
+		frm := frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{Query: tt.query})
+		if tt.graph {
+			frm.SetCustomPayload(map[string][]byte{"graph-source": []byte("g")}) // This is used by the proxy to determine if it's a graph query
+		}
 
 		numNodesTried, retryCount, err := testProxyRetryWithConfig(t, frm, tt.response, tt.cfg)
 

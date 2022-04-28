@@ -66,7 +66,7 @@ type Config struct {
 	Resolver          proxycore.EndpointResolver
 	ReconnectPolicy   proxycore.ReconnectPolicy
 	RetryPolicy       RetryPolicy
-	Idempotent        bool
+	IdempotentGraph   bool
 	NumConns          int
 	Logger            *zap.Logger
 	HeartBeatInterval time.Duration
@@ -631,11 +631,13 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 
 func (c *client) getDefaultIdempotency(customPayload map[string][]byte) idempotentState {
 	state := notDetermined
-	if c.proxy.config.Idempotent {
-		state = isIdempotent
-	} else if _, ok := customPayload["graph-source"]; ok { // Graph queries default to non-idempotent unless overridden
+	if _, ok := customPayload["graph-source"]; ok { // Graph queries default to non-idempotent unless overridden
 		c.proxy.maybeLogUsingGraph()
-		state = notIdempotent
+		if c.proxy.config.IdempotentGraph {
+			state = isIdempotent
+		} else {
+			state = notIdempotent
+		}
 	}
 	return state
 }

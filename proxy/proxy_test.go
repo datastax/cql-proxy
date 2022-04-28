@@ -269,11 +269,11 @@ func setupProxyTest(t *testing.T, ctx context.Context, numNodes int, handlers pr
 }
 
 type proxyTestConfig struct {
-	handlers   proxycore.MockRequestHandlers
-	dseVersion string
-	rpcAddr    string
-	peers      []PeerConfig
-	idempotent bool
+	handlers        proxycore.MockRequestHandlers
+	dseVersion      string
+	rpcAddr         string
+	peers           []PeerConfig
+	idempotentGraph bool
 }
 
 func setupProxyTestWithConfig(t *testing.T, ctx context.Context, numNodes int, cfg *proxyTestConfig) (*proxycore.MockCluster, *Proxy) {
@@ -303,7 +303,7 @@ func setupProxyTestWithConfig(t *testing.T, ctx context.Context, numNodes int, c
 		IdleTimeout:       60 * time.Second,
 		RPCAddr:           cfg.rpcAddr,
 		Peers:             cfg.peers,
-		Idempotent:        cfg.idempotent,
+		IdempotentGraph:   cfg.idempotentGraph,
 	})
 
 	err := proxy.Listen(testProxyContactPoint)
