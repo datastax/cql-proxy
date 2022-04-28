@@ -25,6 +25,7 @@ import (
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const idempotentQuery = "INSERT INTO test.test (k, v) VALUES ('a', 123e4567-e89b-12d3-a456-426614174000)"
@@ -195,7 +196,7 @@ func TestProxy_Retries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetry(t, &message.Query{Query: tt.query}, tt.response)
+		numNodesTried, retryCount, err := testProxyRetry(t, &message.Query{Query: tt.query}, tt.response, tt.msg)
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
 		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
@@ -228,7 +229,7 @@ func TestProxy_PreparedRetries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetry(t, tt.execute, tt.response)
+		numNodesTried, retryCount, err := testProxyRetry(t, tt.execute, tt.response, tt.msg)
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
 		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
@@ -307,7 +308,7 @@ func TestProxy_BatchRetries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		numNodesTried, retryCount, err := testProxyRetry(t, tt.batch, tt.response)
+		numNodesTried, retryCount, err := testProxyRetry(t, tt.batch, tt.response, tt.msg)
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
 		assert.Equal(t, tt.numNodesTried, numNodesTried, tt.msg)
@@ -360,7 +361,7 @@ func TestProxy_RetryGraphQueries(t *testing.T) {
 			frm.SetCustomPayload(map[string][]byte{"graph-source": []byte("g")}) // This is used by the proxy to determine if it's a graph query
 		}
 
-		numNodesTried, retryCount, err := testProxyRetryWithConfig(t, frm, tt.response, tt.cfg)
+		numNodesTried, retryCount, err := testProxyRetryWithConfig(t, frm, tt.response, tt.cfg, tt.msg)
 
 		assert.Error(t, err, tt.msg)
 		assert.IsType(t, err, &proxycore.CqlError{}, tt.msg)
@@ -369,7 +370,7 @@ func TestProxy_RetryGraphQueries(t *testing.T) {
 	}
 }
 
-func testProxyRetryWithConfig(t *testing.T, query *frame.Frame, response message.Error, cfg *proxyTestConfig) (numNodesTried, retryCount int, responseError error) {
+func testProxyRetryWithConfig(t *testing.T, query *frame.Frame, response message.Error, cfg *proxyTestConfig, testMessage string) (numNodesTried, retryCount int, responseError error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -439,15 +440,16 @@ func testProxyRetryWithConfig(t *testing.T, query *frame.Frame, response message
 		},
 	}
 
-	cluster, proxy := setupProxyTestWithConfig(t, ctx, 3, cfg)
+	tester, proxyContactPoint, err := setupProxyTestWithConfig(ctx, 3, cfg)
 	defer func() {
-		cluster.Shutdown()
-		_ = proxy.Close()
+		cancel()
+		tester.shutdown()
 	}()
+	require.NoError(t, err, testMessage)
 
-	cl := connectTestClient(t, ctx)
+	cl := connectTestClient(t, ctx, proxyContactPoint)
 
-	_, err := cl.QueryFrame(ctx, query)
+	_, err = cl.QueryFrame(ctx, query)
 
 	if cqlErr, ok := err.(*proxycore.CqlError); ok {
 		if unprepared, ok := cqlErr.Message.(*message.Unprepared); ok {
@@ -468,6 +470,6 @@ func testProxyRetryWithConfig(t *testing.T, query *frame.Frame, response message
 	return len(tried), retryCount - 1, err
 }
 
-func testProxyRetry(t *testing.T, query message.Message, response message.Error) (numNodesTried, retryCount int, responseError error) {
-	return testProxyRetryWithConfig(t, frame.NewFrame(primitive.ProtocolVersion4, -1, query), response, nil)
+func testProxyRetry(t *testing.T, query message.Message, response message.Error, testMessage string) (numNodesTried, retryCount int, responseError error) {
+	return testProxyRetryWithConfig(t, frame.NewFrame(primitive.ProtocolVersion4, -1, query), response, nil, testMessage)
 }
