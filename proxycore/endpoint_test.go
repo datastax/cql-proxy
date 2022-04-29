@@ -213,7 +213,7 @@ func (t testEndpoint) IsResolved() bool {
 	return t.isResolved
 }
 
-func (t testEndpoint) TlsConfig() *tls.Config {
+func (t testEndpoint) TLSConfig() *tls.Config {
 	return nil
 }
 

@@ -57,7 +57,7 @@ func TestAstraResolver_Resolve(t *testing.T) {
 	for _, endpoint := range endpoints {
 		assert.False(t, endpoint.IsResolved())
 		assert.Equal(t, sniProxyAddr, endpoint.Addr())
-		assert.Contains(t, contactPoints, endpoint.TlsConfig().ServerName)
+		assert.Contains(t, contactPoints, endpoint.TLSConfig().ServerName)
 	}
 }
 
@@ -221,41 +221,16 @@ func runTestMetaSvcAsync(sniProxyAddr string, contactPoints []string) (*http.Ser
 }
 
 func createServerTLSConfig(dnsName string) (*tls.Config, error) {
-	serverCert, err := getOrCreateCert(dnsName)
-	if err != nil {
-		return nil, err
-	}
-
-	caCert, err := getOrCreateCA()
-	if err != nil {
-		return nil, err
-	}
-
 	rootCAs, err := createCertPool()
 	if err != nil {
 		return nil, err
 	}
 
-	caCertPEM, err := caCert.certPEM()
-	if err != nil {
-		return nil, err
-	}
-
-	if !rootCAs.AppendCertsFromPEM(caCertPEM) {
+	if !rootCAs.AppendCertsFromPEM(testCAPEM) {
 		return nil, errors.New("unable to add cert to CA pool")
 	}
 
-	serverCertPEM, err := serverCert.certPEM()
-	if err != nil {
-		return nil, err
-	}
-
-	serverKeyPEM, err := serverCert.keyPEM()
-	if err != nil {
-		return nil, err
-	}
-
-	cert, err := tls.X509KeyPair(serverCertPEM, serverKeyPEM)
+	cert, err := tls.X509KeyPair(testCertPEM, testKeyPEM)
 	if err != nil {
 		return nil, err
 	}

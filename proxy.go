@@ -26,7 +26,8 @@ func main() {
 	ctx, cancel := signalContext(context.Background(), os.Interrupt, os.Kill)
 	defer cancel()
 
-	os.Exit(proxy.Run(ctx, os.Args[1:]))
+	var r proxy.Runner
+	os.Exit(r.Run(ctx, os.Args[1:]))
 }
 
 // signalContext is a simplified version of `signal.NotifyContext()` for  golang 1.15 and earlier

@@ -78,8 +78,8 @@ func Connect(ctx context.Context, endpoint Endpoint, recv Receiver) (c *Conn, er
 		}
 	}()
 
-	if endpoint.TlsConfig() != nil {
-		tlsConn := tls.Client(conn, endpoint.TlsConfig())
+	if endpoint.TLSConfig() != nil {
+		tlsConn := tls.Client(conn, endpoint.TLSConfig())
 		if err = tlsConn.Handshake(); err != nil {
 			return nil, err
 		}

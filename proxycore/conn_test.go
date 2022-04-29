@@ -56,7 +56,7 @@ func TestConnect(t *testing.T) {
 	}()
 
 	clientRecv := newTestRecv(serverData)
-	clientConn, err := Connect(ctx, &defaultEndpoint{"127.0.0.1:8123"}, clientRecv)
+	clientConn, err := Connect(ctx, NewEndpoint("127.0.0.1:8123"), clientRecv)
 	require.NoError(t, err, "failed to connect")
 
 	err = clientConn.WriteBytes(clientData)
@@ -89,7 +89,7 @@ func TestConnect_Failures(t *testing.T) {
 		endpoint Endpoint
 		err      string
 	}{
-		{endpoint: &defaultEndpoint{"127.0.0.1:8333"}, err: "connection refused"},
+		{endpoint: NewEndpoint("127.0.0.1:8333"), err: "connection refused"},
 		{endpoint: &testEndpoint{addr: "127.0.0.1"}, err: "missing port in address"},
 	}
 	ctx := context.Background()
