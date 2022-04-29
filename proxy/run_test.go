@@ -429,7 +429,7 @@ func TestRun_ProxyTLS(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	dir, err := os.MkdirTemp(os.TempDir(), "certs")
+	dir, err := ioutil.TempDir("", "certs")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
