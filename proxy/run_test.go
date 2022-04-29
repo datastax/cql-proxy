@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"sync"
@@ -428,16 +429,16 @@ func TestRun_ProxyTLS(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	certFile, err := os.CreateTemp(os.TempDir(), "cert")
-	certFile.Close()
-	defer os.Remove(certFile.Name())
-	err = ioutil.WriteFile(certFile.Name(), append(testCertPEM[:], testCAPEM[:]...), 0644)
+	dir, err := os.MkdirTemp(os.TempDir(), "certs")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	certFile := path.Join(dir, "cert")
+	err = ioutil.WriteFile(certFile, append(testCertPEM[:], testCAPEM[:]...), 0644)
 	require.NoError(t, err)
 
-	keyFile, err := os.CreateTemp(os.TempDir(), "key")
-	keyFile.Close()
-	defer os.Remove(keyFile.Name())
-	err = ioutil.WriteFile(keyFile.Name(), testKeyPEM, 0644)
+	keyFile := path.Join(dir, "key")
+	err = ioutil.WriteFile(keyFile, testKeyPEM, 0644)
 	require.NoError(t, err)
 
 	go func() {
@@ -449,8 +450,8 @@ func TestRun_ProxyTLS(t *testing.T) {
 			"--health-check",
 			"--http-bind", httpBindAddr,
 			"--readiness-timeout", "200ms", // Use short timeout for the test
-			"--proxy-cert-file", certFile.Name(),
-			"--proxy-key-file", keyFile.Name(),
+			"--proxy-cert-file", certFile,
+			"--proxy-key-file", keyFile,
 		})
 		assert.Equal(t, 0, rc)
 		wg.Done()
