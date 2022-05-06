@@ -140,7 +140,7 @@ func (a astraEndpoint) IsResolved() bool {
 	return false
 }
 
-func (a astraEndpoint) TlsConfig() *tls.Config {
+func (a astraEndpoint) TLSConfig() *tls.Config {
 	return a.tlsConfig
 }
 

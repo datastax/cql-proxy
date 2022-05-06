@@ -356,7 +356,7 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 		return tester, proxyAddr, err
 	}
 
-	l, err := resolveAndListen(proxyAddr)
+	l, err := resolveAndListen(proxyAddr, "", "")
 	if err != nil {
 		return tester, proxyAddr, err
 	}

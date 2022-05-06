@@ -29,12 +29,13 @@ type Endpoint interface {
 	fmt.Stringer
 	Addr() string
 	IsResolved() bool
-	TlsConfig() *tls.Config
+	TLSConfig() *tls.Config
 	Key() string
 }
 
 type defaultEndpoint struct {
-	addr string
+	addr      string
+	tlsConfig *tls.Config
 }
 
 func (e defaultEndpoint) String() string {
@@ -53,8 +54,8 @@ func (e defaultEndpoint) Addr() string {
 	return e.addr
 }
 
-func (e defaultEndpoint) TlsConfig() *tls.Config {
-	return nil
+func (e defaultEndpoint) TLSConfig() *tls.Config {
+	return e.tlsConfig
 }
 
 type EndpointResolver interface {
@@ -68,7 +69,11 @@ type defaultEndpointResolver struct {
 }
 
 func NewEndpoint(addr string) Endpoint {
-	return &defaultEndpoint{addr}
+	return &defaultEndpoint{addr: addr}
+}
+
+func NewEndpointTLS(addr string, cfg *tls.Config) Endpoint {
+	return &defaultEndpoint{addr, cfg}
 }
 
 func NewResolver(contactPoints ...string) EndpointResolver {
@@ -98,7 +103,7 @@ func (r *defaultEndpointResolver) Resolve() ([]Endpoint, error) {
 		}
 		for _, addr := range addrs {
 			endpoints = append(endpoints, &defaultEndpoint{
-				net.JoinHostPort(addr, port),
+				addr: net.JoinHostPort(addr, port),
 			})
 		}
 	}

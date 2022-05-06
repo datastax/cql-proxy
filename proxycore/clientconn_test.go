@@ -44,7 +44,7 @@ func TestClientConn_Handshake(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, primitive.ProtocolVersion4, nil)
@@ -67,7 +67,7 @@ func TestClientConn_HandshakeNegotiateProtocolVersion(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	version, err := cl.Handshake(ctx, starting, nil)
@@ -91,7 +91,7 @@ func TestClientConn_HandshakePasswordAuth(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, NewPasswordAuth(username, password))
@@ -114,7 +114,7 @@ func TestConnectClientWithEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	events := make(chan *frame.Frame)
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{
 		Handler: EventHandlerFunc(func(frm *frame.Frame) {
 			events <- frm
 		}),
@@ -162,7 +162,7 @@ func TestClientConn_HandshakePasswordInvalidAuth(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, NewPasswordAuth("invalid", "invalid"))
@@ -186,7 +186,7 @@ func TestClientConn_HandshakeAuthRequireButNotProvided(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, starting, nil)
@@ -210,7 +210,7 @@ func TestClientConn_Query(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -259,7 +259,7 @@ func TestClientConn_SetKeyspace(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -313,7 +313,7 @@ func TestClientConn_Inflight(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -392,7 +392,7 @@ func TestClientConn_Unprepared(t *testing.T) {
 	var preparedCache testPrepareCache
 	preparedCache.Store(hex.EncodeToString(preparedId), &PreparedEntry{prepareFrame})
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{PreparedCache: &preparedCache})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{PreparedCache: &preparedCache})
 	defer func(cl *ClientConn) {
 		_ = cl.Close()
 	}(cl)
@@ -451,7 +451,7 @@ func TestClientConn_UnpreparedNotCached(t *testing.T) {
 
 	var preparedCache testPrepareCache
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"},
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"),
 		ClientConnConfig{
 			PreparedCache: &preparedCache, // Empty cache
 			Logger:        logger,
@@ -597,7 +597,7 @@ func TestClientConn_Heartbeats(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -635,7 +635,7 @@ func TestClientConn_HeartbeatsError(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -677,7 +677,7 @@ func TestClientConn_HeartbeatsTimeout(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
@@ -719,7 +719,7 @@ func TestClientConn_HeartbeatsUnexpectedMessage(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	cl, err := ConnectClient(ctx, &defaultEndpoint{"127.0.0.1:9042"}, ClientConnConfig{})
+	cl, err := ConnectClient(ctx, NewEndpoint("127.0.0.1:9042"), ClientConnConfig{})
 	require.NoError(t, err)
 
 	_, err = cl.Handshake(ctx, supported, nil)
