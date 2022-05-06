@@ -410,7 +410,6 @@ func TestRun_ConfigFileWithInvalidPeer(t *testing.T) {
 }
 
 func TestRun_ProxyTLS(t *testing.T) {
-	fmt.Println("------------------------------------------------------------")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	clusterPort, clusterAddr, proxyBindAddr, httpBindAddr := generateTestAddrs(testAddr)
