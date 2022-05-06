@@ -58,7 +58,7 @@ func (r *astraResolver) Resolve(ctx context.Context) ([]proxycore.Endpoint, erro
 
 	httpsClient := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: r.bundle.TlsConfig.Clone(),
+			TLSClientConfig: r.bundle.TLSConfig.Clone(),
 		},
 	}
 
@@ -156,7 +156,7 @@ func (a astraEndpoint) TLSConfig() *tls.Config {
 }
 
 func copyTLSConfig(bundle *Bundle, serverName string) *tls.Config {
-	tlsConfig := bundle.TlsConfig.Clone()
+	tlsConfig := bundle.TLSConfig.Clone()
 	tlsConfig.ServerName = serverName
 	tlsConfig.InsecureSkipVerify = true
 	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {

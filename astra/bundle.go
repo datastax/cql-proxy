@@ -33,7 +33,7 @@ import (
 )
 
 type Bundle struct {
-	TlsConfig *tls.Config
+	TLSConfig *tls.Config
 	Host      string
 	Port      int
 }
@@ -69,7 +69,7 @@ func LoadBundleZip(reader *zip.Reader) (*Bundle, error) {
 	}
 
 	return &Bundle{
-		TlsConfig: &tls.Config{
+		TLSConfig: &tls.Config{
 			RootCAs:      rootCAs,
 			Certificates: []tls.Certificate{cert},
 			ServerName:   config.Host,

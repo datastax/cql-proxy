@@ -49,13 +49,13 @@ func TestLoadBundleZip(t *testing.T) {
 	// Verify CA added to cert pool
 	caSub, err := asn1.Marshal(ca.Subject.ToRDNSequence())
 	found := false
-	for _, sub := range b.TlsConfig.RootCAs.Subjects() {
+	for _, sub := range b.TLSConfig.RootCAs.Subjects() {
 		if bytes.Compare(caSub, sub) == 0 {
 			found = true
 		}
 	}
 	assert.True(t, found)
-	require.Equal(t, 1, len(b.TlsConfig.Certificates))
+	require.Equal(t, 1, len(b.TLSConfig.Certificates))
 }
 
 func TestLoadBundleZip_InvalidJson(t *testing.T) {
