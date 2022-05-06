@@ -39,7 +39,7 @@ import (
 const livenessPath = "/liveness"
 const readinessPath = "/readiness"
 
-type runner struct {
+type runConfig struct {
 	AstraBundle        string        `yaml:"astra-bundle" help:"Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option." short:"b" env:"ASTRA_BUNDLE"`
 	AstraToken         string        `yaml:"astra-token" help:"Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option." short:"t" env:"ASTRA_TOKEN"`
 	AstraDatabaseID    string        `yaml:"astra-database-id" help:"Database ID of the Astra database. Requires '--astra-token'" short:"i" env:"ASTRA_DATABASE_ID"`
@@ -71,10 +71,10 @@ type runner struct {
 // Run starts the proxy command. 'args' shouldn't include the executable (i.e. os.Args[1:]). It returns the exit code
 // for the proxy.
 func Run(ctx context.Context, args []string) int {
-	var r runner
+	var cfg runConfig
 	var err error
 
-	parser, err := kong.New(&r)
+	parser, err := kong.New(&cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -85,65 +85,65 @@ func Run(ctx context.Context, args []string) int {
 		return 1
 	}
 
-	if r.Config != nil {
-		bytes, err := ioutil.ReadAll(r.Config)
+	if cfg.Config != nil {
+		bytes, err := ioutil.ReadAll(cfg.Config)
 		if err != nil {
-			cliCtx.Errorf("unable to read contents of configuration file '%s': %v", r.Config.Name(), err)
+			cliCtx.Errorf("unable to read contents of configuration file '%s': %v", cfg.Config.Name(), err)
 			return 1
 		}
-		err = yaml.Unmarshal(bytes, &r)
+		err = yaml.Unmarshal(bytes, &cfg)
 		if err != nil {
-			cliCtx.Errorf("invalid YAML in configuration file '%s': %v", r.Config.Name(), err)
+			cliCtx.Errorf("invalid YAML in configuration file '%s': %v", cfg.Config.Name(), err)
 		}
 	}
 
 	var resolver proxycore.EndpointResolver
-	if len(r.AstraBundle) > 0 {
-		if bundle, err := astra.LoadBundleZipFromPath(r.AstraBundle); err != nil {
-			cliCtx.Errorf("unable to open bundle %s from file: %v", r.AstraBundle, err)
+	if len(cfg.AstraBundle) > 0 {
+		if bundle, err := astra.LoadBundleZipFromPath(cfg.AstraBundle); err != nil {
+			cliCtx.Errorf("unable to open bundle %s from file: %v", cfg.AstraBundle, err)
 			return 1
 		} else {
 			resolver = astra.NewResolver(bundle)
 		}
-	} else if len(r.AstraToken) > 0 {
-		if len(r.AstraDatabaseID) == 0 {
+	} else if len(cfg.AstraToken) > 0 {
+		if len(cfg.AstraDatabaseID) == 0 {
 			cliCtx.Fatalf("database ID is required when using a token")
 		}
-		bundle, err := astra.LoadBundleZipFromURL(r.AstraApiURL, r.AstraDatabaseID, r.AstraToken, 10*time.Second)
+		bundle, err := astra.LoadBundleZipFromURL(cfg.AstraApiURL, cfg.AstraDatabaseID, cfg.AstraToken, 10*time.Second)
 		if err != nil {
-			cliCtx.Fatalf("unable to load bundle %s from astra: %v", r.AstraBundle, err)
+			cliCtx.Fatalf("unable to load bundle %s from astra: %v", cfg.AstraBundle, err)
 		}
 		resolver = astra.NewResolver(bundle)
-		r.Username = "token"
-		r.Password = r.AstraToken
-	} else if len(r.ContactPoints) > 0 {
-		resolver = proxycore.NewResolverWithDefaultPort(r.ContactPoints, r.Port)
+		cfg.Username = "token"
+		cfg.Password = cfg.AstraToken
+	} else if len(cfg.ContactPoints) > 0 {
+		resolver = proxycore.NewResolverWithDefaultPort(cfg.ContactPoints, cfg.Port)
 	} else {
 		cliCtx.Errorf("must provide either bundle path, token, or contact points")
 		return 1
 	}
 
-	if r.HeartbeatInterval >= r.IdleTimeout {
+	if cfg.HeartbeatInterval >= cfg.IdleTimeout {
 		cliCtx.Errorf("idle-timeout must be greater than heartbeat-interval (heartbeat interval: %s, idle timeout: %s)",
-			r.HeartbeatInterval, r.IdleTimeout)
+			cfg.HeartbeatInterval, cfg.IdleTimeout)
 		return 1
 	}
 
-	if r.NumConns < 1 {
-		cliCtx.Errorf("invalid number of connections, must be greater than 0 (provided: %d)", r.NumConns)
+	if cfg.NumConns < 1 {
+		cliCtx.Errorf("invalid number of connections, must be greater than 0 (provided: %d)", cfg.NumConns)
 		return 1
 	}
 
 	var ok bool
 	var version primitive.ProtocolVersion
-	if version, ok = parseProtocolVersion(r.ProtocolVersion); !ok {
-		cliCtx.Errorf("unsupported protocol version: %s", r.ProtocolVersion)
+	if version, ok = parseProtocolVersion(cfg.ProtocolVersion); !ok {
+		cliCtx.Errorf("unsupported protocol version: %s", cfg.ProtocolVersion)
 		return 1
 	}
 
 	var maxVersion primitive.ProtocolVersion
-	if maxVersion, ok = parseProtocolVersion(r.MaxProtocolVersion); !ok {
-		cliCtx.Errorf("unsupported max protocol version: %s", r.ProtocolVersion)
+	if maxVersion, ok = parseProtocolVersion(cfg.MaxProtocolVersion); !ok {
+		cliCtx.Errorf("unsupported max protocol version: %s", cfg.ProtocolVersion)
 		return 1
 	}
 
@@ -153,7 +153,7 @@ func Run(ctx context.Context, args []string) int {
 	}
 
 	var logger *zap.Logger
-	if r.Debug {
+	if cfg.Debug {
 		logger, err = zap.NewDevelopment()
 	} else {
 		logger, err = zap.NewProduction()
@@ -165,8 +165,8 @@ func Run(ctx context.Context, args []string) int {
 
 	var auth proxycore.Authenticator
 
-	if len(r.Username) > 0 || len(r.Password) > 0 {
-		auth = proxycore.NewPasswordAuth(r.Username, r.Password)
+	if len(cfg.Username) > 0 || len(cfg.Password) > 0 {
+		auth = proxycore.NewPasswordAuth(cfg.Username, cfg.Password)
 	}
 
 	p := NewProxy(ctx, Config{
@@ -174,25 +174,25 @@ func Run(ctx context.Context, args []string) int {
 		MaxVersion:        maxVersion,
 		Resolver:          resolver,
 		ReconnectPolicy:   proxycore.NewReconnectPolicy(),
-		NumConns:          r.NumConns,
+		NumConns:          cfg.NumConns,
 		Auth:              auth,
 		Logger:            logger,
-		HeartBeatInterval: r.HeartbeatInterval,
-		IdleTimeout:       r.IdleTimeout,
-		RPCAddr:           r.RpcAddress,
-		DC:                r.DataCenter,
-		Tokens:            r.Tokens,
-		Peers:             r.Peers,
-		IdempotentGraph:   r.IdempotentGraph,
+		HeartBeatInterval: cfg.HeartbeatInterval,
+		IdleTimeout:       cfg.IdleTimeout,
+		RPCAddr:           cfg.RpcAddress,
+		DC:                cfg.DataCenter,
+		Tokens:            cfg.Tokens,
+		Peers:             cfg.Peers,
+		IdempotentGraph:   cfg.IdempotentGraph,
 	})
 
-	r.Bind = maybeAddPort(r.Bind, "9042")
-	r.HttpBind = maybeAddPort(r.HttpBind, "8000")
+	cfg.Bind = maybeAddPort(cfg.Bind, "9042")
+	cfg.HttpBind = maybeAddPort(cfg.HttpBind, "8000")
 
 	var mux http.ServeMux
-	r.maybeAddHealthCheck(p, &mux)
+	cfg.maybeAddHealthCheck(p, &mux)
 
-	err = r.listenAndServe(p, &mux, ctx, logger)
+	err = cfg.listenAndServe(p, &mux, ctx, logger)
 	if err != nil {
 		cliCtx.Errorf("%v", err)
 		return 1
@@ -221,8 +221,8 @@ func parseProtocolVersion(s string) (version primitive.ProtocolVersion, ok bool)
 }
 
 // maybeAddHealthCheck checks the config and adds handlers for health checks if required.
-func (r *runner) maybeAddHealthCheck(p *Proxy, mux *http.ServeMux) {
-	if r.HealthCheck {
+func (c *runConfig) maybeAddHealthCheck(p *Proxy, mux *http.ServeMux) {
+	if c.HealthCheck {
 		mux.HandleFunc(livenessPath, func(writer http.ResponseWriter, request *http.Request) {
 			writer.WriteHeader(http.StatusOK)
 			_, _ = writer.Write([]byte("ok"))
@@ -240,7 +240,7 @@ func (r *runner) maybeAddHealthCheck(p *Proxy, mux *http.ServeMux) {
 				return
 			}
 
-			if outageDuration < r.ReadinessTimeout {
+			if outageDuration < c.ReadinessTimeout {
 				writer.WriteHeader(http.StatusOK)
 				_, _ = writer.Write(response)
 			} else {
@@ -260,11 +260,11 @@ func maybeAddPort(addr string, defaultPort string) string {
 }
 
 // listenAndServe correctly handles serving both the proxy and an HTTP server simultaneously.
-func (r *runner) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *zap.Logger) (err error) {
+func (c *runConfig) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *zap.Logger) (err error) {
 	var wg sync.WaitGroup
 
 	ch := make(chan error)
-	server := http.Server{Addr: r.HttpBind, Handler: mux}
+	server := http.Server{Addr: c.HttpBind, Handler: mux}
 
 	numServers := 1 // Without the HTTP server
 
@@ -276,7 +276,7 @@ func (r *runner) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Contex
 		return err
 	}
 
-	proxyListener, err := resolveAndListen(r.Bind, r.ProxyCertFile, r.ProxyKeyFile)
+	proxyListener, err := resolveAndListen(c.Bind, c.ProxyCertFile, c.ProxyKeyFile)
 	if err != nil {
 		return err
 	}
@@ -285,17 +285,17 @@ func (r *runner) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Contex
 
 	var httpListener net.Listener
 
-	if r.HealthCheck {
+	if c.HealthCheck {
 		numServers++ // Add the HTTP server
 
-		httpListener, err = resolveAndListen(r.HttpBind, "", "")
+		httpListener, err = resolveAndListen(c.HttpBind, "", "")
 		if err != nil {
 			return err
 		}
 
 		logger.Info("health checks are listening",
-			zap.String("livenessURL", r.HttpBind+livenessPath),
-			zap.String("readinessURL", r.HttpBind+readinessPath))
+			zap.String("livenessURL", c.HttpBind+livenessPath),
+			zap.String("readinessURL", c.HttpBind+readinessPath))
 	}
 
 	wg.Add(numServers)
@@ -322,7 +322,7 @@ func (r *runner) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Contex
 		}
 	}()
 
-	if r.HealthCheck {
+	if c.HealthCheck {
 		go func() {
 			defer wg.Done()
 			err := server.Serve(httpListener)
