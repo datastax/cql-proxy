@@ -53,8 +53,7 @@ func TestRun_HealthChecks(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		var r Runner
-		rc := r.Run(ctx, []string{
+		rc := Run(ctx, []string{
 			"--bind", proxyBindAddr,
 			"--contact-points", clusterAddr,
 			"--port", strconv.Itoa(clusterPort),
@@ -141,8 +140,7 @@ func TestRun_ConfigFileWithPeers(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		var r Runner
-		rc := r.Run(ctx, []string{
+		rc := Run(ctx, []string{
 			"--config", configFileName,
 		})
 		assert.Equal(t, 0, rc)
@@ -240,8 +238,7 @@ func TestRun_ConfigFileWithTokensProvided(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		var r Runner
-		rc := r.Run(ctx, []string{
+		rc := Run(ctx, []string{
 			"--config", configFileName,
 		})
 		assert.Equal(t, 0, rc)
@@ -323,8 +320,7 @@ func TestRun_ConfigFileWithPeersAndNoRPCAddr(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var r Runner
-	rc := r.Run(ctx, []string{
+	rc := Run(ctx, []string{
 		"--config", configFileName,
 	})
 	require.Equal(t, 1, rc)
@@ -366,8 +362,7 @@ func TestRun_ConfigFileWithNoPeerTokens(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var r Runner
-	rc := r.Run(ctx, []string{
+	rc := Run(ctx, []string{
 		"--config", configFileName,
 	})
 	require.Equal(t, 1, rc)
@@ -408,8 +403,7 @@ func TestRun_ConfigFileWithInvalidPeer(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var r Runner
-	rc := r.Run(ctx, []string{
+	rc := Run(ctx, []string{
 		"--config", configFileName,
 	})
 	require.Equal(t, 1, rc)
@@ -442,8 +436,7 @@ func TestRun_ProxyTLS(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		var r Runner
-		rc := r.Run(ctx, []string{
+		rc := Run(ctx, []string{
 			"--bind", proxyBindAddr,
 			"--contact-points", clusterAddr,
 			"--port", strconv.Itoa(clusterPort),

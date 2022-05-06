@@ -39,7 +39,7 @@ import (
 const livenessPath = "/liveness"
 const readinessPath = "/readiness"
 
-type Runner struct {
+type runner struct {
 	AstraBundle        string        `yaml:"astra-bundle" help:"Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option." short:"b" env:"ASTRA_BUNDLE"`
 	AstraToken         string        `yaml:"astra-token" help:"Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option." short:"t" env:"ASTRA_TOKEN"`
 	AstraDatabaseID    string        `yaml:"astra-database-id" help:"Database ID of the Astra database. Requires '--astra-token'" short:"i" env:"ASTRA_DATABASE_ID"`
@@ -70,10 +70,11 @@ type Runner struct {
 
 // Run starts the proxy command. 'args' shouldn't include the executable (i.e. os.Args[1:]). It returns the exit code
 // for the proxy.
-func (r *Runner) Run(ctx context.Context, args []string) int {
+func Run(ctx context.Context, args []string) int {
+	var r runner
 	var err error
 
-	parser, err := kong.New(r)
+	parser, err := kong.New(&r)
 	if err != nil {
 		panic(err)
 	}
@@ -220,7 +221,7 @@ func parseProtocolVersion(s string) (version primitive.ProtocolVersion, ok bool)
 }
 
 // maybeAddHealthCheck checks the config and adds handlers for health checks if required.
-func (r *Runner) maybeAddHealthCheck(p *Proxy, mux *http.ServeMux) {
+func (r *runner) maybeAddHealthCheck(p *Proxy, mux *http.ServeMux) {
 	if r.HealthCheck {
 		mux.HandleFunc(livenessPath, func(writer http.ResponseWriter, request *http.Request) {
 			writer.WriteHeader(http.StatusOK)
@@ -259,7 +260,7 @@ func maybeAddPort(addr string, defaultPort string) string {
 }
 
 // listenAndServe correctly handles serving both the proxy and an HTTP server simultaneously.
-func (r *Runner) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *zap.Logger) (err error) {
+func (r *runner) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Context, logger *zap.Logger) (err error) {
 	var wg sync.WaitGroup
 
 	ch := make(chan error)
