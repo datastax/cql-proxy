@@ -342,7 +342,7 @@ func (c *runConfig) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Con
 	return err
 }
 
-func resolveAndListen(address string, cert, key string) (net.Listener, error) {
+func resolveAndListen(address, cert, key string) (net.Listener, error) {
 	if len(cert) > 0 || len(key) > 0 {
 		if len(cert) == 0 || len(key) == 0 {
 			return nil, errors.New("both certificate and private key are required for TLS")
