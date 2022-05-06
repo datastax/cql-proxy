@@ -80,7 +80,7 @@ To pass configuration to `cql-proxy`, either command-line flags, environment var
 
 ```sh
 docker run -p 9042:9042 \
-  --rm datastax/cql-proxy:v0.1.2 \
+  --rm datastax/cql-proxy:v0.1.3 \
   --astra-token <astra-token> --astra-database-id <astra-datbase-id>
 ```
 
@@ -88,7 +88,7 @@ docker run -p 9042:9042 \
 
 ```sh
 docker run -p 9042:9042  \
-  --rm datastax/cql-proxy:v0.1.2 \
+  --rm datastax/cql-proxy:v0.1.3 \
   -e ASTRA_TOKEN=<astra-token> -e ASTRA_DATABASE_ID=<astra-datbase-id>
 ```
 
@@ -195,7 +195,7 @@ There are three methods for using `cql-proxy`:
 
       ```sh
       docker run -p 9042:9042 \
-        datastax/cql-proxy:v0.1.2 \
+        datastax/cql-proxy:v0.1.3 \
         --astra-token <astra-token> --astra-database-id <astra-database-id>
       ```
 
@@ -203,17 +203,17 @@ There are three methods for using `cql-proxy`:
 
       ```sh
       docker run -v <your-secure-connect-bundle.zip>:/tmp/scb.zip -p 9042:9042 \
-      --rm datastax/cql-proxy:v0.1.2 \
+      --rm datastax/cql-proxy:v0.1.3 \
       --astra-bundle /tmp/scb.zip --username <astra-client-id> --password <astra-client-secret>
       ```
    - [Apache Cassandra][cassandra] cluster:
 
       ```sh
       docker run -p 9042:9042 \
-        datastax/cql-proxy:v0.1.2 \
+        datastax/cql-proxy:v0.1.3 \
         --contact-points <cluster node IPs or DNS names> [--username <username>] [--password <password>]
       ```
-  If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.1.2`.
+  If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.1.3`.
 
 ### Use Kubernetes
 
