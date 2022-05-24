@@ -15,9 +15,9 @@ spec:
     spec:
       containers:
       - name: cql-proxy
-        image: datastax/cql-proxy:v0.0.2
+        image: datastax/cql-proxy:v0.1.3
         command: ["./cql-proxy"]
-        args: ["--bundle=/tmp/scb.zip","--username=Client ID","--password=Client Secret"]
+        args: ["--astra-bundle=/tmp/scb.zip","--username=Client ID","--password=Client Secret"]
         volumeMounts:
         - name: my-cm-vol
           mountPath: /tmp/
