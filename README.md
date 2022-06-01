@@ -221,7 +221,7 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 
 1. Generate a token following the Astra [instructions](https://docs.datastax.com/en/astra/docs/manage-application-tokens.html#_create_application_token). This step will display your Client ID, Client Secret, and Token; make sure you download the information for the next steps. Store the secure bundle in `/tmp/scb.zip` to match the example below.
 
-2. Create `cql-proxy.yaml`. You'll need to add three sets of information: arguments, volume mounts, and volumes.
+2. Create `cql-proxy.yaml`. You'll need to add three sets of information: arguments, volume mounts, and volumes. A full example can be found [here](k8s/cql-proxy.yml).
 
  - Argument: Modify the local bundle location, username and password, using the client ID and client secret obtained in the last step to the container argument.   
 
@@ -253,9 +253,9 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
 4. Check the configmap that was created. 
 
     ```sh
-    kubectl describe configmap config
+    kubectl describe configmap cql-proxy-configmap
       
-      Name:         config
+      Name:         cql-proxy-configmap
       Namespace:    default
       Labels:       <none>
       Annotations:  <none>
