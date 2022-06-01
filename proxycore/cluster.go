@@ -150,7 +150,7 @@ func ConnectCluster(ctx context.Context, config ClusterConfig) (*Cluster, error)
 		listeners:        make([]ClusterListener, 0),
 	}
 
-	endpoints, err := config.Resolver.Resolve()
+	endpoints, err := config.Resolver.Resolve(ctx)
 	if err != nil {
 		return nil, err
 	}
