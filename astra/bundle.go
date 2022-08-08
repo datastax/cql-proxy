@@ -33,9 +33,9 @@ import (
 )
 
 type Bundle struct {
-	tlsConfig *tls.Config
-	host      string
-	port      int
+	TLSConfig *tls.Config
+	Host      string
+	Port      int
 }
 
 func LoadBundleZip(reader *zip.Reader) (*Bundle, error) {
@@ -69,13 +69,13 @@ func LoadBundleZip(reader *zip.Reader) (*Bundle, error) {
 	}
 
 	return &Bundle{
-		tlsConfig: &tls.Config{
+		TLSConfig: &tls.Config{
 			RootCAs:      rootCAs,
 			Certificates: []tls.Certificate{cert},
 			ServerName:   config.Host,
 		},
-		host: config.Host,
-		port: config.Port,
+		Host: config.Host,
+		Port: config.Port,
 	}, nil
 }
 
@@ -93,7 +93,7 @@ func LoadBundleZipFromPath(path string) (*Bundle, error) {
 }
 
 func LoadBundleZipFromURL(url, databaseID, token string, timeout time.Duration) (*Bundle, error) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	credsURL, err := generateSecureBundleURLWithResponse(url, databaseID, token, ctx)
@@ -152,18 +152,6 @@ func generateSecureBundleURLWithResponse(url, databaseID, token string, ctx cont
 	}
 
 	return res.JSON200, nil
-}
-
-func (b *Bundle) Host() string {
-	return b.host
-}
-
-func (b *Bundle) Port() int {
-	return b.port
-}
-
-func (b *Bundle) TLSConfig() *tls.Config {
-	return b.tlsConfig.Clone()
 }
 
 func extract(reader *zip.Reader) (map[string][]byte, error) {

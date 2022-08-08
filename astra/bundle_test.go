@@ -40,8 +40,8 @@ func TestLoadBundleZip(t *testing.T) {
 	b, err := LoadBundleZipFromPath(path)
 	require.NoError(t, err)
 
-	assert.Equal(t, hostname, b.Host())
-	assert.Equal(t, port, b.Port())
+	assert.Equal(t, hostname, b.Host)
+	assert.Equal(t, port, b.Port)
 
 	block, _ := pem.Decode(testCAPEM)
 	ca, _ := x509.ParseCertificate(block.Bytes)
@@ -49,13 +49,13 @@ func TestLoadBundleZip(t *testing.T) {
 	// Verify CA added to cert pool
 	caSub, err := asn1.Marshal(ca.Subject.ToRDNSequence())
 	found := false
-	for _, sub := range b.TLSConfig().RootCAs.Subjects() {
+	for _, sub := range b.TLSConfig.RootCAs.Subjects() {
 		if bytes.Compare(caSub, sub) == 0 {
 			found = true
 		}
 	}
 	assert.True(t, found)
-	require.Equal(t, 1, len(b.TLSConfig().Certificates))
+	require.Equal(t, 1, len(b.TLSConfig.Certificates))
 }
 
 func TestLoadBundleZip_InvalidJson(t *testing.T) {
