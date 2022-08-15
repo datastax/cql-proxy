@@ -4,16 +4,16 @@
 
 ## Table of Contents
 
-- [What is the cql-proxy?](https://github.com/datastax/cql-proxy#what-is-cqlproxy)
-- [When to use cql-proxy](https://github.com/datastax/cql-proxy#when-to-use-cql-proxy)
-- [Configuration](https://github.com/datastax/cql-proxy#configuration)
-- [Getting started](https://github.com/datastax/cql-proxy#getting-started)
-  - [Locally build and run](https://github.com/datastax/cql-proxy#locally-build-and-run)
-  - [Run a `cql-proxy` docker image](https://github.com/datastax/cql-proxy#run-a-cql-proxy-docker-image)
-  - [Homebrew on a Mac](https://github.com/datastax/cql-proxy#homebrew-on-a-mac)
-  - [Use Kubernetes](https://github.com/datastax/cql-proxy#use-kubernetes)
-- [Known issues](https://github.com/datastax/cql-proxy#known-issues)
-    - [Token-aware load balancing](https://github.com/datastax/cql-proxy#token-aware-load-balancing)
+- [What is the cql-proxy?](#what-is-cqlproxy)
+- [When to use cql-proxy](#when-to-use-cql-proxy)
+- [Configuration](#configuration)
+- [Getting started](#getting-started)
+  - [Locally build and run](#locally-build-and-run)
+  - [Run a `cql-proxy` docker image](#run-a-cql-proxy-docker-image)
+  - [Homebrew on a Mac](#homebrew-on-a-mac)
+  - [Use Kubernetes](#use-kubernetes)
+- [Known issues](#known-issues)
+    - [Token-aware load balancing](#token-aware-load-balancing)
 
 
 ## What is `cql-proxy`?
