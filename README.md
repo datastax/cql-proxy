@@ -4,7 +4,7 @@
 
 ## Table of Contents
 
-- [What is cql-proxy?](#what-is-cqlproxy)
+- [What is cql-proxy?](#what-is-cql-proxy)
 - [When to use cql-proxy](#when-to-use-cql-proxy)
 - [Configuration](#configuration)
 - [Getting started](#getting-started)
@@ -16,7 +16,7 @@
     - [Token-aware load balancing](#token-aware-load-balancing)
 
 
-## What is cql-proxy?
+## What is `cql-proxy`?
 
 ![cql-proxy](cql-proxy.png)
 
