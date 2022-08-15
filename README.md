@@ -10,6 +10,7 @@
 - [Getting started](https://github.com/datastax/cql-proxy#getting-started)
   - [Locally build and run](https://github.com/datastax/cql-proxy#locally-build-and-run)
   - [Run a `cql-proxy` docker image](https://github.com/datastax/cql-proxy#run-a-cql-proxy-docker-image)
+  - [Homebrew on a Mac](https://github.com/datastax/cql-proxy#homebrew-on-a-mac)
   - [Use Kubernetes](https://github.com/datastax/cql-proxy#use-kubernetes)
 - [Known issues](https://github.com/datastax/cql-proxy#known-issues)
     - [Token-aware load balancing](https://github.com/datastax/cql-proxy#token-aware-load-balancing)
@@ -219,6 +220,7 @@ There are four methods for using `cql-proxy`:
   If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.1.3`.
 
 ### Homebrew on a Mac
+
 Install with one simple command:
 ```bash
 brew install cql-proxy
