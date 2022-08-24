@@ -124,7 +124,7 @@ func Run(ctx context.Context, args []string) int {
 		var tlsConfig *tls.Config
 
 		if len(cfg.ClusterCAFile) > 0 { // Use proxy to cluster TLS
-			caCert, err := os.ReadFile(cfg.ClusterCAFile)
+			caCert, err := ioutil.ReadFile(cfg.ClusterCAFile)
 
 			if err != nil {
 				cliCtx.Fatalf("unable to load cluster CA file %s: %v", cfg.ClusterCertFile, err)
