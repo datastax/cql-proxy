@@ -67,6 +67,7 @@ type EndpointResolver interface {
 type defaultEndpointResolver struct {
 	contactPoints []string
 	defaultPort   string
+	tlsConfig     *tls.Config
 }
 
 func NewEndpoint(addr string) Endpoint {
@@ -78,13 +79,14 @@ func NewEndpointTLS(addr string, cfg *tls.Config) Endpoint {
 }
 
 func NewResolver(contactPoints ...string) EndpointResolver {
-	return NewResolverWithDefaultPort(contactPoints, 9042)
+	return NewResolverWithDefaultPort(contactPoints, 9042, nil)
 }
 
-func NewResolverWithDefaultPort(contactPoints []string, defaultPort int) EndpointResolver {
+func NewResolverWithDefaultPort(contactPoints []string, defaultPort int, tlsConfig *tls.Config) EndpointResolver {
 	return &defaultEndpointResolver{
 		contactPoints: contactPoints,
 		defaultPort:   strconv.Itoa(defaultPort),
+		tlsConfig:     tlsConfig,
 	}
 }
 
