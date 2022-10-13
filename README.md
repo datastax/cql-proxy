@@ -89,8 +89,8 @@ docker run -p 9042:9042 \
 
 ```sh
 docker run -p 9042:9042  \
-  --rm datastax/cql-proxy:v0.1.3 \
-  -e ASTRA_TOKEN=<astra-token> -e ASTRA_DATABASE_ID=<astra-datbase-id>
+  -e ASTRA_TOKEN=<astra-token> -e ASTRA_DATABASE_ID=<astra-datbase-id> \
+  --rm datastax/cql-proxy:v0.1.3
 ```
 
 ### Using a configuration file
