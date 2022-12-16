@@ -146,6 +146,9 @@ func generateSecureBundleURLWithResponse(url, databaseID, token string, ctx cont
 		return nil, err
 	}
 	res, err := client.GenerateSecureBundleURLWithResponse(ctx, astra.DatabaseIdParam(databaseID))
+	if err != nil {
+		return nil, err
+	}
 
 	if res.StatusCode() != http.StatusOK {
 		return nil, fmt.Errorf("unable to generate bundle urls, failed with status code %d", res.StatusCode())
