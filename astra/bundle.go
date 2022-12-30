@@ -100,21 +100,22 @@ func LoadBundleZipFromURL(url, databaseID, token string, timeout time.Duration) 
 	if err != nil {
 		return nil, fmt.Errorf("error generating secure bundle zip URLs: %v", err)
 	}
+
 	resp, err := http.Get(credsURL.DownloadURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error downloading secure bundle zip: %v", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := readAllWithTimeout(resp.Body, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error downloading bundle zip: %v", err)
+		return nil, fmt.Errorf("error reading downloaded secure bundle zip: %v", err)
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
-		return nil, fmt.Errorf("error creating zip reader for bundle zip: %v", err)
+		return nil, fmt.Errorf("error creating zip reader for secure bundle zip: %v", err)
 	}
 
 	return LoadBundleZip(reader)
