@@ -101,6 +101,9 @@ func LoadBundleZipFromURL(url, databaseID, token string, timeout time.Duration) 
 		return nil, fmt.Errorf("error generating secure bundle zip URLs: %v", err)
 	}
 	resp, err := http.Get(credsURL.DownloadURL)
+	if err != nil {
+		return nil, err
+	}
 
 	defer resp.Body.Close()
 
