@@ -78,7 +78,8 @@ type Config struct {
 	Peers             []PeerConfig
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
-	PreparedCache proxycore.PreparedCache
+	PreparedCache  proxycore.PreparedCache
+	ConnectTimeout time.Duration
 }
 
 type Proxy struct {
@@ -172,6 +173,7 @@ func (p *Proxy) Connect() error {
 		HeartBeatInterval: p.config.HeartBeatInterval,
 		IdleTimeout:       p.config.IdleTimeout,
 		Logger:            p.logger,
+		ConnectTimeout:    p.config.ConnectTimeout,
 	})
 
 	if err != nil {
@@ -205,6 +207,7 @@ func (p *Proxy) Connect() error {
 		IdleTimeout:       p.config.IdleTimeout,
 		PreparedCache:     p.preparedCache,
 		Logger:            p.logger,
+		ConnectTimeout:    p.config.ConnectTimeout,
 	})
 
 	if err != nil {
@@ -327,6 +330,7 @@ func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace s
 			HeartBeatInterval: p.config.HeartBeatInterval,
 			IdleTimeout:       p.config.IdleTimeout,
 			Logger:            p.logger,
+			ConnectTimeout:    p.config.ConnectTimeout,
 		})
 		if err != nil {
 			return nil, err

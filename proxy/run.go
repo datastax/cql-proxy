@@ -184,6 +184,7 @@ func Run(ctx context.Context, args []string) int {
 		Tokens:            cfg.Tokens,
 		Peers:             cfg.Peers,
 		IdempotentGraph:   cfg.IdempotentGraph,
+		ConnectTimeout:    cfg.AstraTimeout,
 	})
 
 	cfg.Bind = maybeAddPort(cfg.Bind, "9042")
