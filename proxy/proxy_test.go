@@ -345,6 +345,7 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
 		NumConns:          2,
 		HeartBeatInterval: 30 * time.Second,
+		ConnectTimeout:    10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		RPCAddr:           cfg.rpcAddr,
 		Peers:             cfg.peers,
