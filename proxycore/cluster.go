@@ -30,7 +30,6 @@ import (
 
 const (
 	DefaultRefreshWindow  = 10 * time.Second
-	DefaultConnectTimeout = 10 * time.Second
 	DefaultRefreshTimeout = 5 * time.Second
 )
 
@@ -102,11 +101,11 @@ type ClusterConfig struct {
 	Resolver          EndpointResolver
 	ReconnectPolicy   ReconnectPolicy
 	RefreshWindow     time.Duration
+	HeartBeatInterval time.Duration
 	ConnectTimeout    time.Duration
 	RefreshTimeout    time.Duration
-	Logger            *zap.Logger
-	HeartBeatInterval time.Duration
 	IdleTimeout       time.Duration
+	Logger            *zap.Logger
 }
 
 type ClusterInfo struct {
@@ -190,8 +189,8 @@ func (c *Cluster) OnEvent(frame *frame.Frame) {
 }
 
 func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) (err error) {
-	timeout := getOrUseDefault(c.config.ConnectTimeout, DefaultConnectTimeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	c.logger.Debug("connecting to cluster", zap.Stringer("connect timeout", c.config.ConnectTimeout))
+	ctx, cancel := context.WithTimeout(context.Background(), c.config.ConnectTimeout)
 	defer cancel()
 
 	conn, err := ConnectClient(ctx, endpoint, ClientConnConfig{Handler: c, Logger: c.logger})
@@ -233,7 +232,7 @@ func (c *Cluster) connect(ctx context.Context, endpoint Endpoint, initial bool) 
 		c.Info = info
 	}
 
-	go conn.Heartbeats(timeout, version, c.config.HeartBeatInterval, c.config.IdleTimeout, c.logger)
+	go conn.Heartbeats(c.config.ConnectTimeout, version, c.config.HeartBeatInterval, c.config.IdleTimeout, c.logger)
 
 	return c.mergeHosts(hosts)
 }

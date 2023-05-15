@@ -48,12 +48,12 @@ type SessionConfig struct {
 	Keyspace        string
 	Version         primitive.ProtocolVersion
 	Auth            Authenticator
-	Logger          *zap.Logger
 	// PreparedCache a global cache share across sessions for storing previously prepared queries
 	PreparedCache     PreparedCache
 	ConnectTimeout    time.Duration
 	HeartBeatInterval time.Duration
 	IdleTimeout       time.Duration
+	Logger            *zap.Logger
 }
 
 type Session struct {
