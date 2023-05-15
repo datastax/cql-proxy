@@ -328,6 +328,7 @@ func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace s
 			PreparedCache:     p.preparedCache,
 			Keyspace:          keyspace,
 			HeartBeatInterval: p.config.HeartBeatInterval,
+			ConnectTimeout:    p.config.ConnectTimeout,
 			IdleTimeout:       p.config.IdleTimeout,
 			Logger:            p.logger,
 		})

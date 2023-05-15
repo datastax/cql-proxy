@@ -129,7 +129,9 @@ func (p *connPool) leastBusyConn() *ClientConn {
 }
 
 func (p *connPool) connect() (conn *ClientConn, err error) {
-	p.logger.Debug("creating connection pool", zap.Stringer("endpoint", p.config.Endpoint), zap.Stringer("connect timeout", p.config.ConnectTimeout))
+	p.logger.Debug("creating connection pool",
+		zap.Stringer("endpoint", p.config.Endpoint),
+		zap.Stringer("connect timeout", p.config.ConnectTimeout))
 	ctx, cancel := context.WithTimeout(p.ctx, p.config.ConnectTimeout)
 	defer cancel()
 	conn, err = ConnectClient(ctx, p.config.Endpoint, ClientConnConfig{
