@@ -129,8 +129,10 @@ func (p *connPool) leastBusyConn() *ClientConn {
 }
 
 func (p *connPool) connect() (conn *ClientConn, err error) {
-	timeout := getOrUseDefault(p.config.ConnectTimeout, DefaultConnectTimeout)
-	ctx, cancel := context.WithTimeout(p.ctx, timeout)
+	p.logger.Debug("creating connection pool",
+		zap.Stringer("endpoint", p.config.Endpoint),
+		zap.Stringer("connect timeout", p.config.ConnectTimeout))
+	ctx, cancel := context.WithTimeout(p.ctx, p.config.ConnectTimeout)
 	defer cancel()
 	conn, err = ConnectClient(ctx, p.config.Endpoint, ClientConnConfig{
 		PreparedCache: p.preparedCache,
@@ -149,7 +151,7 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	version, err = conn.Handshake(ctx, p.config.Version, p.config.Auth)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("handshake took longer than %s to complete", timeout)
+			return nil, fmt.Errorf("handshake took longer than %s to complete", p.config.ConnectTimeout)
 		}
 		return nil, err
 	}
@@ -165,7 +167,7 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 		}
 	}
 
-	go conn.Heartbeats(timeout, p.config.Version, p.config.HeartBeatInterval, p.config.IdleTimeout, p.logger)
+	go conn.Heartbeats(p.config.ConnectTimeout, p.config.Version, p.config.HeartBeatInterval, p.config.IdleTimeout, p.logger)
 	return conn, nil
 }
 

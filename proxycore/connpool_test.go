@@ -131,6 +131,7 @@ func TestConnectPool_InvalidAuth(t *testing.T) {
 			ReconnectPolicy: NewReconnectPolicy(),
 			NumConns:        2,
 			Version:         supported,
+			ConnectTimeout:  20 * time.Second,
 		},
 	})
 	if assert.Error(t, err) {
@@ -162,6 +163,7 @@ func TestConnectPool_AuthExpected(t *testing.T) {
 			ReconnectPolicy: NewReconnectPolicy(),
 			NumConns:        2,
 			Version:         supported,
+			ConnectTimeout:  20 * time.Second,
 		},
 	})
 	if assert.Error(t, err) {
@@ -190,6 +192,7 @@ func TestConnectPool_InvalidProtocolVersion(t *testing.T) {
 			ReconnectPolicy: NewReconnectPolicy(),
 			NumConns:        2,
 			Version:         wanted,
+			ConnectTimeout:  20 * time.Second,
 		},
 	})
 	if assert.Error(t, err) {
@@ -241,6 +244,7 @@ func TestConnectPool_InvalidKeyspace(t *testing.T) {
 			ReconnectPolicy: NewReconnectPolicy(),
 			NumConns:        2,
 			Version:         supported,
+			ConnectTimeout:  20 * time.Second,
 		},
 	})
 	if assert.Error(t, err) {
