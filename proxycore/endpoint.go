@@ -108,6 +108,7 @@ func (r *defaultEndpointResolver) Resolve(ctx context.Context) ([]Endpoint, erro
 		for _, addr := range addrs {
 			endpoints = append(endpoints, &defaultEndpoint{
 				addr: net.JoinHostPort(addr, port),
+				tlsConfig: r.tlsConfig,
 			})
 		}
 	}

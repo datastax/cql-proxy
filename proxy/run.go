@@ -127,7 +127,7 @@ func Run(ctx context.Context, args []string) int {
 			caCert, err := ioutil.ReadFile(cfg.ClusterCAFile)
 
 			if err != nil {
-				cliCtx.Fatalf("unable to load cluster CA file %s: %v", cfg.ClusterCertFile, err)
+				cliCtx.Fatalf("unable to load cluster CA file %s: %v", cfg.ClusterCAFile, err)
 			}
 			caCertPool := x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM(caCert)
