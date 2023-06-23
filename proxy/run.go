@@ -134,6 +134,7 @@ func Run(ctx context.Context, args []string) int {
 
 			tlsConfig = &tls.Config{
 				RootCAs: caCertPool,
+				InsecureSkipVerify: true, // Skip server name validation
 			}
 
 			if len(cfg.ClusterCertFile) > 0 || len(cfg.ClusterKeyFile) > 0 {
