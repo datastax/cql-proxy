@@ -31,11 +31,15 @@ type passwordAuth struct {
 	password string
 }
 
+const dseAuthenticator = "com.datastax.bdp.cassandra.auth.DseAuthenticator"
+const passwordAuthenticator = "org.apache.cassandra.auth.PasswordAuthenticator"
+const astraAuthenticator = "org.apache.cassandra.auth.AstraAuthenticator"
+
 func (d *passwordAuth) InitialResponse(authenticator string) ([]byte, error) {
 	switch authenticator {
-	case "com.datastax.bdp.cassandra.auth.DseAuthenticator":
+	case dseAuthenticator:
 		return []byte("PLAIN"), nil
-	case "org.apache.cassandra.auth.PasswordAuthenticator":
+	case passwordAuthenticator, astraAuthenticator:
 		return d.makeToken(), nil
 	}
 	return nil, fmt.Errorf("unknown authenticator: %v", authenticator)
