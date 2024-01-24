@@ -152,7 +152,7 @@ func (c *ClientConn) registerForEvents(ctx context.Context, version primitive.Pr
 }
 
 func (c *ClientConn) authInitialResponse(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, authenticate *message.Authenticate) error {
-	token, err := auth.InitialResponse(authenticate.Authenticator)
+	token, err := auth.InitialResponse(authenticate.Authenticator, c)
 	if err != nil {
 		return err
 	}
