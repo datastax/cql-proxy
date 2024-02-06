@@ -25,13 +25,11 @@ type QueryPlan interface {
 
 type LoadBalancer interface {
 	ClusterListener
-	NewQueryPlan() QueryPlan
+	NewQueryPlan(keyspace string, token Token) QueryPlan
 }
 
 func NewRoundRobinLoadBalancer() LoadBalancer {
-	lb := &roundRobinLoadBalancer{
-		mu: &sync.Mutex{},
-	}
+	lb := &roundRobinLoadBalancer{}
 	lb.hosts.Store(make([]*Host, 0))
 	return lb
 }
@@ -39,7 +37,7 @@ func NewRoundRobinLoadBalancer() LoadBalancer {
 type roundRobinLoadBalancer struct {
 	hosts atomic.Value
 	index uint32
-	mu    *sync.Mutex
+	mu    sync.Mutex
 }
 
 func (l *roundRobinLoadBalancer) OnEvent(event Event) {
@@ -69,7 +67,7 @@ func (l *roundRobinLoadBalancer) copy() []*Host {
 	return cpy
 }
 
-func (l *roundRobinLoadBalancer) NewQueryPlan() QueryPlan {
+func (l *roundRobinLoadBalancer) NewQueryPlan(_ string, _ Token) QueryPlan {
 	return &roundRobinQueryPlan{
 		hosts:  l.hosts.Load().([]*Host),
 		offset: atomic.AddUint32(&l.index, 1) - 1,
@@ -91,4 +89,53 @@ func (p *roundRobinQueryPlan) Next() *Host {
 	host := p.hosts[(p.offset+p.index)%l]
 	p.index++
 	return host
+}
+
+type tokenAwareLoadBalancer struct {
+	tokenMap    *TokenMap
+	partitioner Partitioner
+	mu          sync.Mutex
+}
+
+func (l *tokenAwareLoadBalancer) OnEvent(event Event) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	switch evt := event.(type) {
+	case *BootstrapEvent:
+		l.tokenMap = NewTokenMap(evt.Hosts, evt.Keyspaces)
+		l.partitioner = evt.Partitioner
+	case *AddEvent:
+		l.tokenMap.AddHost(evt.Host)
+	case *RemoveEvent:
+		l.tokenMap.RemoveHost(evt.Host)
+	}
+	//TODO implement me
+	panic("implement me")
+}
+
+func (l *tokenAwareLoadBalancer) NewQueryPlan(keyspace string, token Token) QueryPlan {
+	if token != nil {
+		replicas, err := l.tokenMap.GetReplicas(keyspace, token)
+		if err != nil {
+			return &tokenAwareQueryPlan{replicas: replicas}
+		} else {
+			//TODO implement me
+			panic("implement me")
+		}
+	} else {
+		//TODO implement me
+		panic("implement me")
+	}
+	return nil
+}
+
+type tokenAwareQueryPlan struct {
+	replicas []*Host
+	index    int
+}
+
+func (t tokenAwareQueryPlan) Next() *Host {
+	//TODO implement me
+	panic("implement me")
 }

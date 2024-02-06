@@ -63,6 +63,8 @@ func (a UpEvent) isEvent() {
 
 type BootstrapEvent struct {
 	Hosts []*Host
+	Partitioner
+	Keyspaces map[string]ReplicationStrategy
 }
 
 func (b BootstrapEvent) isEvent() {
@@ -109,7 +111,7 @@ type ClusterConfig struct {
 }
 
 type ClusterInfo struct {
-	Partitioner    string
+	Partitioner    Partitioner
 	ReleaseVersion string
 	CQLVersion     string
 	LocalDC        string
@@ -300,7 +302,12 @@ func (c *Cluster) queryHosts(ctx context.Context, conn *ClientConn, version prim
 	row := rs.Row(0)
 	localDC := hosts[0].DC
 
-	partitioner, err := row.StringByName("partitioner")
+	partitionerName, err := row.StringByName("partitioner")
+	if err != nil {
+		return nil, ClusterInfo{}, err
+	}
+
+	partitioner, err := NewPartitionerFromName(partitionerName)
 	if err != nil {
 		return nil, ClusterInfo{}, err
 	}
@@ -347,7 +354,7 @@ func (c *Cluster) addHosts(hosts []*Host, rs *ResultSet) []*Host {
 	for i := 0; i < rs.RowCount(); i++ {
 		row := rs.Row(i)
 		if endpoint, err := c.config.Resolver.NewEndpoint(row); err == nil {
-			if host, err := NewHostFromRow(endpoint, row); err == nil {
+			if host, err := NewHostFromRow(endpoint, c.Info.Partitioner, row); err == nil {
 				hosts = append(hosts, host)
 			} else {
 				c.logger.Error("unable to create new host", zap.Stringer("endpoint", endpoint), zap.Error(err))
@@ -448,7 +455,7 @@ func (c *Cluster) stayConnected() {
 						continue
 					}
 				}
-				newListener.OnEvent(&BootstrapEvent{c.hosts})
+				newListener.OnEvent(&BootstrapEvent{c.hosts, c.Info.Partitioner, map[string]ReplicationStrategy{}}) // FIXME: Get keyspace info
 				c.listeners = append(c.listeners, newListener)
 			case <-refreshTimer.C:
 				c.refreshHosts()

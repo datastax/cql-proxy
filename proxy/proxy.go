@@ -348,8 +348,8 @@ func (p *Proxy) findSession(version primitive.ProtocolVersion, keyspace string) 
 	}
 }
 
-func (p *Proxy) newQueryPlan() proxycore.QueryPlan {
-	return p.lb.NewQueryPlan()
+func (p *Proxy) newQueryPlan(keyspace string, token proxycore.Token) proxycore.QueryPlan {
+	return p.lb.NewQueryPlan(keyspace, token)
 }
 
 var (
@@ -579,7 +579,8 @@ func (c *client) Receive(reader io.Reader) error {
 	case *partialQuery:
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
-		c.execute(raw, notDetermined, c.keyspace, msg)
+		// FIXME: Calculate token for partition key
+		c.execute(raw, notDetermined, c.keyspace, nil, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
@@ -587,7 +588,7 @@ func (c *client) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, msg message.Message) {
+func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, token proxycore.Token, msg message.Message) {
 	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
 		req := &request{
 			client:   c,
@@ -597,7 +598,7 @@ func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace st
 			keyspace: keyspace,
 			done:     false,
 			stream:   raw.Header.StreamId,
-			qp:       c.proxy.newQueryPlan(),
+			qp:       c.proxy.newQueryPlan(keyspace, token),
 			raw:      raw,
 		}
 		req.Execute(true)
@@ -653,7 +654,8 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		}
 
 	} else {
-		c.execute(raw, isIdempotent, keyspace, msg) // Prepared statements can be retried themselves
+		// FIXME: Calculate token for partition key
+		c.execute(raw, isIdempotent, keyspace, nil, msg) // Prepared statements can be retried themselves
 	}
 }
 
@@ -662,7 +664,8 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
-		c.execute(raw, c.getDefaultIdempotency(customPayload), "", msg)
+		// FIXME: Calculate token for partition key
+		c.execute(raw, notDetermined, "", nil, msg)
 	}
 }
 
@@ -679,7 +682,8 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
-		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
+		// FIXME: Calculate token for partition key
+		c.execute(raw, notDetermined, c.keyspace, nil, msg)
 	}
 }
 

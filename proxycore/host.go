@@ -14,23 +14,31 @@
 
 package proxycore
 
+import "fmt"
+
 type Host struct {
 	Endpoint
-	DC string
+	DC     string
+	Rack   string
+	Tokens []Token
 }
 
-func NewHostFromRow(endpoint Endpoint, row Row) (*Host, error) {
-	dc, err := row.StringByName("data_center")
+func NewHostFromRow(endpoint Endpoint, partitioner Partitioner, row Row) (*Host, error) {
+	dc, err := row.ByName("data_center")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error attmpting to get 'data_center' column: %v", err)
 	}
-	return &Host{endpoint, dc}, nil
-}
-
-func (h *Host) Key() string {
-	return h.Endpoint.Key()
-}
-
-func (h *Host) String() string {
-	return h.Endpoint.String()
+	rack, err := row.ByName("rack")
+	if err != nil {
+		return nil, fmt.Errorf("error attmpting to get 'rack' column: %v", err)
+	}
+	tokensVal, err := row.ByName("tokens")
+	if err != nil {
+		return nil, fmt.Errorf("error attmpting to get 'tokens' column: %v", err)
+	}
+	tokens := make([]Token, 0, len(tokensVal.([]string)))
+	for _, token := range tokensVal.([]string) {
+		tokens = append(tokens, partitioner.FromString(token))
+	}
+	return &Host{endpoint, dc.(string), rack.(string), tokens}, nil
 }
