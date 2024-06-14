@@ -149,7 +149,7 @@ func generateSecureBundleURLWithResponse(url, databaseID, token string, ctx cont
 	if err != nil {
 		return nil, err
 	}
-	res, err := client.GenerateSecureBundleURLWithResponse(ctx, astra.DatabaseIdParam(databaseID))
+	res, err := client.GenerateSecureBundleURLWithResponse(ctx, databaseID, &astra.GenerateSecureBundleURLParams{})
 	if err != nil {
 		return nil, fmt.Errorf("error generating bundle urls: %v", err)
 	}
@@ -158,7 +158,7 @@ func generateSecureBundleURLWithResponse(url, databaseID, token string, ctx cont
 		return nil, fmt.Errorf("unable to generate bundle urls, failed with status code %d", res.StatusCode())
 	}
 
-	return res.JSON200, nil
+	return &(*res.JSON200)[0], nil
 }
 
 func extract(reader *zip.Reader) (map[string][]byte, error) {
