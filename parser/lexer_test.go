@@ -73,3 +73,38 @@ func TestLexerLiterals(t *testing.T) {
 		assert.Equal(t, tt.tk, l.next(), fmt.Sprintf("failed on literal: %s", tt.literal))
 	}
 }
+
+func TestLexerIdentifiers(t *testing.T) {
+	var tests = []struct {
+		literal  string
+		tk       token
+		expected string
+	}{
+		{`system`, tkIdentifier, "system"},
+		{`sys"tem`, tkIdentifier, "sys"},
+		{`System`, tkIdentifier, "system"},
+		{`"system"`, tkIdentifier, "system"},
+		{`"system"`, tkIdentifier, "system"},
+		{`"System"`, tkIdentifier, "System"},
+		{`""""`, tkIdentifier, "\""},
+		{`""""""`, tkIdentifier, "\"\""},
+		{`"A"""""`, tkIdentifier, "A\"\""},
+		{`"""A"""`, tkIdentifier, "\"A\""},
+		{`"""""A"`, tkIdentifier, "\"\"A"},
+		{`";`, tkInvalid, ""},
+		{`"""`, tkIdentifier, ""},
+	}
+
+	for _, tt := range tests {
+		var l lexer
+		l.init(tt.literal)
+		n := l.next()
+		assert.Equal(t, tt.tk, n, fmt.Sprintf("failed on literal: %s", tt.literal))
+		if n == tkIdentifier {
+			id := l.identifier()
+			if id.ID() != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, l.id)
+			}
+		}
+	}
+}
