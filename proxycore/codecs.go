@@ -63,16 +63,16 @@ func DecodeType(dt datatype.DataType, version primitive.ProtocolVersion, bytes [
 }
 
 func codecFromDataType(dt datatype.DataType) (datacodec.Codec, error) {
-	switch dt.GetDataTypeCode() {
+	switch dt.Code() {
 	case primitive.DataTypeCodeList:
-		listType := dt.(datatype.ListType)
-		return datacodec.NewList(datatype.NewListType(listType.GetElementType()))
+		listType := dt.(*datatype.List)
+		return datacodec.NewList(datatype.NewList(listType.ElementType))
 	case primitive.DataTypeCodeSet:
-		setType := dt.(datatype.SetType)
-		return datacodec.NewSet(datatype.NewListType(setType.GetElementType()))
+		setType := dt.(*datatype.Set)
+		return datacodec.NewSet(datatype.NewSet(setType.ElementType))
 	case primitive.DataTypeCodeMap:
-		mapType := dt.(datatype.MapType)
-		return datacodec.NewMap(datatype.NewMapType(mapType.GetKeyType(), mapType.GetValueType()))
+		mapType := dt.(*datatype.Map)
+		return datacodec.NewMap(datatype.NewMap(mapType.KeyType, mapType.ValueType))
 	default:
 		codec, ok := primitiveCodecs[dt]
 		if !ok {

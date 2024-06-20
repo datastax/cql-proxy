@@ -25,7 +25,7 @@ var (
 		{Keyspace: "system", Table: "local", Name: "rpc_address", Type: datatype.Inet},
 		{Keyspace: "system", Table: "local", Name: "data_center", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "local", Name: "rack", Type: datatype.Varchar},
-		{Keyspace: "system", Table: "local", Name: "tokens", Type: datatype.NewSetType(datatype.Varchar)},
+		{Keyspace: "system", Table: "local", Name: "tokens", Type: datatype.NewSet(datatype.Varchar)},
 		{Keyspace: "system", Table: "local", Name: "release_version", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "local", Name: "partitioner", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "local", Name: "cluster_name", Type: datatype.Varchar},
@@ -43,7 +43,7 @@ var (
 		// language.
 		{Keyspace: "system", Table: "local", Name: "dse_version", Type: datatype.Varchar}, // DSE only
 		{Keyspace: "system", Table: "local", Name: "rack", Type: datatype.Varchar},
-		{Keyspace: "system", Table: "local", Name: "tokens", Type: datatype.NewSetType(datatype.Varchar)},
+		{Keyspace: "system", Table: "local", Name: "tokens", Type: datatype.NewSet(datatype.Varchar)},
 		{Keyspace: "system", Table: "local", Name: "release_version", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "local", Name: "partitioner", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "local", Name: "cluster_name", Type: datatype.Varchar},
@@ -58,7 +58,7 @@ var (
 		{Keyspace: "system", Table: "peers", Name: "rpc_address", Type: datatype.Inet},
 		{Keyspace: "system", Table: "peers", Name: "data_center", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "peers", Name: "rack", Type: datatype.Varchar},
-		{Keyspace: "system", Table: "peers", Name: "tokens", Type: datatype.NewSetType(datatype.Varchar)},
+		{Keyspace: "system", Table: "peers", Name: "tokens", Type: datatype.NewSet(datatype.Varchar)},
 		{Keyspace: "system", Table: "peers", Name: "release_version", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "peers", Name: "schema_version", Type: datatype.Uuid},
 		{Keyspace: "system", Table: "peers", Name: "host_id", Type: datatype.Uuid},
@@ -70,7 +70,7 @@ var (
 		{Keyspace: "system", Table: "peers", Name: "data_center", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "peers", Name: "dse_version", Type: datatype.Varchar}, // DSE only
 		{Keyspace: "system", Table: "peers", Name: "rack", Type: datatype.Varchar},
-		{Keyspace: "system", Table: "peers", Name: "tokens", Type: datatype.NewSetType(datatype.Varchar)},
+		{Keyspace: "system", Table: "peers", Name: "tokens", Type: datatype.NewSet(datatype.Varchar)},
 		{Keyspace: "system", Table: "peers", Name: "release_version", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "peers", Name: "schema_version", Type: datatype.Uuid},
 		{Keyspace: "system", Table: "peers", Name: "host_id", Type: datatype.Uuid},
@@ -96,7 +96,7 @@ var (
 		{Keyspace: "system", Table: "schema_columnfamilies", Name: "compression_parameters", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "schema_columnfamilies", Name: "default_time_to_live", Type: datatype.Int},
 		{Keyspace: "system", Table: "schema_columnfamilies", Name: "default_validator", Type: datatype.Varchar},
-		{Keyspace: "system", Table: "schema_columnfamilies", Name: "dropped_columns", Type: datatype.NewMapType(datatype.Varchar, datatype.Bigint)},
+		{Keyspace: "system", Table: "schema_columnfamilies", Name: "dropped_columns", Type: datatype.NewMap(datatype.Varchar, datatype.Bigint)},
 		{Keyspace: "system", Table: "schema_columnfamilies", Name: "gc_grace_seconds", Type: datatype.Int},
 		{Keyspace: "system", Table: "schema_columnfamilies", Name: "is_dense", Type: datatype.Boolean},
 		{Keyspace: "system", Table: "schema_columnfamilies", Name: "key_validator", Type: datatype.Varchar},
@@ -127,8 +127,8 @@ var (
 	SystemSchemaUsertypes = []*message.ColumnMetadata{
 		{Keyspace: "system", Table: "schema_usertypes", Name: "keyspace_name", Type: datatype.Varchar},
 		{Keyspace: "system", Table: "schema_usertypes", Name: "type_name", Type: datatype.Varchar},
-		{Keyspace: "system", Table: "schema_usertypes", Name: "field_names", Type: datatype.NewListType(datatype.Varchar)},
-		{Keyspace: "system", Table: "schema_usertypes", Name: "field_types", Type: datatype.NewListType(datatype.Varchar)},
+		{Keyspace: "system", Table: "schema_usertypes", Name: "field_names", Type: datatype.NewList(datatype.Varchar)},
+		{Keyspace: "system", Table: "schema_usertypes", Name: "field_types", Type: datatype.NewList(datatype.Varchar)},
 	}
 )
 

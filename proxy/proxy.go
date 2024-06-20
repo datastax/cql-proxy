@@ -447,7 +447,7 @@ func (p *Proxy) buildLocalRow() {
 		"key":                     p.encodeTypeFatal(datatype.Varchar, "local"),
 		"data_center":             p.encodeTypeFatal(datatype.Varchar, p.localNode.dc),
 		"rack":                    p.encodeTypeFatal(datatype.Varchar, "rack1"),
-		"tokens":                  p.encodeTypeFatal(datatype.NewListType(datatype.Varchar), p.localNode.tokens),
+		"tokens":                  p.encodeTypeFatal(datatype.NewList(datatype.Varchar), p.localNode.tokens),
 		"release_version":         p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.ReleaseVersion),
 		"partitioner":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.Partitioner),
 		"cluster_name":            p.encodeTypeFatal(datatype.Varchar, "cql-proxy"),
@@ -734,7 +734,7 @@ func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, filtered [
 		} else if name == "host_id" {
 			return proxycore.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(peer.addr.String()))
 		} else if name == "tokens" {
-			return proxycore.EncodeType(datatype.NewListType(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, peer.tokens)
+			return proxycore.EncodeType(datatype.NewList(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, peer.tokens)
 		} else if name == "peer" {
 			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.addr.IP)
 		} else if name == "rpc_address" {

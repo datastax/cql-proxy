@@ -248,7 +248,7 @@ func TestProxy_BatchRetries(t *testing.T) {
 		{
 			"write timeout error, retry once if logged batch",
 			&message.Batch{Children: []*message.BatchChild{
-				{QueryOrId: idempotentQuery},
+				{Query: idempotentQuery},
 			}},
 			&message.WriteTimeout{
 				ErrorMessage: "WriteTimeout",
@@ -263,7 +263,7 @@ func TestProxy_BatchRetries(t *testing.T) {
 		{
 			"write timeout error, retry once if logged batch w/ prepared statement",
 			&message.Batch{Children: []*message.BatchChild{
-				{QueryOrId: idempotentQueryHash[:]},
+				{Id: idempotentQueryHash[:]},
 			}},
 			&message.WriteTimeout{
 				ErrorMessage: "WriteTimeout",
@@ -278,7 +278,7 @@ func TestProxy_BatchRetries(t *testing.T) {
 		{
 			"batch w/ non-idempotent query, don't retry",
 			&message.Batch{Children: []*message.BatchChild{
-				{QueryOrId: nonIdempotentQuery},
+				{Query: nonIdempotentQuery},
 			}},
 			&message.WriteTimeout{
 				ErrorMessage: "WriteTimeout",
@@ -293,7 +293,7 @@ func TestProxy_BatchRetries(t *testing.T) {
 		{
 			"batch w/ non-idempotent prepared query, don't retry",
 			&message.Batch{Children: []*message.BatchChild{
-				{QueryOrId: nonIdempotentQueryHash[:]},
+				{Id: nonIdempotentQueryHash[:]},
 			}},
 			&message.WriteTimeout{
 				ErrorMessage: "WriteTimeout",
@@ -414,7 +414,8 @@ func testProxyRetryWithConfig(t *testing.T, query *frame.Frame, response message
 			mu.Lock()
 			defer mu.Unlock()
 			for _, child := range msg.Children {
-				if id, ok := child.QueryOrId.([]byte); ok {
+				id := child.Id
+				if id != nil {
 					var hash [16]byte
 					copy(hash[:], id)
 					if _, ok := prepared[hash]; !ok {
