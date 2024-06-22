@@ -44,3 +44,17 @@ func (i Identifier) equal(id string) bool {
 func (i Identifier) isEmpty() bool {
 	return len(i.id) == 0
 }
+
+func (i Identifier) String() string {
+	if i.ignoreCase {
+		return i.id
+	}
+	return "\"" + i.id + "\""
+}
+
+func (i Identifier) ID() string {
+	if i.ignoreCase {
+		return strings.ToLower(i.id)
+	}
+	return strings.ReplaceAll(i.id, "\"\"", "\"")
+}
