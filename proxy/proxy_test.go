@@ -341,7 +341,7 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 
 	tester.proxy = NewProxy(ctx, Config{
 		Version:           primitive.ProtocolVersion4,
-		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterAddr}, clusterPort),
+		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterAddr}, clusterPort, nil),
 		ReconnectPolicy:   proxycore.NewReconnectPolicyWithDelays(200*time.Millisecond, time.Second),
 		NumConns:          2,
 		HeartBeatInterval: 30 * time.Second,

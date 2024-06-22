@@ -263,6 +263,12 @@ func (c *Cluster) mergeHosts(hosts []*Host) error {
 			c.logger.Info("adding host to the cluster", zap.Stringer("host", host))
 			c.sendEvent(&AddEvent{host})
 		}
+		
+		endpoints, err := c.config.Resolver.Resolve(c.ctx)
+		if err != nil {
+			return err
+		}
+		host.Endpoint = endpoints[len(endpoints)-1]
 	}
 
 	for _, host := range existing {
