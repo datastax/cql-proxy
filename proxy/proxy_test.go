@@ -206,13 +206,17 @@ func TestProxy_UseKeyspace(t *testing.T) {
 
 	cl := connectTestClient(t, ctx, proxyContactPoint)
 
-	resp, err := cl.SendAndReceive(ctx, frame.NewFrame(primitive.ProtocolVersion4, 0, &message.Query{Query: "USE system"}))
-	require.NoError(t, err)
+	testKeyspaces := []string{"system", "\"system\""}
+	for _, testKeyspace := range testKeyspaces {
 
-	assert.Equal(t, primitive.OpCodeResult, resp.Header.OpCode)
-	res, ok := resp.Body.Message.(*message.SetKeyspaceResult)
-	require.True(t, ok, "expected set keyspace result")
-	assert.Equal(t, "system", res.Keyspace)
+		resp, err := cl.SendAndReceive(ctx, frame.NewFrame(primitive.ProtocolVersion4, 0, &message.Query{Query: "USE " + testKeyspace}))
+		require.NoError(t, err)
+
+		assert.Equal(t, primitive.OpCodeResult, resp.Header.OpCode)
+		res, ok := resp.Body.Message.(*message.SetKeyspaceResult)
+		require.True(t, ok, "expected set keyspace result")
+		assert.Equal(t, "system", res.Keyspace)
+	}
 }
 
 func TestProxy_NegotiateProtocolV5(t *testing.T) {
