@@ -816,7 +816,7 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
 		} else {
 			c.keyspace = s.Keyspace
-			c.send(hdr, &message.SetKeyspaceResult{Keyspace: s.Keyspace})
+			c.send(hdr, &message.SetKeyspaceResult{Keyspace: strings.Trim(s.Keyspace, "\"")})
 		}
 	default:
 		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
