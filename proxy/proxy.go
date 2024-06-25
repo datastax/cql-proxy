@@ -818,6 +818,11 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
 		} else {
 			c.keyspace = s.Keyspace
+			// We might have received a quoted keyspace name in the UseStatement so remove any
+			// quotes before sending back this result message.  This keeps us consistent with
+			// how Cassandra implements the same functionality and avoids any issues with
+			// drivers sending follow-on "USE" requests after wrapping the keyspace name in
+			// quotes.
 			ks := parser.IdentifierFromString(s.Keyspace)
 			c.send(hdr, &message.SetKeyspaceResult{Keyspace: ks.ID()})
 		}
