@@ -672,6 +672,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
 
 	if handled {
+		c.proxy.logger.Debug("Query is handled")
 		if err != nil {
 			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
@@ -679,6 +680,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
+		c.proxy.logger.Debug("Query is not handled")
 		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
 	}
 }
