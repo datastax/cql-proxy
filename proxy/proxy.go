@@ -667,11 +667,9 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
-
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
-
 	if handled {
+		c.proxy.logger.Debug("Query handled by proxy", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		if err != nil {
 			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
@@ -679,6 +677,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
+		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
 	}
 }
@@ -816,7 +815,12 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
 		} else {
 			c.keyspace = s.Keyspace
-			c.send(hdr, &message.SetKeyspaceResult{Keyspace: s.Keyspace})
+			// We might have received a quoted keyspace name in the UseStatement so remove any
+			// quotes before sending back this result message.  This keeps us consistent with
+			// how Cassandra implements the same functionality and avoids any issues with
+			// drivers sending follow-on "USE" requests after wrapping the keyspace name in
+			// quotes.
+			c.send(hdr, &message.SetKeyspaceResult{Keyspace: strings.Trim(s.Keyspace, "\"")})
 		}
 	default:
 		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})
