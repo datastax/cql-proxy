@@ -667,12 +667,9 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
-
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
-
 	if handled {
-		c.proxy.logger.Debug("Query is handled")
+		c.proxy.logger.Debug("Query handled by proxy", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		if err != nil {
 			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
@@ -680,7 +677,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
-		c.proxy.logger.Debug("Query is not handled")
+		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
 	}
 }
