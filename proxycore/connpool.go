@@ -153,17 +153,17 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("handshake took longer than %s to complete", p.config.ConnectTimeout)
 		}
-		return nil, err
+		return conn, err
 	}
 	if version != p.config.Version {
 		p.logger.Error("protocol version not support", zap.Stringer("wanted", p.config.Version), zap.Stringer("got", version))
-		return nil, ProtocolNotSupported
+		return conn, ProtocolNotSupported
 	}
 
 	if len(p.config.Keyspace) != 0 {
 		err = conn.SetKeyspace(ctx, p.config.Version, p.config.Keyspace)
 		if err != nil {
-			return nil, err
+			return conn, err
 		}
 	}
 
