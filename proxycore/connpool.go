@@ -138,12 +138,13 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 		PreparedCache: p.preparedCache,
 		Logger:        p.logger})
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	defer func() {
 		if err != nil && conn != nil {
 			_ = conn.Close()
+			conn = nil
 		}
 	}()
 
@@ -151,24 +152,25 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 	version, err = conn.Handshake(ctx, p.config.Version, p.config.Auth)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("handshake took longer than %s to complete", p.config.ConnectTimeout)
+			err = fmt.Errorf("handshake took longer than %s to complete", p.config.ConnectTimeout)
 		}
-		return conn, err
+		return
 	}
 	if version != p.config.Version {
 		p.logger.Error("protocol version not support", zap.Stringer("wanted", p.config.Version), zap.Stringer("got", version))
-		return conn, ProtocolNotSupported
+		err = ProtocolNotSupported
+		return
 	}
 
 	if len(p.config.Keyspace) != 0 {
 		err = conn.SetKeyspace(ctx, p.config.Version, p.config.Keyspace)
 		if err != nil {
-			return conn, err
+			return
 		}
 	}
 
 	go conn.Heartbeats(p.config.ConnectTimeout, p.config.Version, p.config.HeartBeatInterval, p.config.IdleTimeout, p.logger)
-	return conn, nil
+	return
 }
 
 // stayConnected will attempt to reestablish a disconnected (`connection == nil`) connection within the pool. Reconnect attempts
