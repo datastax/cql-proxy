@@ -219,6 +219,37 @@ func TestProxy_UseKeyspace(t *testing.T) {
 	}
 }
 
+func TestProxy_UseKeyspace_Error(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 1, proxycore.MockRequestHandlers{
+		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			qry := frm.Body.Message.(*message.Query)
+			if qry.Query == "USE non_existing" {
+				return &message.ServerError{
+					ErrorMessage: "Keyspace 'non_existing' does not exist",
+				}
+			}
+			return cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query))
+		}})
+	defer func() {
+		cancel()
+		tester.shutdown()
+	}()
+	require.NoError(t, err)
+
+	cl := connectTestClient(t, ctx, proxyContactPoint)
+
+	resp, err := cl.SendAndReceive(ctx, frame.NewFrame(primitive.ProtocolVersion4, 0, &message.Query{Query: "USE non_existing"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, primitive.OpCodeError, resp.Header.OpCode)
+	res, ok := resp.Body.Message.(*message.ServerError)
+	require.True(t, ok)
+	// make sure that CQL Proxy returns the same error of 'USE keyspace' command
+	// as backend C* cluster has and does not wrap it inside a custom one
+	assert.Equal(t, "Keyspace 'non_existing' does not exist", res.ErrorMessage)
+}
+
 func TestProxy_NegotiateProtocolV5(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tester, proxyContactPoint, err := setupProxyTest(ctx, 1, nil)

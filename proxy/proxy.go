@@ -812,7 +812,14 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 		}
 	case *parser.UseStatement:
 		if _, err := c.proxy.maybeCreateSession(hdr.Version, s.Keyspace); err != nil {
-			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
+			var cqlError *proxycore.CqlError
+			switch {
+			case errors.As(err, &cqlError):
+				errMsg := cqlError.Message
+				c.send(hdr, errMsg)
+			default:
+				c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
+			}
 		} else {
 			c.keyspace = s.Keyspace
 			// We might have received a quoted keyspace name in the UseStatement so remove any
