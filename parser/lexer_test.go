@@ -86,11 +86,15 @@ func TestLexerIdentifiers(t *testing.T) {
 		{`"system"`, tkIdentifier, "system"},
 		{`"system"`, tkIdentifier, "system"},
 		{`"System"`, tkIdentifier, "System"},
-		{`""""`, tkIdentifier, "\""},
-		{`""""""`, tkIdentifier, "\"\""},
-		{`"A"""""`, tkIdentifier, "A\"\""},
-		{`"""A"""`, tkIdentifier, "\"A\""},
-		{`"""""A"`, tkIdentifier, "\"\"A"},
+		// below test verify correct escaping double quote character as per CQL definition:
+		//    identifier ::= unquoted_identifier | quoted_identifier
+		//    unquoted_identifier ::= re('[a-zA-Z][link:[a-zA-Z0-9]]*')
+		//    quoted_identifier ::= '"' (any character where " can appear if doubled)+ '"'
+		{`""""`, tkIdentifier, "\""},       // outermost quotes indicate quoted string, inner two double quotes shall be treated as single quote
+		{`""""""`, tkIdentifier, "\"\""},   // same as above, but 4 inner quotes result in 2 quotes
+		{`"A"""""`, tkIdentifier, "A\"\""}, // outermost quotes indicate quoted string, 4 quotes after A result in 2 quotes
+		{`"""A"""`, tkIdentifier, "\"A\""}, // outermost quotes indicate quoted string, 2 quotes before and after A result in single quotes
+		{`"""""A"`, tkIdentifier, "\"\"A"}, // analogical to previous tests
 		{`";`, tkInvalid, ""},
 		{`"""`, tkIdentifier, ""},
 	}
