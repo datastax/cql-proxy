@@ -1,0 +1,80 @@
+name: Release Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build and Upload Release Assets
+    runs-on: ubuntu-latest
+    container: golang:1.18-bullseye
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Build Linux/amd64 binary
+        run: |
+          export GO111MODULE=on
+          export CGO_ENABLED=0
+          export GOOS=linux
+          export GOARCH=amd64
+          go build -o cql-proxy
+          tar cvfz cql-proxy-linux-amd64-${{ github.ref_name }}.tgz cql-proxy LICENSE
+      - name: Build Windows/amd64 binary
+        run: |
+          apt update
+          apt -y install zip
+          export GO111MODULE=on
+          export CGO_ENABLED=0
+          export GOOS=windows
+          export GOARCH=amd64
+          go build -o cql-proxy.exe
+          zip -vr cql-proxy-windows-amd64-${{ github.ref_name }}.zip cql-proxy.exe LICENSE
+      - name: Build Darwin/amd64 binary
+        run: |
+          export GO111MODULE=on
+          export CGO_ENABLED=0
+          export GOOS=darwin
+          export GOARCH=amd64
+          go build -o cql-proxy
+          tar cvfz cql-proxy-darwin-amd64-${{ github.ref_name }}.tgz cql-proxy LICENSE
+      - name: Build Darwin/arm64 binary
+        run: |
+          export GO111MODULE=on
+          export CGO_ENABLED=0
+          export GOOS=darwin
+          export GOARCH=arm64
+          go build -o cql-proxy
+          tar cvfz cql-proxy-darwin-arm64-${{ github.ref_name }}.tgz cql-proxy LICENSE
+      - name: Build Linux/arm64 binary
+        run: |
+          export GO111MODULE=on
+          export CGO_ENABLED=0
+          export GOOS=linux
+          export GOARCH=arm64
+          go build -o cql-proxy
+          tar cvfz cql-proxy-linux-arm64-${{ github.ref_name }}.tgz cql-proxy LICENSE
+      - name: Generate Checksums
+        run: |
+          sha256sum cql-proxy-linux-amd64-${{ github.ref_name }}.tgz | cut -d ' ' -f 1 > cql-proxy-linux-amd64-${{ github.ref_name }}-sha256.txt
+          sha256sum cql-proxy-windows-amd64-${{ github.ref_name }}.zip | cut -d ' ' -f 1 > cql-proxy-windows-amd64-${{ github.ref_name }}-sha256.txt
+          sha256sum cql-proxy-darwin-amd64-${{ github.ref_name }}.tgz | cut -d ' ' -f 1 > cql-proxy-darwin-amd64-${{ github.ref_name }}-sha256.txt
+          sha256sum cql-proxy-darwin-arm64-${{ github.ref_name }}.tgz | cut -d ' ' -f 1 > cql-proxy-darwin-arm64-${{ github.ref_name }}-sha256.txt
+          sha256sum cql-proxy-linux-arm64-${{ github.ref_name }}.tgz | cut -d ' ' -f 1 > cql-proxy-linux-arm64-${{ github.ref_name }}-sha256.txt
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ github.ref_name }}
+          files: |
+            cql-proxy-linux-amd64-${{ github.ref_name }}.tgz
+            cql-proxy-linux-amd64-${{ github.ref_name }}-sha256.txt
+            cql-proxy-windows-amd64-${{ github.ref_name }}.zip
+            cql-proxy-windows-amd64-${{ github.ref_name }}-sha256.txt
+            cql-proxy-darwin-amd64-${{ github.ref_name }}.tgz
+            cql-proxy-darwin-amd64-${{ github.ref_name }}-sha256.txt
+            cql-proxy-darwin-arm64-${{ github.ref_name }}.tgz
+            cql-proxy-darwin-arm64-${{ github.ref_name }}-sha256.txt
+            cql-proxy-linux-arm64-${{ github.ref_name }}.tgz
+            cql-proxy-linux-arm64-${{ github.ref_name }}-sha256.txt
