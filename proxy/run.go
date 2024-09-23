@@ -17,6 +17,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,6 +65,9 @@ type runConfig struct {
 	NumConns           int           `yaml:"num-conns" help:"Number of connection to create to each node of the backend cluster" default:"1" env:"NUM_CONNS"`
 	ProxyCertFile      string        `yaml:"proxy-cert-file" help:"Path to a PEM encoded certificate file with its intermediate certificate chain. This is used to encrypt traffic for proxy clients" env:"PROXY_CERT_FILE"`
 	ProxyKeyFile       string        `yaml:"proxy-key-file" help:"Path to a PEM encoded private key file. This is used to encrypt traffic for proxy clients" env:"PROXY_KEY_FILE"`
+	ClusterCAFile      string        `yaml:"cluster-ca-file" help:"Path to a PEM encoded file with CA certificates and their intermediate certificate chains. This is used to encrypt traffic between the proxy and the backend cluster" env:"CLUSTER_CA_FILE"`
+	ClusterCertFile    string        `yaml:"cluster-cert-file" help:"Path to a PEM encoded client certificate file with its intermediate certificate chain. This is used for mutual TLS when connecting to the backend cluster" env:"CLUSTER_CERT_FILE"`
+	ClusterKeyFile     string        `yaml:"cluster-key-file" help:"Path to a PEM encoded client private key file. This is used for mutual TLS when connecting to the backend cluster" env:"CLUSTER_KEY_FILE"`
 	RpcAddress         string        `yaml:"rpc-address" help:"Address to advertise in the 'system.local' table for 'rpc_address'. It must be set if configuring peer proxies" env:"RPC_ADDRESS"`
 	DataCenter         string        `yaml:"data-center" help:"Data center to use in system tables" env:"DATA_CENTER"`
 	Tokens             []string      `yaml:"tokens" help:"Tokens to use in the system tables. It's not recommended" env:"TOKENS"`
@@ -118,7 +122,32 @@ func Run(ctx context.Context, args []string) int {
 		cfg.Username = "token"
 		cfg.Password = cfg.AstraToken
 	} else if len(cfg.ContactPoints) > 0 {
-		resolver = proxycore.NewResolverWithDefaultPort(cfg.ContactPoints, cfg.Port)
+		var tlsConfig *tls.Config
+
+		if len(cfg.ClusterCAFile) > 0 { // Use proxy to cluster TLS
+			caCert, err := ioutil.ReadFile(cfg.ClusterCAFile)
+
+			if err != nil {
+				cliCtx.Fatalf("unable to load cluster CA file %s: %v", cfg.ClusterCAFile, err)
+			}
+			caCertPool := x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM(caCert)
+
+			tlsConfig = &tls.Config{
+				RootCAs: caCertPool,
+				InsecureSkipVerify: true, // Skip server name validation
+			}
+
+			if len(cfg.ClusterCertFile) > 0 || len(cfg.ClusterKeyFile) > 0 {
+				cert, err := loadCertificate(cfg.ClusterCertFile, cfg.ClusterKeyFile)
+				if err != nil {
+					cliCtx.Fatalf("problem loading cluster TLS client certificate pair: %v", err)
+				}
+				tlsConfig.Certificates = []tls.Certificate{cert}
+			}
+		}
+
+		resolver = proxycore.NewResolverWithDefaultPort(cfg.ContactPoints, cfg.Port, tlsConfig)
 	} else {
 		cliCtx.Errorf("must provide either bundle path, token, or contact points")
 		return 1
@@ -344,14 +373,22 @@ func (c *runConfig) listenAndServe(p *Proxy, mux *http.ServeMux, ctx context.Con
 	return err
 }
 
-func resolveAndListen(address, cert, key string) (net.Listener, error) {
-	if len(cert) > 0 || len(key) > 0 {
-		if len(cert) == 0 || len(key) == 0 {
-			return nil, errors.New("both certificate and private key are required for TLS")
-		}
-		cert, err := tls.LoadX509KeyPair(cert, key)
+func loadCertificate(certFile, keyFile string) (tls.Certificate, error) {
+	if len(certFile) == 0 || len(keyFile) == 0 {
+		return tls.Certificate{}, errors.New("both certificate and private key are required for TLS")
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	return cert, nil
+}
+
+func resolveAndListen(address, certFile, keyFile string) (net.Listener, error) {
+	if len(certFile) > 0 || len(keyFile) > 0 {
+		cert, err := loadCertificate(certFile, keyFile)
 		if err != nil {
-			return nil, fmt.Errorf("unable to load TLS certificate pair: %v", err)
+			return nil, fmt.Errorf("problem loading proxy TLS certificate pair: %v", err)
 		}
 		return tls.Listen("tcp", address, &tls.Config{Certificates: []tls.Certificate{cert}})
 	} else {
