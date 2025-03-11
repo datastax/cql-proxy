@@ -1,6 +1,6 @@
 module github.com/datastax/cql-proxy
 
-go 1.18
+go 1.19
 
 require (
 	github.com/alecthomas/kong v0.2.17

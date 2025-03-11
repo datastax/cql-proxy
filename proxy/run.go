@@ -15,18 +15,23 @@
 package proxy
 
 import (
-	"context"
-	"crypto/tls"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"strings"
-	"sync"
-	"time"
+    "context"
+    "crypto/aes"
+    "crypto/cipher"
+    "crypto/rand"
+    "crypto/tls"
+    "encoding/base64"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "io"
+    "io/ioutil"
+    "net"
+    "net/http"
+    "os"
+    "strings"
+    "sync"
+    "time"
 
 	"github.com/alecthomas/kong"
 	"github.com/datastax/cql-proxy/astra"
@@ -35,6 +40,83 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
+
+// Encrypt encrypts the given plaintext using AES and returns a Base64 encoded string.
+func encrypt(plaintext, key string) (string, error) {
+	keyBytes, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", fmt.Errorf("base64 decode error (key): %v", err)
+	}
+
+	if len(keyBytes) != 16 && len(keyBytes) != 24 && len(keyBytes) != 32 {
+		return "", fmt.Errorf("invalid AES key size: %d bytes", len(keyBytes))
+	}
+
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return "", fmt.Errorf("new cipher error: %v", err)
+	}
+
+	// Generate a random IV (Initialization Vector)
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", fmt.Errorf("IV generation error: %v", err)
+	}
+
+	// Encrypt the plaintext
+	ciphertext := make([]byte, len(plaintext))
+	stream := cipher.NewCFBEncrypter(block, iv)
+	stream.XORKeyStream(ciphertext, []byte(plaintext))
+
+	// Combine IV + Ciphertext and encode as Base64
+	combined := append(iv, ciphertext...)
+	return base64.StdEncoding.EncodeToString(combined), nil
+}
+
+// Decrypt decrypts the given Base64 encoded ciphertext using the provided Base64-encoded key.
+func decrypt(encrypted, key string) (string, error) {
+	if encrypted == "" {
+		return "", fmt.Errorf("empty encrypted string")
+	}
+
+	// Decode the Base64-encoded key to raw bytes
+	keyBytes, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", fmt.Errorf("base64 decode error (key): %v", err)
+	}
+
+	// Ensure the key length is valid for AES
+	if len(keyBytes) != 16 && len(keyBytes) != 24 && len(keyBytes) != 32 {
+		return "", fmt.Errorf("invalid AES key size: %d bytes", len(keyBytes))
+	}
+
+	// Decode the Base64-encoded ciphertext
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
+	if err != nil {
+		return "", fmt.Errorf("base64 decode error (ciphertext): %v", err)
+	}
+
+	// Ensure ciphertext contains at least the IV (16 bytes)
+	if len(ciphertext) < aes.BlockSize {
+		return "", fmt.Errorf("ciphertext too short (length: %d, expected >= %d)", len(ciphertext), aes.BlockSize)
+	}
+
+	// Extract IV (Initialization Vector)
+	iv := ciphertext[:aes.BlockSize]
+	ciphertext = ciphertext[aes.BlockSize:]
+
+	// Create AES cipher block
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return "", fmt.Errorf("new cipher error: %v", err)
+	}
+
+	// Decrypt using CFB mode
+	stream := cipher.NewCFBDecrypter(block, iv)
+	stream.XORKeyStream(ciphertext, ciphertext)
+
+	return string(ciphertext), nil
+}
 
 const livenessPath = "/liveness"
 const readinessPath = "/readiness"
@@ -98,6 +180,29 @@ func Run(ctx context.Context, args []string) int {
 			cliCtx.Errorf("invalid YAML in configuration file '%s': %v", cfg.Config.Name(), err)
 		}
 	}
+
+    // Decrypt username and password if provided as encrypted values.
+    encryptionKey := os.Getenv("ENCRYPTION_KEY")
+    if encryptionKey == "" {
+        cliCtx.Errorf("ENCRYPTION_KEY environment variable not set")
+        return 1
+    }
+    if len(cfg.Username) > 0 {
+        decryptedUsername, err := decrypt(cfg.Username, encryptionKey)
+        if err != nil {
+            cliCtx.Errorf("failed to decrypt username: %v", err)
+            return 1
+        }
+        cfg.Username = decryptedUsername
+    }
+    if len(cfg.Password) > 0 {
+        decryptedPassword, err := decrypt(cfg.Password, encryptionKey)
+        if err != nil {
+            cliCtx.Errorf("failed to decrypt password: %v", err)
+            return 1
+        }
+        cfg.Password = decryptedPassword
+    }
 
 	var resolver proxycore.EndpointResolver
 	if len(cfg.AstraBundle) > 0 {
