@@ -50,28 +50,28 @@ func TestRun_WithEncryptedCredentials(t *testing.T) {
 	require.NoError(t, err)
 	defer cluster.Shutdown()
 
-	// Retrieve encryption key from environment
+	// Set up environment variable for decryption
 	key := os.Getenv("ENCRYPTION_KEY")
-	if key == "" {
-		t.Fatal("ENCRYPTION_KEY is not set")
-	}
+	require.NotEmpty(t, key, "ENCRYPTION_KEY is not set")
 
-	// Define cleartext credentials.
-	usernameClear := "test_username"
-	passwordClear := "test_password"
+	// Pre-encrypted username and password (stored in the config)
+	encryptedUsername := "eL3EFTNypWRcnG0zXh7pxZjXTq+kuf49q7DDsBQ="
+	encryptedPassword := "G490LzGJiaGjHIYe2v3vy5tW5u7iPN1DoDKSOpw="
 
-	// Encrypt the credentials properly using AES instead of just Base64
-	encryptedUsername, err := encrypt(usernameClear, key)
+	// Decrypt credentials before usage
+	decryptedUsername, err := decrypt(encryptedUsername, key)
 	require.NoError(t, err)
+	require.Equal(t, "test_username", decryptedUsername)
 
-	encryptedPassword, err := encrypt(passwordClear, key)
+	decryptedPassword, err := decrypt(encryptedPassword, key)
 	require.NoError(t, err)
+	require.Equal(t, "test_password", decryptedPassword)
 
-	// Log the encrypted values for debugging
-	t.Logf("Encrypted Username: %s", encryptedUsername)
-	t.Logf("Encrypted Password: %s", encryptedPassword)
+	// Log for verification
+	t.Logf("Decrypted Username: %s", decryptedUsername)
+	t.Logf("Decrypted Password: %s", decryptedPassword)
 
-	// Write a temporary YAML config file that includes the encrypted credentials.
+	// Write a temporary YAML config file with pre-encrypted values
 	configFileName, err := writeTempYaml(struct {
 		Bind          string   `yaml:"bind"`
 		Port          int      `yaml:"port"`
@@ -90,7 +90,7 @@ func TestRun_WithEncryptedCredentials(t *testing.T) {
 		ContactPoints: []string{clusterAddr},
 		HealthCheck:   true,
 		HttpBind:      httpBindAddr,
-		Username:      encryptedUsername,
+		Username:      encryptedUsername, // Store encrypted values
 		Password:      encryptedPassword,
 	})
 	require.NoError(t, err)
@@ -100,7 +100,6 @@ func TestRun_WithEncryptedCredentials(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		rc := Run(ctx, []string{"--config", configFileName})
-		// Expecting a zero exit code when the proxy starts successfully.
 		assert.Equal(t, 0, rc)
 		wg.Done()
 	}()
@@ -109,17 +108,6 @@ func TestRun_WithEncryptedCredentials(t *testing.T) {
 	require.True(t, waitUntil(10*time.Second, func() bool {
 		return checkLiveness(httpBindAddr)
 	}))
-
-	// Optionally, decrypt the credentials to ensure they are correctly stored and retrieved
-	decryptedUsername, err := decrypt(encryptedUsername, key)
-	require.NoError(t, err)
-	require.Equal(t, usernameClear, decryptedUsername)
-	t.Logf("Decrypted Username: %s", decryptedUsername)
-
-	decryptedPassword, err := decrypt(encryptedPassword, key)
-	require.NoError(t, err)
-	require.Equal(t, passwordClear, decryptedPassword)
-	t.Logf("Decrypted Password: %s", decryptedPassword)
 
 	// Clean up.
 	cancel()

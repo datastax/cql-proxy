@@ -181,22 +181,25 @@ func Run(ctx context.Context, args []string) int {
 		}
 	}
 
-    // Decrypt username and password if provided as encrypted values.
+ // Decrypt username and password only if they appear to be encrypted.
     encryptionKey := os.Getenv("ENCRYPTION_KEY")
-    if encryptionKey == "" {
-        cliCtx.Errorf("ENCRYPTION_KEY environment variable not set")
+
+    if (strings.HasPrefix(cfg.Username, "ENC(") || strings.HasPrefix(cfg.Password, "ENC(")) && encryptionKey == "" {
+        cliCtx.Errorf("ENCRYPTION_KEY environment variable not set, but encrypted credentials detected")
         return 1
     }
-    if len(cfg.Username) > 0 {
-        decryptedUsername, err := decrypt(cfg.Username, encryptionKey)
+
+    if strings.HasPrefix(cfg.Username, "ENC(") {
+        decryptedUsername, err := decrypt(strings.TrimPrefix(strings.TrimSuffix(cfg.Username, ")"), "ENC("), encryptionKey)
         if err != nil {
             cliCtx.Errorf("failed to decrypt username: %v", err)
             return 1
         }
         cfg.Username = decryptedUsername
     }
-    if len(cfg.Password) > 0 {
-        decryptedPassword, err := decrypt(cfg.Password, encryptionKey)
+
+    if strings.HasPrefix(cfg.Password, "ENC(") {
+        decryptedPassword, err := decrypt(strings.TrimPrefix(strings.TrimSuffix(cfg.Password, ")"), "ENC("), encryptionKey)
         if err != nil {
             cliCtx.Errorf("failed to decrypt password: %v", err)
             return 1
