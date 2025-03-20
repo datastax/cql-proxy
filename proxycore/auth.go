@@ -17,10 +17,12 @@ package proxycore
 import (
 	"bytes"
 	"fmt"
+
+	"go.uber.org/zap"
 )
 
 type Authenticator interface {
-	InitialResponse(authenticator string) ([]byte, error)
+	InitialResponse(authenticator string, c *ClientConn) ([]byte, error)
 	EvaluateChallenge(token []byte) ([]byte, error)
 	Success(token []byte) error
 }
@@ -31,14 +33,21 @@ type passwordAuth struct {
 	password string
 }
 
-func (d *passwordAuth) InitialResponse(authenticator string) ([]byte, error) {
-	switch authenticator {
-	case "com.datastax.bdp.cassandra.auth.DseAuthenticator":
+const dseAuthenticator = "com.datastax.bdp.cassandra.auth.DseAuthenticator"
+const passwordAuthenticator = "org.apache.cassandra.auth.PasswordAuthenticator"
+const astraAuthenticator = "org.apache.cassandra.auth.AstraAuthenticator"
+
+func (d *passwordAuth) InitialResponse(authenticator string, c *ClientConn) ([]byte, error) {
+	if authenticator == dseAuthenticator {
 		return []byte("PLAIN"), nil
-	case "org.apache.cassandra.auth.PasswordAuthenticator":
-		return d.makeToken(), nil
 	}
-	return nil, fmt.Errorf("unknown authenticator: %v", authenticator)
+	// We'll return a SASL response but if we're seeing an authenticator we're unfamiliar with at least log
+	// that information here
+	if (authenticator != passwordAuthenticator) && (authenticator != astraAuthenticator) {
+		c.logger.Info("observed unknown authenticator, treating as SASL",
+			zap.String("authenticator", authenticator))
+	}
+	return d.makeToken(), nil
 }
 
 func (d *passwordAuth) EvaluateChallenge(token []byte) ([]byte, error) {

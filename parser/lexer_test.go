@@ -73,3 +73,42 @@ func TestLexerLiterals(t *testing.T) {
 		assert.Equal(t, tt.tk, l.next(), fmt.Sprintf("failed on literal: %s", tt.literal))
 	}
 }
+
+func TestLexerIdentifiers(t *testing.T) {
+	var tests = []struct {
+		literal  string
+		tk       token
+		expected string
+	}{
+		{`system`, tkIdentifier, "system"},
+		{`sys"tem`, tkIdentifier, "sys"},
+		{`System`, tkIdentifier, "system"},
+		{`"system"`, tkIdentifier, "system"},
+		{`"system"`, tkIdentifier, "system"},
+		{`"System"`, tkIdentifier, "System"},
+		// below test verify correct escaping double quote character as per CQL definition:
+		//    identifier ::= unquoted_identifier | quoted_identifier
+		//    unquoted_identifier ::= re('[a-zA-Z][link:[a-zA-Z0-9]]*')
+		//    quoted_identifier ::= '"' (any character where " can appear if doubled)+ '"'
+		{`""""`, tkIdentifier, "\""},       // outermost quotes indicate quoted string, inner two double quotes shall be treated as single quote
+		{`""""""`, tkIdentifier, "\"\""},   // same as above, but 4 inner quotes result in 2 quotes
+		{`"A"""""`, tkIdentifier, "A\"\""}, // outermost quotes indicate quoted string, 4 quotes after A result in 2 quotes
+		{`"""A"""`, tkIdentifier, "\"A\""}, // outermost quotes indicate quoted string, 2 quotes before and after A result in single quotes
+		{`"""""A"`, tkIdentifier, "\"\"A"}, // analogical to previous tests
+		{`";`, tkInvalid, ""},
+		{`"""`, tkIdentifier, ""},
+	}
+
+	for _, tt := range tests {
+		var l lexer
+		l.init(tt.literal)
+		n := l.next()
+		assert.Equal(t, tt.tk, n, fmt.Sprintf("failed on literal: %s", tt.literal))
+		if n == tkIdentifier {
+			id := l.identifier()
+			if id.ID() != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, l.id)
+			}
+		}
+	}
+}

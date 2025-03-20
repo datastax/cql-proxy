@@ -1,0 +1,55 @@
+name: Release Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build and Upload Release Assets
+    runs-on: ubuntu-latest
+    container: golang:1.18-bullseye
+    strategy:
+      matrix:
+        goosarch:
+          - "linux/amd64"
+          - "linux/arm64"
+          - "windows/amd64"
+          - "darwin/amd64"
+          - "darwin/arm64"
+    env:
+      GO111MODULE: on
+      CGO_ENABLED: 0
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Build ${{ matrix.goosarch }} binary
+        run: |
+          apt update
+          apt -y install zip
+          
+          export GOOSARCH=${{ matrix.goosarch }}
+          export GOOS=${GOOSARCH%/*}
+          export GOARCH=${GOOSARCH#*/}
+          
+          mkdir -p artifacts
+          
+          if [ "$GOOS" = "windows" ]; then
+            go build -o cql-proxy.exe
+            zip -vr cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.zip cql-proxy.exe LICENSE
+            sha256sum cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.zip | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}-sha256.txt
+          else
+            go build -o cql-proxy
+            tar cvfz cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.tgz cql-proxy LICENSE
+            sha256sum cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.tgz | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}-sha256.txt
+          fi
+          
+          mv cql-proxy-* artifacts
+      - name: Upload ${{ matrix.goosarch }} binaries
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ github.ref_name }}
+          files: |
+            artifacts/*

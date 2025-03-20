@@ -262,7 +262,7 @@ func (c *MockClient) makeSystemValues(version primitive.ProtocolVersion, address
 		"rpc_address":     encodeTypeFatal(version, datatype.Inet, address),
 		"data_center":     encodeTypeFatal(version, datatype.Varchar, "dc1"),
 		"rack":            encodeTypeFatal(version, datatype.Varchar, "rack1"),
-		"tokens":          encodeTypeFatal(version, datatype.NewListType(datatype.Varchar), []string{"0"}),
+		"tokens":          encodeTypeFatal(version, datatype.NewList(datatype.Varchar), []string{"0"}),
 		"release_version": encodeTypeFatal(version, datatype.Varchar, "3.11.10"),
 		"host_id":         encodeTypeFatal(version, datatype.Uuid, hostID),
 		"schema_version":  encodeTypeFatal(version, datatype.Uuid, schemaVersion),
