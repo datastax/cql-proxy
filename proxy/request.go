@@ -16,6 +16,7 @@ package proxy
 
 import (
 	"errors"
+	"github.com/datastax/cql-proxy/proxycore/codecs"
 	"io"
 	"reflect"
 	"sync"
@@ -80,14 +81,14 @@ func (r *request) executeInternal(next bool) {
 
 func (r *request) send(msg message.Message) {
 	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
+		return codecs.codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
 	}))
 }
 
 func (r *request) sendRaw(raw *frame.RawFrame) {
 	raw.Header.StreamId = r.stream
 	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeRawFrame(raw, writer)
+		return codecs.codec.EncodeRawFrame(raw, writer)
 	}))
 }
 
@@ -101,11 +102,11 @@ func (r *request) checkIdempotent() bool {
 		var err error
 		if r.msg != nil {
 			switch msg := r.msg.(type) {
-			case *partialQuery:
+			case *codecs.partialQuery:
 				idempotent, err = parser.IsQueryIdempotent(msg.query)
-			case *partialExecute:
+			case *codecs.partialExecute:
 				idempotent = r.client.proxy.isIdempotent(msg.queryId)
-			case *partialBatch:
+			case *codecs.partialBatch:
 				idempotent, err = r.isBatchIdempotent(msg)
 			default:
 				r.client.proxy.logger.Error("invalid message type encountered when checking for idempotence",
@@ -158,7 +159,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	logger := r.client.proxy.logger
 	decision := ReturnError
 
-	frm, err := codec.ConvertFromRawFrame(raw)
+	frm, err := codecs.codec.ConvertFromRawFrame(raw)
 	if err != nil {
 		logger.Error("unable to decode error frame for retry decision", zap.Error(err))
 	} else {
@@ -237,7 +238,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	return retried
 }
 
-func (r *request) isBatchIdempotent(batch *partialBatch) (idempotent bool, err error) {
+func (r *request) isBatchIdempotent(batch *codecs.partialBatch) (idempotent bool, err error) {
 	for _, queryOrId := range batch.queryOrIds {
 		switch q := queryOrId.(type) {
 		case string:

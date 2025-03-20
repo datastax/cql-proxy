@@ -257,7 +257,7 @@ func (c *ClientConn) Receive(reader io.Reader) error {
 
 	if raw.Header.OpCode == primitive.OpCodeEvent {
 		if c.eventHandler != nil {
-			frm, err := codec.ConvertFromRawFrame(raw)
+			frm, err := ConvertFromRawFrame(raw)
 			if err != nil {
 				return err
 			}

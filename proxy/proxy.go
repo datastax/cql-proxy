@@ -52,7 +52,10 @@ var ErrProxyClosed = errors.New("proxy closed")
 var ErrProxyAlreadyConnected = errors.New("proxy already connected")
 var ErrProxyNotConnected = errors.New("proxy not connected")
 
-const preparedIdSize = 16
+const (
+	preparedIdSize      = 16
+	DefaultMaxFrameSize = 1 << 26 // 64MiB
+)
 
 type PeerConfig struct {
 	RPCAddr string   `yaml:"rpc-address"`
@@ -117,7 +120,7 @@ func (p *Proxy) OnEvent(event proxycore.Event) {
 		p.eventClients.Range(func(key, _ interface{}) bool {
 			cl := key.(*client)
 			err := cl.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-				return codec.EncodeFrame(frm, writer)
+				return proxycore.EncodeFrame(frm, writer)
 			}))
 			cl.conn.LocalAddr()
 			if err != nil {
@@ -308,6 +311,7 @@ func (p *Proxy) handle(conn net.Conn) {
 		ctx:                 p.ctx,
 		proxy:               p,
 		preparedSystemQuery: make(map[[preparedIdSize]byte]interface{}),
+		codec:               proxycore.UncompressedCodec{},
 	}
 	p.addClient(cl)
 	cl.conn = proxycore.NewConn(conn, cl)
@@ -483,7 +487,7 @@ func (p *Proxy) isIdempotent(id []byte) bool {
 // This information is used by future "EXECUTE" requests when they need to be retried.
 func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.Message) {
 	if prepareMsg, ok := msg.(*message.Prepare); ok && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
-		frm, err := codec.ConvertFromRawFrame(raw)
+		frm, err := proxycore.ConvertFromRawFrame(raw)
 		if err != nil {
 			p.logger.Error("error attempting to decode prepared result message")
 		} else if _, ok = frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
@@ -533,10 +537,15 @@ type client struct {
 	conn                *proxycore.Conn
 	keyspace            string
 	preparedSystemQuery map[[16]byte]interface{}
+	codec               proxycore.CompressionCodec
 }
 
 func (c *client) Receive(reader io.Reader) error {
-	raw, err := codec.DecodeRawFrame(reader)
+	raw, err := c.codec.DecodeFrame(reader, DefaultMaxFrameSize)
+	if raw != nil && raw.Header != nil {
+		c.proxy.logger.Debug("received frame", zap.Any("msg", raw.Header.OpCode))
+	}
+
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			c.proxy.logger.Error("unable to decode frame", zap.Error(err))
@@ -551,19 +560,36 @@ func (c *client) Receive(reader io.Reader) error {
 		return nil
 	}
 
-	body, err := codec.DecodeBody(raw.Header, bytes.NewReader(raw.Body))
+	body, err := proxycore.DecodeBody(raw)
 	if err != nil {
 		c.proxy.logger.Error("unable to decode body", zap.Error(err))
 		return err
 	}
 
+	c.proxy.logger.Debug("handling message",
+		zap.String("client", c.conn.RemoteAddr().String()),
+		zap.String("msg", body.Message.GetOpCode().String()))
+
+	raw.Header.Flags = 0
+
 	switch msg := body.Message.(type) {
 	case *message.Options:
 		c.send(raw.Header, &message.Supported{Options: map[string][]string{
 			"CQL_VERSION": {c.proxy.cluster.Info.CQLVersion},
-			"COMPRESSION": {},
+			"COMPRESSION": proxycore.SupportedCompressionCodecs,
 		}})
 	case *message.Startup:
+		if compression, ok := msg.Options["COMPRESSION"]; ok {
+			compression = strings.ToLower(compression)
+			if codec, ok := proxycore.CompressionCodecs[compression]; ok {
+				c.codec = codec
+			} else {
+				c.proxy.logger.Error("unsupported compression type used by client", zap.String("compression", compression))
+				errMsg := fmt.Sprintf("Unsupported compression type: %s (supported compression types: %s)",
+					compression, strings.Join(proxycore.SupportedCompressionCodecs, ", "))
+				c.send(raw.Header, &message.ProtocolError{ErrorMessage: errMsg})
+			}
+		}
 		c.send(raw.Header, &message.Ready{})
 	case *message.Register:
 		for _, t := range msg.EventTypes {
@@ -574,11 +600,11 @@ func (c *client) Receive(reader io.Reader) error {
 		c.send(raw.Header, &message.Ready{})
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
-	case *partialExecute:
+	case *proxycore.PartialExecute:
 		c.handleExecute(raw, msg, body.CustomPayload)
-	case *partialQuery:
+	case *proxycore.PartialQuery:
 		c.handleQuery(raw, msg, body.CustomPayload)
-	case *partialBatch:
+	case *proxycore.PartialBatch:
 		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
@@ -657,8 +683,8 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	}
 }
 
-func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customPayload map[string][]byte) {
-	id := preparedIdKey(msg.queryId)
+func (c *client) handleExecute(raw *frame.RawFrame, msg *proxycore.PartialExecute, customPayload map[string][]byte) {
+	id := preparedIdKey(msg.QueryID)
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
@@ -666,10 +692,10 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 	}
 }
 
-func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
+func (c *client) handleQuery(raw *frame.RawFrame, msg *proxycore.PartialQuery, customPayload map[string][]byte) {
+	c.proxy.logger.Debug("handling query", zap.String("query", msg.Query), zap.Int16("stream", raw.Header.StreamId))
 
-	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
+	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.Query)
 
 	if handled {
 		if err != nil {
@@ -825,7 +851,7 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 
 func (c *client) send(hdr *frame.Header, msg message.Message) {
 	_ = c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
+		return proxycore.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
 	}))
 }
 
