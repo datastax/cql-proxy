@@ -575,7 +575,6 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
-		print(msg.Consistency)
 		msg.Consistency = primitive.ConsistencyLevelQuorum
 		c.handleExecute(raw, msg, body.CustomPayload)
 	case *partialQuery:
