@@ -44,12 +44,12 @@ func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valu
 
 func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
 	for _, selector := range stmt.Selectors {
-		var columns []*message.ColumnMetadata
-		columns, err = selector.Columns(columns, stmt)
+		var cols []*message.ColumnMetadata
+		cols, err = selector.Columns(columns, stmt)
 		if err != nil {
 			return nil, err
 		}
-		filtered = append(filtered, columns...)
+		filtered = append(filtered, cols...)
 	}
 	return filtered, nil
 }
