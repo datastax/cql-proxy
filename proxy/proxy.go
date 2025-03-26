@@ -575,10 +575,14 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
+		print(msg.Consistency)
+		msg.Consistency = primitive.ConsistencyLevelQuorum
 		c.handleExecute(raw, msg, body.CustomPayload)
 	case *partialQuery:
+		msg.Consistency = primitive.ConsistencyLevelQuorum
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
+		msg.Consistency = primitive.ConsistencyLevelQuorum
 		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
@@ -662,6 +666,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
+
 		c.execute(raw, c.getDefaultIdempotency(customPayload), "", msg)
 	}
 }

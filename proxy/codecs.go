@@ -42,7 +42,7 @@ func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion
 	if query, err := primitive.ReadLongString(source); err != nil {
 		return nil, err
 	} else {
-		return &partialQuery{query}, nil
+		return &partialQuery{query, primitive.ConsistencyLevelAny}, nil
 	}
 }
 
@@ -51,7 +51,8 @@ func (c *partialQueryCodec) GetOpCode() primitive.OpCode {
 }
 
 type partialQuery struct {
-	query string
+	query       string
+	Consistency primitive.ConsistencyLevel
 }
 
 func (p *partialQuery) IsResponse() bool {
@@ -63,11 +64,12 @@ func (p *partialQuery) GetOpCode() primitive.OpCode {
 }
 
 func (p *partialQuery) Clone() message.Message {
-	return &partialQuery{p.query}
+	return &partialQuery{p.query, p.Consistency}
 }
 
 type partialExecute struct {
-	queryId []byte
+	queryId     []byte
+	Consistency primitive.ConsistencyLevel
 }
 
 func (m *partialExecute) IsResponse() bool {
@@ -80,7 +82,8 @@ func (m *partialExecute) GetOpCode() primitive.OpCode {
 
 func (m *partialExecute) Clone() message.Message {
 	return &partialExecute{
-		queryId: primitive.CloneByteSlice(m.queryId),
+		queryId:     primitive.CloneByteSlice(m.queryId),
+		Consistency: m.Consistency,
 	}
 }
 
@@ -113,7 +116,8 @@ func (c *partialExecuteCodec) GetOpCode() primitive.OpCode {
 }
 
 type partialBatch struct {
-	queryOrIds []interface{}
+	queryOrIds  []interface{}
+	Consistency primitive.ConsistencyLevel
 }
 
 func (p partialBatch) IsResponse() bool {
@@ -127,7 +131,7 @@ func (p partialBatch) GetOpCode() primitive.OpCode {
 func (p partialBatch) Clone() message.Message {
 	queryOrIds := make([]interface{}, len(p.queryOrIds))
 	copy(queryOrIds, p.queryOrIds)
-	return &partialBatch{queryOrIds}
+	return &partialBatch{queryOrIds, p.Consistency}
 }
 
 type partialBatchCodec struct{}
@@ -177,7 +181,7 @@ func (p partialBatchCodec) Decode(source io.Reader, version primitive.ProtocolVe
 		}
 		queryOrIds[i] = queryOrId
 	}
-	return &partialBatch{queryOrIds}, nil
+	return &partialBatch{queryOrIds, primitive.ConsistencyLevelAny}, nil
 }
 
 func (p partialBatchCodec) GetOpCode() primitive.OpCode {
