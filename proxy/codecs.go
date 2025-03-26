@@ -67,6 +67,10 @@ func (p *partialQuery) Clone() message.Message {
 	return &partialQuery{p.query, p.Consistency}
 }
 
+func (p *partialQuery) DeepCopyMessage() message.Message {
+	return &partialQuery{p.query, p.Consistency}
+}
+
 type partialExecute struct {
 	queryId     []byte
 	Consistency primitive.ConsistencyLevel
@@ -80,11 +84,10 @@ func (m *partialExecute) GetOpCode() primitive.OpCode {
 	return primitive.OpCodeExecute
 }
 
-func (m *partialExecute) Clone() message.Message {
-	return &partialExecute{
-		queryId:     primitive.CloneByteSlice(m.queryId),
-		Consistency: m.Consistency,
-	}
+func (m *partialExecute) DeepCopyMessage() message.Message {
+	queryId := make([]byte, len(m.queryId))
+	copy(queryId, m.queryId)
+	return &partialExecute{queryId, m.Consistency}
 }
 
 func (m *partialExecute) String() string {
@@ -128,7 +131,7 @@ func (p partialBatch) GetOpCode() primitive.OpCode {
 	return primitive.OpCodeBatch
 }
 
-func (p partialBatch) Clone() message.Message {
+func (p partialBatch) DeepCopyMessage() message.Message {
 	queryOrIds := make([]interface{}, len(p.queryOrIds))
 	copy(queryOrIds, p.queryOrIds)
 	return &partialBatch{queryOrIds, p.Consistency}

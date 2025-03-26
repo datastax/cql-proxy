@@ -447,7 +447,7 @@ func (p *Proxy) buildLocalRow() {
 		"key":                     p.encodeTypeFatal(datatype.Varchar, "local"),
 		"data_center":             p.encodeTypeFatal(datatype.Varchar, p.localNode.dc),
 		"rack":                    p.encodeTypeFatal(datatype.Varchar, "rack1"),
-		"tokens":                  p.encodeTypeFatal(datatype.NewListType(datatype.Varchar), p.localNode.tokens),
+		"tokens":                  p.encodeTypeFatal(datatype.NewList(datatype.Varchar), p.localNode.tokens),
 		"release_version":         p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.ReleaseVersion),
 		"partitioner":             p.encodeTypeFatal(datatype.Varchar, p.cluster.Info.Partitioner),
 		"cluster_name":            p.encodeTypeFatal(datatype.Varchar, "cql-proxy"),
@@ -671,11 +671,9 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	c.proxy.logger.Debug("handling query", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
-
 	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
-
 	if handled {
+		c.proxy.logger.Debug("Query handled by proxy", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		if err != nil {
 			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
@@ -683,6 +681,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
+		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
 	}
 }
@@ -738,7 +737,7 @@ func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, filtered [
 		} else if name == "host_id" {
 			return proxycore.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(peer.addr.String()))
 		} else if name == "tokens" {
-			return proxycore.EncodeType(datatype.NewListType(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, peer.tokens)
+			return proxycore.EncodeType(datatype.NewList(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, peer.tokens)
 		} else if name == "peer" {
 			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.addr.IP)
 		} else if name == "rpc_address" {
@@ -817,10 +816,22 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 		}
 	case *parser.UseStatement:
 		if _, err := c.proxy.maybeCreateSession(hdr.Version, s.Keyspace); err != nil {
-			c.send(hdr, &message.ServerError{ErrorMessage: "Proxy unable to create new session for keyspace"})
+			errMsg := "Proxy unable to create new session for keyspace"
+			var cqlError *proxycore.CqlError
+			if errors.As(err, &cqlError) {
+				// copy detailed error reason from downstream message
+				errMsg = cqlError.Message.GetErrorMessage()
+			}
+			c.send(hdr, &message.ServerError{ErrorMessage: errMsg})
 		} else {
 			c.keyspace = s.Keyspace
-			c.send(hdr, &message.SetKeyspaceResult{Keyspace: s.Keyspace})
+			// We might have received a quoted keyspace name in the UseStatement so remove any
+			// quotes before sending back this result message.  This keeps us consistent with
+			// how Cassandra implements the same functionality and avoids any issues with
+			// drivers sending follow-on "USE" requests after wrapping the keyspace name in
+			// quotes.
+			ks := parser.IdentifierFromString(s.Keyspace)
+			c.send(hdr, &message.SetKeyspaceResult{Keyspace: ks.ID()})
 		}
 	default:
 		c.send(hdr, &message.ServerError{ErrorMessage: "Proxy attempted to intercept an unhandled query"})

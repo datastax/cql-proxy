@@ -133,7 +133,7 @@ func (l *lexer) next() token {
     %%{
         ws = [ \t];
         nl = '\r\n' | '\n';
-        id = ([a-zA-Z][a-zA-Z0-9_]*)|("\"" ([^\r\n\"] | "\\\"")* "\"");
+        id = ([a-zA-Z][a-zA-Z0-9_]*)|("\"" ([^\r\n\"] | "\"\"")* "\"");
         integer = '-'? digit+;
         exponent = [eE] ('+' | '-')? digit+;
         float = (integer exponent) | (integer '.' digit* exponent?);
