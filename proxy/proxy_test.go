@@ -407,6 +407,47 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 	return tester, proxyAddr, nil
 }
 
+func TestProxy_Consistency(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 3, proxycore.MockRequestHandlers{
+		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			qry := frm.Body.Message.(*message.Query)
+			if qry.Query == "SELECT * FROM test.test" {
+				// A read timeout is not retried because of 0 replicas received
+				return &message.ReadTimeout{
+					ErrorMessage: "this is a mock read timeout error",
+					Consistency:  getConsistencyLevel(frm.Body.Message),
+					Received:     0,
+					BlockFor:     1,
+					DataPresent:  false,
+				}
+			}
+			return cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query))
+		},
+	})
+	defer func() {
+		cancel()
+		tester.shutdown()
+	}()
+	require.NoError(t, err)
+
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
+	require.NoError(t, err)
+
+	version, err := cl.Handshake(ctx, primitive.ProtocolVersion5, nil)
+	require.NoError(t, err)
+	assert.Equal(t, primitive.ProtocolVersion4, version) // Expected to be negotiated to v4
+
+	_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+		Query: "SELECT * FROM test.test",
+		Options: &message.QueryOptions{
+			Consistency: primitive.ConsistencyLevelOne,
+		},
+	})
+
+	print(err)
+}
+
 func connectTestClient(t *testing.T, ctx context.Context, proxyContactPoint string) *proxycore.ClientConn {
 	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyContactPoint), proxycore.ClientConnConfig{})
 	require.NoError(t, err)
@@ -416,6 +457,19 @@ func connectTestClient(t *testing.T, ctx context.Context, proxyContactPoint stri
 	assert.Equal(t, primitive.ProtocolVersion4, version)
 
 	return cl
+}
+
+func getConsistencyLevel(message message.Message) primitive.ConsistencyLevel {
+	switch m := message.(type) {
+	case *partialQuery:
+		return m.Consistency
+	case *partialBatch:
+		return m.Consistency
+	case *partialExecute:
+		return m.Consistency
+	default:
+		return primitive.ConsistencyLevelOne
+	}
 }
 
 func waitUntil(d time.Duration, check func() bool) bool {
