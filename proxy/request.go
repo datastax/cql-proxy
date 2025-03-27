@@ -68,6 +68,8 @@ func (r *request) executeInternal(next bool) {
 			r.done = true
 			r.send(&message.ServerError{ErrorMessage: "Proxy exhausted query plan and there are no more hosts available to try"})
 		} else {
+			r.client.proxy.logger.Info("sending request to host", zap.Stringer("host", r.host),
+				zap.String("consistency", r.getConsistencyLevel(r.msg).String()))
 			err := r.session.Send(r.host, r)
 			if err == nil {
 				break
@@ -75,6 +77,19 @@ func (r *request) executeInternal(next bool) {
 				r.client.proxy.logger.Debug("failed to send request to host", zap.Stringer("host", r.host), zap.Error(err))
 			}
 		}
+	}
+}
+
+func (r *request) getConsistencyLevel(message message.Message) primitive.ConsistencyLevel {
+	switch m := message.(type) {
+	case *partialQuery:
+		return m.Consistency
+	case *partialBatch:
+		return m.Consistency
+	case *partialExecute:
+		return m.Consistency
+	default:
+		return primitive.ConsistencyLevelOne
 	}
 }
 

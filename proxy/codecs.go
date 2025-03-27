@@ -42,7 +42,7 @@ func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion
 	if query, err := primitive.ReadLongString(source); err != nil {
 		return nil, err
 	} else {
-		return &partialQuery{query, primitive.ConsistencyLevelAny}, nil
+		return &partialQuery{query, primitive.ConsistencyLevelLocalQuorum}, nil
 	}
 }
 
@@ -105,7 +105,7 @@ func (c *partialExecuteCodec) EncodedLength(_ message.Message, _ primitive.Proto
 }
 
 func (c *partialExecuteCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (msg message.Message, err error) {
-	execute := &partialExecute{}
+	execute := &partialExecute{Consistency: primitive.ConsistencyLevelLocalQuorum}
 	if execute.queryId, err = primitive.ReadShortBytes(source); err != nil {
 		return nil, fmt.Errorf("cannot read EXECUTE query id: %w", err)
 	} else if len(execute.queryId) == 0 {
@@ -184,7 +184,7 @@ func (p partialBatchCodec) Decode(source io.Reader, version primitive.ProtocolVe
 		}
 		queryOrIds[i] = queryOrId
 	}
-	return &partialBatch{queryOrIds, primitive.ConsistencyLevelAny}, nil
+	return &partialBatch{queryOrIds, primitive.ConsistencyLevelLocalQuorum}, nil
 }
 
 func (p partialBatchCodec) GetOpCode() primitive.OpCode {

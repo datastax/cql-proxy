@@ -24,6 +24,7 @@ import (
 
 func main() {
 	ctx, cancel := signalContext(context.Background(), os.Interrupt, os.Kill)
+
 	defer cancel()
 
 	os.Exit(proxy.Run(ctx, os.Args[1:]))
