@@ -75,7 +75,7 @@ func IsQueryHandled(keyspace Identifier, query string) (handled bool, stmt State
 	switch t {
 	case tkSelect:
 		handled, stmt, err = isHandledSelectStmt(&l, keyspace)
-		if !handled && err == nil {
+		if !handled {
 			stmt = defaultSelectStatement
 		}
 		return
