@@ -583,7 +583,6 @@ func (c *client) Receive(reader io.Reader) error {
 		if c.proxy.config.AstraOverrideConsistencyLevel {
 			_ = patchQueryConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
 		}
-		raw.DeepCopy()
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
 		if c.proxy.config.AstraOverrideConsistencyLevel {
