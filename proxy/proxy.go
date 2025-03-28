@@ -61,24 +61,23 @@ type PeerConfig struct {
 }
 
 type Config struct {
-	Version           primitive.ProtocolVersion
-	MaxVersion        primitive.ProtocolVersion
-	Auth              proxycore.Authenticator
-	Resolver          proxycore.EndpointResolver
-	ReconnectPolicy   proxycore.ReconnectPolicy
-	RetryPolicy       RetryPolicy
-	IdempotentGraph   bool
-	NumConns          int
-	Logger            *zap.Logger
-	HeartBeatInterval time.Duration
-	ConnectTimeout    time.Duration
-	IdleTimeout       time.Duration
-	RPCAddr           string
-	DC                string
-	Tokens            []string
-	Peers             []PeerConfig
-	DatabaseType      string
-	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
+	Version                       primitive.ProtocolVersion
+	MaxVersion                    primitive.ProtocolVersion
+	Auth                          proxycore.Authenticator
+	Resolver                      proxycore.EndpointResolver
+	ReconnectPolicy               proxycore.ReconnectPolicy
+	RetryPolicy                   RetryPolicy
+	IdempotentGraph               bool
+	NumConns                      int
+	Logger                        *zap.Logger
+	HeartBeatInterval             time.Duration
+	ConnectTimeout                time.Duration
+	IdleTimeout                   time.Duration
+	RPCAddr                       string
+	DC                            string
+	Tokens                        []string
+	Peers                         []PeerConfig
+	AstraOverrideConsistencyLevel bool
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
 }
@@ -576,19 +575,19 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
-		if c.proxy.config.DatabaseType == "astra" {
-			_ = parser.PatchExecuteConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
+		if c.proxy.config.AstraOverrideConsistencyLevel {
+			_ = patchExecuteConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
 		}
 		c.handleExecute(raw, msg, body.CustomPayload)
 	case *partialQuery:
-		if c.proxy.config.DatabaseType == "astra" {
-			_ = parser.PatchQueryConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
+		if c.proxy.config.AstraOverrideConsistencyLevel {
+			_ = patchQueryConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
 		}
 		raw.DeepCopy()
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
-		if c.proxy.config.DatabaseType == "astra" {
-			_ = parser.PatchBatchConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
+		if c.proxy.config.AstraOverrideConsistencyLevel {
+			_ = patchBatchConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
 		}
 		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
