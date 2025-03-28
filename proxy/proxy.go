@@ -77,6 +77,7 @@ type Config struct {
 	DC                string
 	Tokens            []string
 	Peers             []PeerConfig
+	DatabaseType      string
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
@@ -575,13 +576,20 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
-		msg.Consistency = primitive.ConsistencyLevelQuorum
+		if c.proxy.config.DatabaseType == "astra" {
+			_ = parser.PatchExecuteConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
+		}
 		c.handleExecute(raw, msg, body.CustomPayload)
 	case *partialQuery:
-		msg.Consistency = primitive.ConsistencyLevelQuorum
+		if c.proxy.config.DatabaseType == "astra" {
+			_ = parser.PatchQueryConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
+		}
+		raw.DeepCopy()
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
-		msg.Consistency = primitive.ConsistencyLevelQuorum
+		if c.proxy.config.DatabaseType == "astra" {
+			_ = parser.PatchBatchConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
+		}
 		c.execute(raw, notDetermined, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})

@@ -42,7 +42,7 @@ func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion
 	if query, err := primitive.ReadLongString(source); err != nil {
 		return nil, err
 	} else {
-		return &partialQuery{query, primitive.ConsistencyLevelLocalQuorum}, nil
+		return &partialQuery{query}, nil
 	}
 }
 
@@ -51,8 +51,7 @@ func (c *partialQueryCodec) GetOpCode() primitive.OpCode {
 }
 
 type partialQuery struct {
-	query       string
-	Consistency primitive.ConsistencyLevel
+	query string
 }
 
 func (p *partialQuery) IsResponse() bool {
@@ -63,17 +62,12 @@ func (p *partialQuery) GetOpCode() primitive.OpCode {
 	return primitive.OpCodeQuery
 }
 
-func (p *partialQuery) Clone() message.Message {
-	return &partialQuery{p.query, p.Consistency}
-}
-
 func (p *partialQuery) DeepCopyMessage() message.Message {
-	return &partialQuery{p.query, p.Consistency}
+	return &partialQuery{p.query}
 }
 
 type partialExecute struct {
-	queryId     []byte
-	Consistency primitive.ConsistencyLevel
+	queryId []byte
 }
 
 func (m *partialExecute) IsResponse() bool {
@@ -87,7 +81,7 @@ func (m *partialExecute) GetOpCode() primitive.OpCode {
 func (m *partialExecute) DeepCopyMessage() message.Message {
 	queryId := make([]byte, len(m.queryId))
 	copy(queryId, m.queryId)
-	return &partialExecute{queryId, m.Consistency}
+	return &partialExecute{queryId}
 }
 
 func (m *partialExecute) String() string {
@@ -105,7 +99,7 @@ func (c *partialExecuteCodec) EncodedLength(_ message.Message, _ primitive.Proto
 }
 
 func (c *partialExecuteCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (msg message.Message, err error) {
-	execute := &partialExecute{Consistency: primitive.ConsistencyLevelLocalQuorum}
+	execute := &partialExecute{}
 	if execute.queryId, err = primitive.ReadShortBytes(source); err != nil {
 		return nil, fmt.Errorf("cannot read EXECUTE query id: %w", err)
 	} else if len(execute.queryId) == 0 {
@@ -119,8 +113,7 @@ func (c *partialExecuteCodec) GetOpCode() primitive.OpCode {
 }
 
 type partialBatch struct {
-	queryOrIds  []interface{}
-	Consistency primitive.ConsistencyLevel
+	queryOrIds []interface{}
 }
 
 func (p partialBatch) IsResponse() bool {
@@ -134,7 +127,7 @@ func (p partialBatch) GetOpCode() primitive.OpCode {
 func (p partialBatch) DeepCopyMessage() message.Message {
 	queryOrIds := make([]interface{}, len(p.queryOrIds))
 	copy(queryOrIds, p.queryOrIds)
-	return &partialBatch{queryOrIds, p.Consistency}
+	return &partialBatch{queryOrIds}
 }
 
 type partialBatchCodec struct{}
@@ -184,7 +177,7 @@ func (p partialBatchCodec) Decode(source io.Reader, version primitive.ProtocolVe
 		}
 		queryOrIds[i] = queryOrId
 	}
-	return &partialBatch{queryOrIds, primitive.ConsistencyLevelLocalQuorum}, nil
+	return &partialBatch{queryOrIds}, nil
 }
 
 func (p partialBatchCodec) GetOpCode() primitive.OpCode {

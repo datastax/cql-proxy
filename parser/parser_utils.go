@@ -15,11 +15,12 @@
 package parser
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
-
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
 const (
@@ -192,4 +193,45 @@ func parseIdentifiers(l *lexer, t token) (err error) {
 
 func isDMLTerminator(t token) bool {
 	return t == tkEOF || t == tkEOS || t == tkInsert || t == tkUpdate || t == tkDelete || t == tkApply
+}
+
+// PatchQueryConsistency modifies the consistency level of a QUERY message in-place
+// by locating the consistency field directly in the frame body.
+//
+// Layout based on the CQL native protocol v4 spec:
+// /* <query: long string><consistency: short><flags: byte>... */
+func PatchQueryConsistency(body []byte, newConsistency primitive.ConsistencyLevel) error {
+	if len(body) < 6 {
+		return fmt.Errorf("body too short for QUERY")
+	}
+	queryLen := binary.BigEndian.Uint32(body[0:4])
+	offset := 4 + int(queryLen)
+	if len(body) < offset+2 {
+		return fmt.Errorf("not enough bytes to patch QUERY consistency")
+	}
+	binary.BigEndian.PutUint16(body[offset:offset+2], uint16(newConsistency))
+	return nil
+}
+
+// PatchExecuteConsistency modifies the consistency level of an EXECUTE message in-place
+// by locating the consistency field directly after the prepared statement ID.
+//
+// Layout based on the CQL native protocol v4 spec:
+// /* <id: short bytes><consistency: short><flags: byte>... */
+func PatchExecuteConsistency(body []byte, newConsistency primitive.ConsistencyLevel) error {
+	if len(body) < 2 {
+		return fmt.Errorf("body too short for EXECUTE")
+	}
+	idLen := int(binary.BigEndian.Uint16(body[0:2]))
+	offset := 2 + idLen
+	if len(body) < offset+2 {
+		return fmt.Errorf("not enough bytes to patch EXECUTE consistency")
+	}
+	binary.BigEndian.PutUint16(body[offset:offset+2], uint16(newConsistency))
+	return nil
+}
+
+func PatchBatchConsistency(body []byte, newConsistency primitive.ConsistencyLevel) error {
+	//TODO: Implement this
+	return nil
 }

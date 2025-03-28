@@ -68,6 +68,7 @@ type runConfig struct {
 	DataCenter         string        `yaml:"data-center" help:"Data center to use in system tables" env:"DATA_CENTER"`
 	Tokens             []string      `yaml:"tokens" help:"Tokens to use in the system tables. It's not recommended" env:"TOKENS"`
 	Peers              []PeerConfig  `yaml:"peers" kong:"-"` // Not available as a CLI flag
+	DatabaseType       string        `yaml:"database-type" help:"Type of database to proxy for (cassandra, dse, astra)" default:"astra" env:"DATABASE_TYPE"`
 }
 
 // Run starts the proxy command. 'args' shouldn't include the executable (i.e. os.Args[1:]). It returns the exit code
@@ -186,6 +187,7 @@ func Run(ctx context.Context, args []string) int {
 		Tokens:            cfg.Tokens,
 		Peers:             cfg.Peers,
 		IdempotentGraph:   cfg.IdempotentGraph,
+		DatabaseType:      cfg.DatabaseType,
 	})
 
 	cfg.Bind = maybeAddPort(cfg.Bind, "9042")
