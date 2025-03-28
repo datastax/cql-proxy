@@ -11,7 +11,7 @@ import (
 
 const version = primitive.ProtocolVersion4
 
-func TestPatchQueryConsistencyValid(t *testing.T) {
+func TestPatchQueryConsistency(t *testing.T) {
 	var queryCodec message.Codec
 
 	for _, c := range message.DefaultMessageCodecs {
@@ -21,7 +21,7 @@ func TestPatchQueryConsistencyValid(t *testing.T) {
 	}
 	assert.NotNil(t, queryCodec)
 
-	t.Run("valid QUERY body", func(t *testing.T) {
+	t.Run("patch query consistency for valid query frame", func(t *testing.T) {
 		var buf bytes.Buffer
 		err := queryCodec.Encode(&message.Query{
 			Query: "SELECT * FROM test",
@@ -42,7 +42,7 @@ func TestPatchQueryConsistencyValid(t *testing.T) {
 	})
 }
 
-func TestPatchExecuteConsistencyValid(t *testing.T) {
+func TestPatchExecuteConsistency(t *testing.T) {
 
 	localSerialConsistency := primitive.ConsistencyLevelLocalSerial
 
@@ -55,7 +55,7 @@ func TestPatchExecuteConsistencyValid(t *testing.T) {
 	}
 	assert.NotNil(t, queryCodec)
 
-	t.Run("valid EXECUTE body", func(t *testing.T) {
+	t.Run("patch execute consistency for valid execute frame", func(t *testing.T) {
 		var buf bytes.Buffer
 
 		msg := &message.Execute{
@@ -82,7 +82,7 @@ func TestPatchExecuteConsistencyValid(t *testing.T) {
 
 }
 
-func TestPatchBatchConsistencyValid(t *testing.T) {
+func TestPatchBatchConsistency(t *testing.T) {
 	localSerialConsistency := primitive.ConsistencyLevelLocalSerial
 	timestamp := int64(1234567890)
 
@@ -95,22 +95,22 @@ func TestPatchBatchConsistencyValid(t *testing.T) {
 	}
 	assert.NotNil(t, queryCodec)
 
-	t.Run("valid Batch patch consistency with values", func(t *testing.T) {
+	t.Run("patch batch consistency for valid batch frame with values", func(t *testing.T) {
 		var buf bytes.Buffer
 
 		msgWithFlags := &message.Batch{
 			Type: primitive.BatchTypeLogged,
 			Children: []*message.BatchChild{
 				{
-					Query: "SELECT * FROM table WHERE id = ?",
-					Values: []*primitive.Value{
-						{Type: primitive.ValueTypeRegular, Contents: []byte{0x01, 0x02, 0x03}},
-					},
-				},
-				{
 					Id: []byte{0x01, 0x02, 0x03},
 					Values: []*primitive.Value{
 						{Type: primitive.ValueTypeNull},
+					},
+				},
+				{
+					Query: "SELECT * FROM table WHERE id = ?",
+					Values: []*primitive.Value{
+						{Type: primitive.ValueTypeRegular, Contents: []byte{0x01, 0x02, 0x03}},
 					},
 				},
 			},
@@ -132,7 +132,7 @@ func TestPatchBatchConsistencyValid(t *testing.T) {
 		assert.Equal(t, primitive.ConsistencyLevelQuorum, mesg.(*message.Batch).Consistency)
 	})
 
-	t.Run("valid Batch patch consistency without values", func(t *testing.T) {
+	t.Run("patch batch consistency for valid batch frame without values", func(t *testing.T) {
 		var buf bytes.Buffer
 
 		msgWithFlags := &message.Batch{

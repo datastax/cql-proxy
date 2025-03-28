@@ -134,8 +134,16 @@ func skipValueByteSlice(body []byte, offset *int) error {
 	if len(body) <= *offset+4 {
 		return fmt.Errorf("insufficient bytes to read value length")
 	}
-	length := binary.BigEndian.Uint32(body[*offset : *offset+4])
+	length := int32(binary.BigEndian.Uint32(body[*offset : *offset+4]))
 	*offset += 4 // Move the offset past the length
+
+	if length == -1 {
+		// It's a null, nothing to skip
+		return nil
+	}
+	if length < 0 {
+		return fmt.Errorf("invalid negative length: %d", length)
+	}
 
 	if length > 0 {
 		if len(body) < *offset+int(length) {
@@ -143,6 +151,5 @@ func skipValueByteSlice(body []byte, offset *int) error {
 		}
 		*offset += int(length) // Move the offset past the value content
 	}
-
 	return nil
 }
