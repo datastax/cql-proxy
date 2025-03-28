@@ -880,15 +880,15 @@ func (c *client) maybeOverrideAstraWriteConsistency(isSelect bool, raw *frame.Ra
 		switch m := msg.(type) {
 		case *partialExecute:
 			if c.isInvalidAstraWriteConsistency(m.consistency) {
-				_ = parser.PatchExecuteConsistency(raw.Body, overrideConsistency)
+				_ = patchExecuteConsistency(raw.Body, overrideConsistency)
 			}
 		case *partialQuery:
 			if c.isInvalidAstraWriteConsistency(m.consistency) {
-				_ = parser.PatchQueryConsistency(raw.Body, overrideConsistency)
+				_ = patchQueryConsistency(raw.Body, overrideConsistency)
 			}
 		case *partialBatch:
 			if c.isInvalidAstraWriteConsistency(m.consistency) {
-				_ = parser.PatchBatchConsistency(raw.Body, overrideConsistency)
+				_ = patchExecuteConsistency(raw.Body, overrideConsistency)
 			}
 		}
 	}
