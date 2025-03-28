@@ -150,7 +150,7 @@ func benchmarkIsQueryHandled(b *testing.B) {
 	id := parser.IdentifierFromString("system")
 	for n := 0; n < b.N; n++ {
 		for _, q := range queries {
-			handled, _, _, err := parser.IsQueryHandled(id, q.query)
+			handled, _, err := parser.IsQueryHandled(id, q.query)
 			if q.handled != handled {
 				r++
 				log.Panicf("expected query didn't match handled (expected: %v, actual: %v) for query \"%s\"", q.handled, handled, q.query)

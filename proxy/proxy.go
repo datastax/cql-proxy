@@ -636,7 +636,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	if len(msg.Keyspace) != 0 {
 		keyspace = msg.Keyspace
 	}
-	handled, isSelect, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(keyspace), msg.Query)
+	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(keyspace), msg.Query)
 
 	if handled {
 		hdr := raw.Header
@@ -676,6 +676,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		}
 
 	} else {
+		_, isSelect := stmt.(*parser.SelectStatement)
 		c.execute(raw, isIdempotent, isSelect, keyspace, msg) // Prepared statements can be retried themselves
 	}
 }
@@ -692,7 +693,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	handled, isSelect, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
+	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
 	if handled {
 		c.proxy.logger.Debug("Query handled by proxy", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		if err != nil {
@@ -703,6 +704,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 		}
 	} else {
 		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
+		_, isSelect := stmt.(*parser.SelectStatement)
 		c.maybeOverrideAstraWriteConsistency(isSelect, raw, msg)
 		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, c.keyspace, msg)
 	}

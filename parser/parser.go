@@ -64,8 +64,10 @@ type UseStatement struct {
 
 func (u UseStatement) isStatement() {}
 
+var defaultSelectStatement = &SelectStatement{}
+
 // IsQueryHandled parses the query string and determines if the query is handled by the proxy
-func IsQueryHandled(keyspace Identifier, query string) (handled, isSelect bool, stmt Statement, err error) {
+func IsQueryHandled(keyspace Identifier, query string) (handled bool, stmt Statement, err error) {
 	var l lexer
 	l.init(query)
 
@@ -73,9 +75,12 @@ func IsQueryHandled(keyspace Identifier, query string) (handled, isSelect bool, 
 	switch t {
 	case tkSelect:
 		handled, stmt, err = isHandledSelectStmt(&l, keyspace)
-		isSelect = true
+		if !handled && err == nil {
+			stmt = defaultSelectStatement
+		}
+		return
 	case tkUse:
-		handled, stmt, err = isHandledUseStmt(&l)
+		return isHandledUseStmt(&l)
 	}
 	return
 }
