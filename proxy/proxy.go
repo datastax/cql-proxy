@@ -601,7 +601,7 @@ func (c *client) Receive(reader io.Reader) error {
 	case *partialQuery:
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
-		c.maybeOverrideAstraWriteConsistency(false, raw, msg)
+		c.maybeOverrideUnsupportedWriteConsistency(false, raw, msg)
 		c.execute(raw, notDetermined, false, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
@@ -688,7 +688,7 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
 		isSelect := c.proxy.isSelect(id)
-		c.maybeOverrideAstraWriteConsistency(isSelect, raw, msg)
+		c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, msg)
 		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, "", msg)
 	}
 }
@@ -706,7 +706,7 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 	} else {
 		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		_, isSelect := stmt.(*parser.SelectStatement)
-		c.maybeOverrideAstraWriteConsistency(isSelect, raw, msg)
+		c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, msg)
 		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, c.keyspace, msg)
 	}
 }
@@ -873,28 +873,28 @@ func (c *client) Closing(_ error) {
 	c.proxy.removeClient(c)
 }
 
-func (c *client) maybeOverrideAstraWriteConsistency(isSelect bool, raw *frame.RawFrame, msg message.Message) {
+func (c *client) maybeOverrideUnsupportedWriteConsistency(isSelect bool, raw *frame.RawFrame, msg message.Message) {
 	if !isSelect {
 		overrideConsistency := c.proxy.config.UnsupportedWriteConsistencyOverride.ConsistencyLevel
 
 		switch m := msg.(type) {
 		case *partialExecute:
-			if c.isInvalidAstraWriteConsistency(m.consistency) {
+			if c.isUnsupportedWriteConsistency(m.consistency) {
 				_ = patchExecuteConsistency(raw.Body, overrideConsistency)
 			}
 		case *partialQuery:
-			if c.isInvalidAstraWriteConsistency(m.consistency) {
+			if c.isUnsupportedWriteConsistency(m.consistency) {
 				_ = patchQueryConsistency(raw.Body, overrideConsistency)
 			}
 		case *partialBatch:
-			if c.isInvalidAstraWriteConsistency(m.consistency) {
-				_ = patchExecuteConsistency(raw.Body, overrideConsistency)
+			if c.isUnsupportedWriteConsistency(m.consistency) {
+				_ = patchBatchConsistency(raw.Body, overrideConsistency)
 			}
 		}
 	}
 }
 
-func (c *client) isInvalidAstraWriteConsistency(consistency primitive.ConsistencyLevel) bool {
+func (c *client) isUnsupportedWriteConsistency(consistency primitive.ConsistencyLevel) bool {
 	for _, unsupported := range c.proxy.config.UnsupportedWriteConsistencies {
 		if unsupported.ConsistencyLevel == consistency {
 			return true

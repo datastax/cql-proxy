@@ -491,12 +491,16 @@ func TestRun_UnsupportedWriteConsistency(t *testing.T) {
 
 	selectConsistency := unsupportedConsistencies[0]
 
+	checkMutationConsistency := func(consistency primitive.ConsistencyLevel) {
+		for _, unsupported := range unsupportedConsistencies {
+			assert.NotEqual(t, unsupported, consistency, "received unsupported consistency")
+		}
+		assert.Equal(t, primitive.ConsistencyLevelLocalQuorum, consistency)
+	}
+
 	checkConsistency := func(query string, consistency primitive.ConsistencyLevel) {
 		if strings.Contains(query, "INSERT") {
-			for _, unsupported := range unsupportedConsistencies {
-				assert.NotEqual(t, unsupported, consistency, "received unsupported consistency")
-			}
-			assert.Equal(t, primitive.ConsistencyLevelLocalQuorum, consistency)
+			checkMutationConsistency(consistency)
 		} else if strings.Contains(query, "SELECT") {
 			assert.Equal(t, selectConsistency, consistency)
 		} else {
@@ -548,6 +552,11 @@ func TestRun_UnsupportedWriteConsistency(t *testing.T) {
 				Data: message.RowSet{},
 			}
 		},
+		primitive.OpCodeBatch: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			batch := frm.Body.Message.(*message.Batch)
+			checkMutationConsistency(batch.Consistency)
+			return &message.VoidResult{}
+		},
 	})
 
 	defer cluster.Shutdown()
@@ -588,28 +597,6 @@ func TestRun_UnsupportedWriteConsistency(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, primitive.ProtocolVersion4, version)
 
-	// Simple string queries
-
-	for _, unsupported := range unsupportedConsistencies {
-		_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
-			Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')",
-			Options: &message.QueryOptions{
-				Consistency: unsupported,
-			},
-		})
-		assert.NoError(t, err)
-	}
-
-	_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
-		Query: "SELECT * FROM test",
-		Options: &message.QueryOptions{
-			Consistency: selectConsistency,
-		},
-	})
-	assert.NoError(t, err)
-
-	// Prepared queries
-
 	insertPrepareResp, err := cl.SendAndReceive(
 		ctx,
 		frame.NewFrame(version, 0, &message.Prepare{Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')"}),
@@ -618,16 +605,6 @@ func TestRun_UnsupportedWriteConsistency(t *testing.T) {
 	require.Equal(t, primitive.OpCodeResult, insertPrepareResp.Header.OpCode)
 	insertPrepareResult, ok := insertPrepareResp.Body.Message.(*message.PreparedResult)
 	assert.True(t, ok, "expected prepared result")
-
-	for _, unsupported := range unsupportedConsistencies {
-		_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Execute{
-			QueryId: insertPrepareResult.PreparedQueryId,
-			Options: &message.QueryOptions{
-				Consistency: unsupported,
-			},
-		})
-		assert.NoError(t, err)
-	}
 
 	selectPrepareResp, err := cl.SendAndReceive(
 		ctx,
@@ -638,13 +615,59 @@ func TestRun_UnsupportedWriteConsistency(t *testing.T) {
 	selectPrepareResult, ok := selectPrepareResp.Body.Message.(*message.PreparedResult)
 	assert.True(t, ok, "expected prepared result")
 
-	_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Execute{
-		QueryId: selectPrepareResult.PreparedQueryId,
-		Options: &message.QueryOptions{
-			Consistency: selectConsistency,
-		},
+	t.Run("simple queries", func(t *testing.T) {
+		for _, unsupported := range unsupportedConsistencies {
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+				Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')",
+				Options: &message.QueryOptions{
+					Consistency: unsupported,
+				},
+			})
+			assert.NoError(t, err)
+		}
+
+		_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+			Query: "SELECT * FROM test",
+			Options: &message.QueryOptions{
+				Consistency: selectConsistency,
+			},
+		})
+		assert.NoError(t, err)
 	})
-	assert.NoError(t, err)
+
+	t.Run("prepared queries", func(t *testing.T) {
+		for _, unsupported := range unsupportedConsistencies {
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Execute{
+				QueryId: insertPrepareResult.PreparedQueryId,
+				Options: &message.QueryOptions{
+					Consistency: unsupported,
+				},
+			})
+			assert.NoError(t, err)
+		}
+
+		_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Execute{
+			QueryId: selectPrepareResult.PreparedQueryId,
+			Options: &message.QueryOptions{
+				Consistency: selectConsistency,
+			},
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("batch", func(t *testing.T) {
+		for _, unsupported := range unsupportedConsistencies {
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Batch{
+				Children: []*message.BatchChild{
+					{Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')"},
+					{Id: insertPrepareResp.Body.Message.(*message.PreparedResult).PreparedQueryId},
+				},
+				Consistency: unsupported,
+			})
+			assert.NoError(t, err)
+		}
+	})
+
 }
 
 func writeTempYaml(o interface{}) (name string, err error) {
