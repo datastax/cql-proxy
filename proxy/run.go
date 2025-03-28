@@ -68,7 +68,7 @@ type runConfig struct {
 	DataCenter                    string        `yaml:"data-center" help:"Data center to use in system tables" env:"DATA_CENTER"`
 	Tokens                        []string      `yaml:"tokens" help:"Tokens to use in the system tables. It's not recommended" env:"TOKENS"`
 	Peers                         []PeerConfig  `yaml:"peers" kong:"-"` // Not available as a CLI flag
-	AstraOverrideConsistencyLevel bool          `yaml:"astra-override-consistency-level" help:"Override the consistency level for Astra queries to Local Quorum" default:"false" env:"ASTRA_OVERRIDE_CONSISTENCY_LEVEL"`
+	AstraOverrideConsistencyLevel bool          `yaml:"astra-override-consistency-level" help:"When enabled, forces Astra queries to use LOCAL_QUORUM consistency level." default:"false" env:"ASTRA_OVERRIDE_CONSISTENCY_LEVEL"`
 }
 
 // Run starts the proxy command. 'args' shouldn't include the executable (i.e. os.Args[1:]). It returns the exit code
