@@ -61,23 +61,24 @@ type PeerConfig struct {
 }
 
 type Config struct {
-	Version                              primitive.ProtocolVersion
-	MaxVersion                           primitive.ProtocolVersion
-	Auth                                 proxycore.Authenticator
-	Resolver                             proxycore.EndpointResolver
-	ReconnectPolicy                      proxycore.ReconnectPolicy
-	RetryPolicy                          RetryPolicy
-	IdempotentGraph                      bool
-	NumConns                             int
-	Logger                               *zap.Logger
-	HeartBeatInterval                    time.Duration
-	ConnectTimeout                       time.Duration
-	IdleTimeout                          time.Duration
-	RPCAddr                              string
-	DC                                   string
-	Tokens                               []string
-	Peers                                []PeerConfig
-	AstraOverrideInvalidWriteConsistency bool
+	Version                             primitive.ProtocolVersion
+	MaxVersion                          primitive.ProtocolVersion
+	Auth                                proxycore.Authenticator
+	Resolver                            proxycore.EndpointResolver
+	ReconnectPolicy                     proxycore.ReconnectPolicy
+	RetryPolicy                         RetryPolicy
+	IdempotentGraph                     bool
+	NumConns                            int
+	Logger                              *zap.Logger
+	HeartBeatInterval                   time.Duration
+	ConnectTimeout                      time.Duration
+	IdleTimeout                         time.Duration
+	RPCAddr                             string
+	DC                                  string
+	Tokens                              []string
+	Peers                               []PeerConfig
+	UnsupportedWriteConsistencies       []clWrapper
+	UnsupportedWriteConsistencyOverride clWrapper
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
@@ -873,30 +874,33 @@ func (c *client) Closing(_ error) {
 }
 
 func (c *client) maybeOverrideAstraWriteConsistency(isSelect bool, raw *frame.RawFrame, msg message.Message) {
-	if !isSelect && c.proxy.config.AstraOverrideInvalidWriteConsistency {
-		const overrideConsistency = primitive.ConsistencyLevelLocalQuorum
+	if !isSelect {
+		overrideConsistency := c.proxy.config.UnsupportedWriteConsistencyOverride.ConsistencyLevel
 
 		switch m := msg.(type) {
 		case *partialExecute:
-			if isInvalidAstraWriteConsistency(m.consistency) {
+			if c.isInvalidAstraWriteConsistency(m.consistency) {
 				_ = parser.PatchExecuteConsistency(raw.Body, overrideConsistency)
 			}
 		case *partialQuery:
-			if isInvalidAstraWriteConsistency(m.consistency) {
+			if c.isInvalidAstraWriteConsistency(m.consistency) {
 				_ = parser.PatchQueryConsistency(raw.Body, overrideConsistency)
 			}
 		case *partialBatch:
-			if isInvalidAstraWriteConsistency(m.consistency) {
+			if c.isInvalidAstraWriteConsistency(m.consistency) {
 				_ = parser.PatchBatchConsistency(raw.Body, overrideConsistency)
 			}
 		}
 	}
 }
 
-func isInvalidAstraWriteConsistency(consistency primitive.ConsistencyLevel) bool {
-	return consistency == primitive.ConsistencyLevelOne ||
-		consistency == primitive.ConsistencyLevelLocalOne ||
-		consistency == primitive.ConsistencyLevelAny
+func (c *client) isInvalidAstraWriteConsistency(consistency primitive.ConsistencyLevel) bool {
+	for _, unsupported := range c.proxy.config.UnsupportedWriteConsistencies {
+		if unsupported.ConsistencyLevel == consistency {
+			return true
+		}
+	}
+	return false
 }
 
 func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.PreparedCache, error) {
