@@ -615,7 +615,7 @@ func TestRun_UnsupportedWriteConsistency(t *testing.T) {
 	selectPrepareResult, ok := selectPrepareResp.Body.Message.(*message.PreparedResult)
 	assert.True(t, ok, "expected prepared result")
 
-	t.Run("simple query", func(t *testing.T) {
+	t.Run("simple queries", func(t *testing.T) {
 		for _, unsupported := range unsupportedConsistencies {
 			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
 				Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')",
