@@ -888,7 +888,7 @@ func (c *client) maybeOverrideAstraWriteConsistency(isSelect bool, raw *frame.Ra
 			}
 		case *partialBatch:
 			if c.isInvalidAstraWriteConsistency(m.consistency) {
-				_ = patchExecuteConsistency(raw.Body, overrideConsistency)
+				_ = patchBatchConsistency(raw.Body, overrideConsistency)
 			}
 		}
 	}
