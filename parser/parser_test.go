@@ -94,12 +94,12 @@ func TestParser(t *testing.T) {
 			Keyspace: "system",
 		}, false},
 		// Reads from tables named similarly to system tables (not handled)
-		{"", "SELECT count(*) FROM local", false, true, nil, false},
-		{"", "SELECT count(*) FROM peers", false, true, nil, false},
-		{"", "SELECT count(*) FROM peers_v2", false, true, nil, false},
+		{"", "SELECT count(*) FROM local", false, true, defaultSelectStatement, false},
+		{"", "SELECT count(*) FROM peers", false, true, defaultSelectStatement, false},
+		{"", "SELECT count(*) FROM peers_v2", false, true, defaultSelectStatement, false},
 
 		// Semicolon at the end
-		{"", "SELECT count(*) FROM table;", false, true, nil, false},
+		{"", "SELECT count(*) FROM table;", false, true, defaultSelectStatement, false},
 
 		// Mutations to system tables (not handled)
 		{"", "INSERT INTO system.local (key, rpc_address) VALUES ('local1', '127.0.0.1')", false, true, nil, false},
@@ -165,14 +165,16 @@ func TestParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		handled, stmt, err := IsQueryHandled(IdentifierFromString(tt.keyspace), tt.query)
-		assert.True(t, (err != nil) == tt.hasError, tt.query)
+		t.Run(tt.query, func(t *testing.T) {
+			handled, stmt, err := IsQueryHandled(IdentifierFromString(tt.keyspace), tt.query)
+			assert.True(t, (err != nil) == tt.hasError, tt.query)
 
-		idempotent, err := IsQueryIdempotent(tt.query)
-		assert.Nil(t, err, tt.query)
+			idempotent, err := IsQueryIdempotent(tt.query)
+			assert.Nil(t, err, tt.query)
 
-		assert.Equal(t, tt.handled, handled, "invalid handled", tt.query)
-		assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency", tt.query)
-		assert.Equal(t, tt.stmt, stmt, "invalid parsed statement", tt.query)
+			assert.Equal(t, tt.handled, handled, "invalid handled", tt.query)
+			assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency", tt.query)
+			assert.Equal(t, tt.stmt, stmt, "invalid parsed statement", tt.query)
+		})
 	}
 }

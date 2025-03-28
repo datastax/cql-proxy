@@ -49,6 +49,7 @@ type request struct {
 	stream     int16
 	qp         proxycore.QueryPlan
 	raw        *frame.RawFrame
+	isSelect   bool // Only used for prepared statements currently
 	mu         sync.Mutex
 }
 
@@ -146,7 +147,7 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 	if !r.done {
 		if raw.Header.OpCode != primitive.OpCodeError ||
 			!r.handleErrorResult(raw) { // If the error result is retried then we don't send back this response
-			r.client.proxy.maybeStorePreparedIdempotence(raw, r.msg)
+			r.client.proxy.maybeStorePreparedMetadata(raw, r.isSelect, r.msg)
 			r.done = true
 			r.sendRaw(raw)
 		}
