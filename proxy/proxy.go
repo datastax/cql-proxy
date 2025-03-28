@@ -61,48 +61,53 @@ type PeerConfig struct {
 }
 
 type Config struct {
-	Version           primitive.ProtocolVersion
-	MaxVersion        primitive.ProtocolVersion
-	Auth              proxycore.Authenticator
-	Resolver          proxycore.EndpointResolver
-	ReconnectPolicy   proxycore.ReconnectPolicy
-	RetryPolicy       RetryPolicy
-	IdempotentGraph   bool
-	NumConns          int
-	Logger            *zap.Logger
-	HeartBeatInterval time.Duration
-	ConnectTimeout    time.Duration
-	IdleTimeout       time.Duration
-	RPCAddr           string
-	DC                string
-	Tokens            []string
-	Peers             []PeerConfig
-	DatabaseType      string
+	Version                              primitive.ProtocolVersion
+	MaxVersion                           primitive.ProtocolVersion
+	Auth                                 proxycore.Authenticator
+	Resolver                             proxycore.EndpointResolver
+	ReconnectPolicy                      proxycore.ReconnectPolicy
+	RetryPolicy                          RetryPolicy
+	IdempotentGraph                      bool
+	NumConns                             int
+	Logger                               *zap.Logger
+	HeartBeatInterval                    time.Duration
+	ConnectTimeout                       time.Duration
+	IdleTimeout                          time.Duration
+	RPCAddr                              string
+	DC                                   string
+	Tokens                               []string
+	Peers                                []PeerConfig
+	AstraOverrideInvalidWriteConsistency bool
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
 }
 
 type Proxy struct {
-	ctx                 context.Context
-	config              Config
-	logger              *zap.Logger
-	cluster             *proxycore.Cluster
-	sessions            [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
-	mu                  sync.Mutex
-	isConnected         bool
-	isClosing           bool
-	clients             map[*client]struct{}
-	listeners           map[*net.Listener]struct{}
-	eventClients        sync.Map
-	preparedCache       proxycore.PreparedCache
-	preparedIdempotence sync.Map
-	lb                  proxycore.LoadBalancer
-	systemLocalValues   map[string]message.Column
-	closed              chan struct{}
-	localNode           *node
-	nodes               []*node
-	onceUsingGraphLog   sync.Once
+	ctx               context.Context
+	config            Config
+	logger            *zap.Logger
+	cluster           *proxycore.Cluster
+	sessions          [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
+	mu                sync.Mutex
+	isConnected       bool
+	isClosing         bool
+	clients           map[*client]struct{}
+	listeners         map[*net.Listener]struct{}
+	eventClients      sync.Map
+	preparedCache     proxycore.PreparedCache
+	preparedMetadata  sync.Map
+	lb                proxycore.LoadBalancer
+	systemLocalValues map[string]message.Column
+	closed            chan struct{}
+	localNode         *node
+	nodes             []*node
+	onceUsingGraphLog sync.Once
+}
+
+type preparedMetadata struct {
+	idempotent bool
+	isSelect   bool
 }
 
 type node struct {
@@ -470,19 +475,30 @@ func (p *Proxy) encodeTypeFatal(dt datatype.DataType, val interface{}) []byte {
 // isIdempotent checks whether a prepared ID is idempotent.
 // If the proxy receives a query that it's never prepared then this will also return false.
 func (p *Proxy) isIdempotent(id []byte) bool {
-	if val, ok := p.preparedIdempotence.Load(preparedIdKey(id)); !ok {
+	if val, ok := p.preparedMetadata.Load(preparedIdKey(id)); !ok {
 		// This should only happen if the proxy has never had a "PREPARE" request for this query ID.
 		p.logger.Error("unable to determine if prepared statement is idempotent",
 			zap.String("preparedID", hex.EncodeToString(id)))
 		return false
 	} else {
-		return val.(bool)
+		return val.(preparedMetadata).idempotent
 	}
 }
 
-// maybeStorePreparedIdempotence stores the idempotence of a "PREPARE" request's query.
+func (p *Proxy) isSelect(id [16]byte) bool {
+	if val, ok := p.preparedMetadata.Load(id); !ok {
+		// This should only happen if the proxy has never had a "PREPARE" request for this query ID.
+		p.logger.Error("unable to determine if prepared statement is idempotent",
+			zap.String("preparedID", hex.EncodeToString(id[:])))
+		return false
+	} else {
+		return val.(preparedMetadata).isSelect
+	}
+}
+
+// maybeStorePreparedMetadata stores the idempotence of a "PREPARE" request's query.
 // This information is used by future "EXECUTE" requests when they need to be retried.
-func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.Message) {
+func (p *Proxy) maybeStorePreparedMetadata(raw *frame.RawFrame, isSelect bool, msg message.Message) {
 	if prepareMsg, ok := msg.(*message.Prepare); ok && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
 		frm, err := codec.ConvertFromRawFrame(raw)
 		if err != nil {
@@ -494,7 +510,10 @@ func (p *Proxy) maybeStorePreparedIdempotence(raw *frame.RawFrame, msg message.M
 			if err != nil {
 				p.logger.Error("error parsing query for idempotence", zap.Error(err))
 			} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
-				p.preparedIdempotence.Store(preparedIdKey(result.PreparedQueryId), idempotent)
+				p.preparedMetadata.Store(preparedIdKey(result.PreparedQueryId), preparedMetadata{
+					idempotent: idempotent,
+					isSelect:   isSelect,
+				})
 			} else {
 				p.logger.Error("expected prepared result, but got some other type of message",
 					zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
@@ -534,6 +553,7 @@ type client struct {
 	conn                *proxycore.Conn
 	keyspace            string
 	preparedSystemQuery map[[16]byte]interface{}
+	preparedSelectQuery map[[16]byte]interface{}
 }
 
 func (c *client) Receive(reader io.Reader) error {
@@ -576,21 +596,12 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Prepare:
 		c.handlePrepare(raw, msg)
 	case *partialExecute:
-		if c.proxy.config.DatabaseType == "astra" {
-			_ = parser.PatchExecuteConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
-		}
 		c.handleExecute(raw, msg, body.CustomPayload)
 	case *partialQuery:
-		if c.proxy.config.DatabaseType == "astra" {
-			_ = parser.PatchQueryConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
-		}
-		raw.DeepCopy()
 		c.handleQuery(raw, msg, body.CustomPayload)
 	case *partialBatch:
-		if c.proxy.config.DatabaseType == "astra" {
-			_ = parser.PatchBatchConsistency(raw.Body, primitive.ConsistencyLevelLocalQuorum)
-		}
-		c.execute(raw, notDetermined, c.keyspace, msg)
+		c.maybeOverrideAstraWriteConsistency(false, raw, msg)
+		c.execute(raw, notDetermined, false, c.keyspace, msg)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
@@ -598,7 +609,7 @@ func (c *client) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace string, msg message.Message) {
+func (c *client) execute(raw *frame.RawFrame, state idempotentState, isSelect bool, keyspace string, msg message.Message) {
 	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
 		req := &request{
 			client:   c,
@@ -610,6 +621,7 @@ func (c *client) execute(raw *frame.RawFrame, state idempotentState, keyspace st
 			stream:   raw.Header.StreamId,
 			qp:       c.proxy.newQueryPlan(),
 			raw:      raw,
+			isSelect: isSelect,
 		}
 		req.Execute(true)
 	} else {
@@ -624,7 +636,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 	if len(msg.Keyspace) != 0 {
 		keyspace = msg.Keyspace
 	}
-	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(keyspace), msg.Query)
+	handled, isSelect, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(keyspace), msg.Query)
 
 	if handled {
 		hdr := raw.Header
@@ -664,7 +676,7 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 		}
 
 	} else {
-		c.execute(raw, isIdempotent, keyspace, msg) // Prepared statements can be retried themselves
+		c.execute(raw, isIdempotent, isSelect, keyspace, msg) // Prepared statements can be retried themselves
 	}
 }
 
@@ -673,13 +685,14 @@ func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customP
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
-
-		c.execute(raw, c.getDefaultIdempotency(customPayload), "", msg)
+		isSelect := c.proxy.isSelect(id)
+		c.maybeOverrideAstraWriteConsistency(isSelect, raw, msg)
+		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, "", msg)
 	}
 }
 
 func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
+	handled, isSelect, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
 	if handled {
 		c.proxy.logger.Debug("Query handled by proxy", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
 		if err != nil {
@@ -690,7 +703,8 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 		}
 	} else {
 		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
-		c.execute(raw, c.getDefaultIdempotency(customPayload), c.keyspace, msg)
+		c.maybeOverrideAstraWriteConsistency(isSelect, raw, msg)
+		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, c.keyspace, msg)
 	}
 }
 
@@ -854,6 +868,33 @@ func (c *client) send(hdr *frame.Header, msg message.Message) {
 
 func (c *client) Closing(_ error) {
 	c.proxy.removeClient(c)
+}
+
+func (c *client) maybeOverrideAstraWriteConsistency(isSelect bool, raw *frame.RawFrame, msg message.Message) {
+	if !isSelect && c.proxy.config.AstraOverrideInvalidWriteConsistency {
+		const overrideConsistency = primitive.ConsistencyLevelLocalQuorum
+
+		switch m := msg.(type) {
+		case *partialExecute:
+			if isInvalidAstraWriteConsistency(m.consistency) {
+				_ = parser.PatchExecuteConsistency(raw.Body, overrideConsistency)
+			}
+		case *partialQuery:
+			if isInvalidAstraWriteConsistency(m.consistency) {
+				_ = parser.PatchQueryConsistency(raw.Body, overrideConsistency)
+			}
+		case *partialBatch:
+			if isInvalidAstraWriteConsistency(m.consistency) {
+				_ = parser.PatchBatchConsistency(raw.Body, overrideConsistency)
+			}
+		}
+	}
+}
+
+func isInvalidAstraWriteConsistency(consistency primitive.ConsistencyLevel) bool {
+	return consistency == primitive.ConsistencyLevelOne ||
+		consistency == primitive.ConsistencyLevelLocalOne ||
+		consistency == primitive.ConsistencyLevelAny
 }
 
 func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.PreparedCache, error) {

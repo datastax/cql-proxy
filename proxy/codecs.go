@@ -38,12 +38,21 @@ func (c *partialQueryCodec) EncodedLength(_ message.Message, _ primitive.Protoco
 	panic("not implemented")
 }
 
-func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (message.Message, error) {
-	if query, err := primitive.ReadLongString(source); err != nil {
+func (c *partialQueryCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (msg message.Message, err error) {
+	var (
+		query       string
+		consistency uint16
+	)
+
+	if query, err = primitive.ReadLongString(source); err != nil {
 		return nil, err
-	} else {
-		return &partialQuery{query}, nil
 	}
+
+	if consistency, err = primitive.ReadShort(source); err != nil {
+		return nil, fmt.Errorf("cannot read QUERY consistency level: %w", err)
+	}
+
+	return &partialQuery{query, primitive.ConsistencyLevel(consistency)}, nil
 }
 
 func (c *partialQueryCodec) GetOpCode() primitive.OpCode {
@@ -51,7 +60,8 @@ func (c *partialQueryCodec) GetOpCode() primitive.OpCode {
 }
 
 type partialQuery struct {
-	query string
+	query       string
+	consistency primitive.ConsistencyLevel
 }
 
 func (p *partialQuery) IsResponse() bool {
@@ -63,11 +73,12 @@ func (p *partialQuery) GetOpCode() primitive.OpCode {
 }
 
 func (p *partialQuery) DeepCopyMessage() message.Message {
-	return &partialQuery{p.query}
+	return &partialQuery{p.query, p.consistency}
 }
 
 type partialExecute struct {
-	queryId []byte
+	queryId     []byte
+	consistency primitive.ConsistencyLevel
 }
 
 func (m *partialExecute) IsResponse() bool {
@@ -81,7 +92,7 @@ func (m *partialExecute) GetOpCode() primitive.OpCode {
 func (m *partialExecute) DeepCopyMessage() message.Message {
 	queryId := make([]byte, len(m.queryId))
 	copy(queryId, m.queryId)
-	return &partialExecute{queryId}
+	return &partialExecute{queryId, m.consistency}
 }
 
 func (m *partialExecute) String() string {
@@ -99,13 +110,22 @@ func (c *partialExecuteCodec) EncodedLength(_ message.Message, _ primitive.Proto
 }
 
 func (c *partialExecuteCodec) Decode(source io.Reader, _ primitive.ProtocolVersion) (msg message.Message, err error) {
-	execute := &partialExecute{}
-	if execute.queryId, err = primitive.ReadShortBytes(source); err != nil {
+	var (
+		queryID     []byte
+		consistency uint16
+	)
+
+	if queryID, err = primitive.ReadShortBytes(source); err != nil {
 		return nil, fmt.Errorf("cannot read EXECUTE query id: %w", err)
-	} else if len(execute.queryId) == 0 {
+	} else if len(queryID) == 0 {
 		return nil, errors.New("EXECUTE missing query id")
 	}
-	return execute, nil
+
+	if consistency, err = primitive.ReadShort(source); err != nil {
+		return nil, fmt.Errorf("cannot read EXECUTE consistency level: %w", err)
+	}
+
+	return &partialExecute{queryID, primitive.ConsistencyLevel(consistency)}, nil
 }
 
 func (c *partialExecuteCodec) GetOpCode() primitive.OpCode {
@@ -113,7 +133,8 @@ func (c *partialExecuteCodec) GetOpCode() primitive.OpCode {
 }
 
 type partialBatch struct {
-	queryOrIds []interface{}
+	queryOrIds  []interface{}
+	consistency primitive.ConsistencyLevel
 }
 
 func (p partialBatch) IsResponse() bool {
@@ -127,7 +148,7 @@ func (p partialBatch) GetOpCode() primitive.OpCode {
 func (p partialBatch) DeepCopyMessage() message.Message {
 	queryOrIds := make([]interface{}, len(p.queryOrIds))
 	copy(queryOrIds, p.queryOrIds)
-	return &partialBatch{queryOrIds}
+	return &partialBatch{queryOrIds, p.consistency}
 }
 
 type partialBatchCodec struct{}
@@ -142,6 +163,7 @@ func (p partialBatchCodec) EncodedLength(msg message.Message, version primitive.
 
 func (p partialBatchCodec) Decode(source io.Reader, version primitive.ProtocolVersion) (msg message.Message, err error) {
 	var queryOrIds []interface{}
+	var consistency uint16
 	var typ uint8
 	if typ, err = primitive.ReadByte(source); err != nil {
 		return nil, fmt.Errorf("cannot read BATCH type: %w", err)
@@ -177,7 +199,12 @@ func (p partialBatchCodec) Decode(source io.Reader, version primitive.ProtocolVe
 		}
 		queryOrIds[i] = queryOrId
 	}
-	return &partialBatch{queryOrIds}, nil
+
+	if consistency, err = primitive.ReadShort(source); err != nil {
+		return nil, fmt.Errorf("cannot read BATCH consistency level: %w", err)
+	}
+
+	return &partialBatch{queryOrIds, primitive.ConsistencyLevel(consistency)}, nil
 }
 
 func (p partialBatchCodec) GetOpCode() primitive.OpCode {

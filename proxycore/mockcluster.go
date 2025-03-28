@@ -166,7 +166,7 @@ func (c MockClient) filterValues(version primitive.ProtocolVersion, stmt *parser
 }
 
 func (c *MockClient) InterceptQuery(hdr *frame.Header, msg *message.Query) message.Message {
-	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.Query)
+	handled, _, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.Query)
 
 	if handled {
 		if err != nil {
