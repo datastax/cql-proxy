@@ -47,8 +47,11 @@ func TestLookupEndpoint_Invalid(t *testing.T) {
 
 	for _, tt := range tests {
 		_, err := LookupEndpoint(&testEndpoint{addr: tt.addr})
-		if assert.Error(t, err) {
-			assert.Contains(t, err.Error(), tt.err)
+		if tt.err != "" {
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.err)
+		} else {
+			require.NoError(t, err)
 		}
 	}
 }

@@ -141,7 +141,7 @@ func LookupEndpoint(endpoint Endpoint) (string, error) {
 	} else {
 		host, port, err := net.SplitHostPort(endpoint.Addr())
 		if err != nil {
-			return "'", err
+			return "", err
 		}
 		addrs, err := net.LookupHost(host)
 		if err != nil {
