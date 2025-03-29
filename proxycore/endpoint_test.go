@@ -42,16 +42,13 @@ func TestLookupEndpoint_Invalid(t *testing.T) {
 		err  string
 	}{
 		{"localhost", "missing port in address"},
-		{"dne:1234", ""}, // Errors for DNS can vary per system
+		{"test:1234", ""}, // Errors for DNS can vary per system
 	}
 
 	for _, tt := range tests {
 		_, err := LookupEndpoint(&testEndpoint{addr: tt.addr})
-		if tt.err != "" {
-			require.Error(t, err)
-			require.Contains(t, err.Error(), tt.err)
-		} else {
-			require.NoError(t, err)
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), tt.err)
 		}
 	}
 }
