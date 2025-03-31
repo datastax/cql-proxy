@@ -16,6 +16,8 @@ package parser
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 )
 
 // Determines is the proxy handles the select statement.
@@ -77,33 +79,48 @@ func isHandledUseStmt(l *lexer) (handled bool, stmt Statement, err error) {
 // selectors: selector ( ',' selector )*
 // selector: unaliasedSelector ( 'AS' identifier )
 // unaliasedSelector:
-//   identifier
-//   'COUNT(*)'
-//   term
-//   'CAST' '(' unaliasedSelector 'AS' primitiveType ')'
+//
+//	identifier
+//	'COUNT(*)' | 'COUNT' '(' identifier ')' | NOW()'
+//	term
+//	'CAST' '(' unaliasedSelector 'AS' primitiveType ')'
 //
 // Note: Doesn't handle term or cast
 func parseSelector(l *lexer, t token) (selector Selector, next token, err error) {
 	switch t {
 	case tkIdentifier:
-		if isUnreservedKeyword(l, t, "count") {
-			countText := l.identifierStr()
-			if tkLparen != l.next() {
-				return nil, tkInvalid, errors.New("expected '(' after 'COUNT' in select statement")
+		name := l.identifierStr()
+		l.mark()
+		if tkLparen == l.next() {
+			var args []string
+			for t = l.next(); tkRparen != t && tkEOF != t; t = skipToken(l, l.next(), tkComma) {
+				if tkStar == t {
+					args = append(args, "*")
+				} else if tkIdentifier == t {
+					args = append(args, l.identifierStr())
+				} else {
+					return nil, tkInvalid, fmt.Errorf("unexpected argument type for function call '%s(...)' in select statement", name)
+				}
 			}
-			if t = l.next(); tkStar == t {
-				selector = &CountStarSelector{Name: countText + "(*)"}
-			} else if tkIdentifier == t {
-				selector = &CountStarSelector{Name: countText + "(" + l.identifierStr() + ")"}
+			if tkRparen != t {
+				return nil, tkInvalid, fmt.Errorf("expected closing ')' for function call '%s' in select statement", name)
+			}
+			if strings.EqualFold(name, "count") {
+				if len(args) == 0 {
+					return nil, tkInvalid, fmt.Errorf("expected * or identifier in argument 'COUNT(...)' in select statement")
+				}
+				return &CountFuncSelector{Arg: args[0]}, l.next(), nil
+			} else if strings.EqualFold(name, "now") {
+				if len(args) != 0 {
+					return nil, tkInvalid, fmt.Errorf("unexpected argument for 'NOW()' function call in select statement")
+				}
+				return &NowFuncSelector{}, l.next(), nil
 			} else {
-
-				return nil, tkInvalid, errors.New("expected * or identifier in argument 'COUNT(...)' in select statement")
-			}
-			if tkRparen != l.next() {
-				return nil, tkInvalid, errors.New("expected closing ')' for 'COUNT' in select statement")
+				return nil, tkInvalid, fmt.Errorf("unsupported function call '%s' in select statement", name)
 			}
 		} else {
-			selector = &IDSelector{Name: l.identifierStr()}
+			l.rewind()
+			selector = &IDSelector{Name: name}
 		}
 	case tkStar:
 		return &StarSelector{}, l.next(), nil

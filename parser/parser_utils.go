@@ -16,9 +16,7 @@ package parser
 
 import (
 	"errors"
-	"fmt"
 
-	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 )
 
@@ -33,99 +31,27 @@ var nonIdempotentFuncs = []string{"uuid", "now"}
 type ValueLookupFunc func(name string) (value message.Column, err error)
 
 func FilterValues(stmt *SelectStatement, columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
-	if _, ok := stmt.Selectors[0].(*StarSelector); ok {
-		for _, column := range columns {
-			var val message.Column
-			val, err = valueFunc(column.Name)
-			if err != nil {
-				return nil, err
-			}
-			filtered = append(filtered, val)
-		}
-	} else {
-		for _, selector := range stmt.Selectors {
-			var val message.Column
-			val, err = valueFromSelector(selector, valueFunc)
-			if err != nil {
-				return nil, err
-			}
-			filtered = append(filtered, val)
-		}
-	}
-	return filtered, nil
-}
-
-func valueFromSelector(selector Selector, valueFunc ValueLookupFunc) (val message.Column, err error) {
-	switch s := selector.(type) {
-	case *CountStarSelector:
-		return valueFunc(CountValueName)
-	case *IDSelector:
-		return valueFunc(s.Name)
-	case *AliasSelector:
-		return valueFromSelector(s.Selector, valueFunc)
-	default:
-		return nil, errors.New("unhandled selector type")
-	}
-}
-
-func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
-	if _, ok := stmt.Selectors[0].(*StarSelector); ok {
-		filtered = columns
-	} else {
-		for _, selector := range stmt.Selectors {
-			var column *message.ColumnMetadata
-			column, err = columnFromSelector(selector, columns, stmt.Keyspace, stmt.Table)
-			if err != nil {
-				return nil, err
-			}
-			filtered = append(filtered, column)
-		}
-	}
-	return filtered, nil
-}
-
-func isCountSelector(selector Selector) bool {
-	_, ok := selector.(*CountStarSelector)
-	return ok
-}
-
-func IsCountStarQuery(stmt *SelectStatement) bool {
-	if len(stmt.Selectors) == 1 {
-		if isCountSelector(stmt.Selectors[0]) {
-			return true
-		} else if alias, ok := stmt.Selectors[0].(*AliasSelector); ok {
-			return isCountSelector(alias.Selector)
-		}
-	}
-	return false
-}
-
-func columnFromSelector(selector Selector, columns []*message.ColumnMetadata, keyspace string, table string) (column *message.ColumnMetadata, err error) {
-	switch s := selector.(type) {
-	case *CountStarSelector:
-		return &message.ColumnMetadata{
-			Keyspace: keyspace,
-			Table:    table,
-			Name:     s.Name,
-			Type:     datatype.Int,
-		}, nil
-	case *IDSelector:
-		if column = FindColumnMetadata(columns, s.Name); column != nil {
-			return column, nil
-		} else {
-			return nil, fmt.Errorf("invalid column %s", s.Name)
-		}
-	case *AliasSelector:
-		column, err = columnFromSelector(s.Selector, columns, keyspace, table)
+	for _, selector := range stmt.Selectors {
+		var vals []message.Column
+		vals, err = selector.Values(columns, valueFunc)
 		if err != nil {
 			return nil, err
 		}
-		alias := *column // Make a copy so we can modify the name
-		alias.Name = s.Alias
-		return &alias, nil
-	default:
-		return nil, errors.New("unhandled selector type")
+		filtered = append(filtered, vals...)
 	}
+	return filtered, nil
+}
+
+func FilterColumns(stmt *SelectStatement, columns []*message.ColumnMetadata) (filtered []*message.ColumnMetadata, err error) {
+	for _, selector := range stmt.Selectors {
+		var cols []*message.ColumnMetadata
+		cols, err = selector.Columns(columns, stmt)
+		if err != nil {
+			return nil, err
+		}
+		filtered = append(filtered, cols...)
+	}
+	return filtered, nil
 }
 
 func isSystemTable(name Identifier) bool {
