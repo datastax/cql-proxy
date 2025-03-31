@@ -504,9 +504,12 @@ func (p *Proxy) maybeStorePreparedMetadata(raw *frame.RawFrame, isSelect bool, m
 		frm, err := codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			p.logger.Error("error attempting to decode prepared result message")
-		} else if _, ok = frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
+		} else if preparedResultMsg, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
 			p.logger.Error("expected prepared result message, but got something else")
 		} else {
+			p.logger.Debug("prepared request",
+				zap.Stringer("request", prepareMsg),
+				zap.Stringer("response", preparedResultMsg))
 			idempotent, err := parser.IsQueryIdempotent(prepareMsg.Query)
 			if err != nil {
 				p.logger.Error("error parsing query for idempotence", zap.Error(err))
@@ -880,15 +883,54 @@ func (c *client) maybeOverrideUnsupportedWriteConsistency(isSelect bool, raw *fr
 		switch m := msg.(type) {
 		case *partialExecute:
 			if c.isUnsupportedWriteConsistency(m.consistency) {
-				_ = patchExecuteConsistency(raw.Body, overrideConsistency)
+				c.proxy.logger.Debug("overriding unsupported write consistency for execute",
+					zap.Stringer("request", m),
+					zap.Stringer("unsupported", m.consistency),
+					zap.Stringer("override", overrideConsistency))
+				err := patchExecuteConsistency(raw.Body, overrideConsistency)
+				if err != nil {
+					c.proxy.logger.Error("unable to override write consistency for execute",
+						zap.Stringer("request", m),
+						zap.Error(err))
+				}
+			} else {
+				c.proxy.logger.Debug("no override required for execute write consistency",
+					zap.Stringer("request", m),
+					zap.Stringer("consistency", m.consistency))
 			}
 		case *partialQuery:
 			if c.isUnsupportedWriteConsistency(m.consistency) {
-				_ = patchQueryConsistency(raw.Body, overrideConsistency)
+				c.proxy.logger.Debug("overriding unsupported write consistency for query",
+					zap.Stringer("request", m),
+					zap.Stringer("unsupported", m.consistency),
+					zap.Stringer("override", overrideConsistency))
+				err := patchQueryConsistency(raw.Body, overrideConsistency)
+				if err != nil {
+					c.proxy.logger.Error("unable to override write consistency for query",
+						zap.Stringer("request", m),
+						zap.Error(err))
+				}
+			} else {
+				c.proxy.logger.Debug("no override required for query write consistency",
+					zap.Stringer("request", m),
+					zap.Stringer("consistency", m.consistency))
 			}
 		case *partialBatch:
 			if c.isUnsupportedWriteConsistency(m.consistency) {
-				_ = patchBatchConsistency(raw.Body, overrideConsistency)
+				c.proxy.logger.Debug("overriding unsupported write consistency for batch",
+					zap.Stringer("request", m),
+					zap.Stringer("unsupported", m.consistency),
+					zap.Stringer("override", overrideConsistency))
+				err := patchBatchConsistency(raw.Body, overrideConsistency)
+				if err != nil {
+					c.proxy.logger.Error("unable to override write consistency for batch",
+						zap.Stringer("request", m),
+						zap.Error(err))
+				}
+			} else {
+				c.proxy.logger.Debug("no override required for batch write consistency",
+					zap.Stringer("request", m),
+					zap.Stringer("consistency", m.consistency))
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package proxy
 import (
 	"encoding/binary"
 	"fmt"
+
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
 
@@ -70,17 +71,17 @@ func patchBatchConsistency(body []byte, newConsistency primitive.ConsistencyLeve
 		return fmt.Errorf("invalid batch body: too short")
 	}
 
-	offset := 3
+	offset := 3 // <type> [byte] <n> [short] (3 bytes)
 	numQueries := binary.BigEndian.Uint16(body[1:3])
 
 	// Process the queries
-	for i := 0; i < int(numQueries); i++ {
+	for i := uint16(0); i < numQueries; i++ {
 		if len(body) <= offset {
 			return fmt.Errorf("query #%d exceeds body length", i)
 		}
 
 		queryType := body[offset]
-		offset++ // Move past the query type byte
+		offset++ // Move past the query <kind> [byte]
 
 		switch primitive.BatchChildType(queryType) {
 		case primitive.BatchChildTypeQueryString:
@@ -137,8 +138,8 @@ func skipValueByteSlice(body []byte, offset *int) error {
 	length := int32(binary.BigEndian.Uint32(body[*offset : *offset+4]))
 	*offset += 4 // Move the offset past the length
 
-	if length == -1 {
-		// It's a null, nothing to skip
+	if length == -1 || length == -2 {
+		// It's a null or unset, nothing to skip
 		return nil
 	}
 	if length < 0 {
