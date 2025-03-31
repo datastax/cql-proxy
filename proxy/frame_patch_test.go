@@ -2,11 +2,12 @@ package proxy
 
 import (
 	"bytes"
+	"testing"
+
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 const version = primitive.ProtocolVersion4
@@ -139,10 +140,25 @@ func TestPatchBatchConsistency(t *testing.T) {
 			Type: primitive.BatchTypeLogged,
 			Children: []*message.BatchChild{
 				{
+					Query: "SELECT * FROM table",
+				},
+				{
 					Query: "SELECT * FROM table WHERE id = ?",
+					Values: []*primitive.Value{
+						{
+							Type:     primitive.ValueTypeRegular,
+							Contents: []byte{0x1, 0x2, 0x3},
+						},
+					},
 				},
 				{
 					Id: []byte{0x01, 0x02, 0x03},
+					Values: []*primitive.Value{
+						{
+							Type:     primitive.ValueTypeRegular,
+							Contents: []byte{0x4, 0x5, 0x6},
+						},
+					},
 				},
 			},
 			Consistency:       primitive.ConsistencyLevelOne,

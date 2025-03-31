@@ -76,6 +76,10 @@ func (p *partialQuery) DeepCopyMessage() message.Message {
 	return &partialQuery{p.query, p.consistency}
 }
 
+func (m *partialQuery) String() string {
+	return "QUERY " + m.query
+}
+
 type partialExecute struct {
 	queryId     []byte
 	consistency primitive.ConsistencyLevel
@@ -149,6 +153,10 @@ func (p partialBatch) DeepCopyMessage() message.Message {
 	queryOrIds := make([]interface{}, len(p.queryOrIds))
 	copy(queryOrIds, p.queryOrIds)
 	return &partialBatch{queryOrIds, p.consistency}
+}
+
+func (p partialBatch) String() string {
+	return fmt.Sprintf("BATCH (%d statements)", len(p.queryOrIds))
 }
 
 type partialBatchCodec struct{}
