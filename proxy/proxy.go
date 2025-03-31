@@ -884,52 +884,52 @@ func (c *client) maybeOverrideUnsupportedWriteConsistency(isSelect bool, raw *fr
 		case *partialExecute:
 			if c.isUnsupportedWriteConsistency(m.consistency) {
 				c.proxy.logger.Debug("overriding unsupported write consistency for execute",
-					zap.Stringer("message", m),
+					zap.Stringer("request", m),
 					zap.Stringer("unsupported", m.consistency),
 					zap.Stringer("override", overrideConsistency))
 				err := patchExecuteConsistency(raw.Body, overrideConsistency)
 				if err != nil {
 					c.proxy.logger.Error("unable to override write consistency for execute",
-						zap.Stringer("message", m),
+						zap.Stringer("request", m),
 						zap.Error(err))
 				}
 			} else {
 				c.proxy.logger.Debug("no override required for execute write consistency",
-					zap.Stringer("message", m),
+					zap.Stringer("request", m),
 					zap.Stringer("consistency", m.consistency))
 			}
 		case *partialQuery:
 			if c.isUnsupportedWriteConsistency(m.consistency) {
 				c.proxy.logger.Debug("overriding unsupported write consistency for query",
-					zap.Stringer("message", m),
+					zap.Stringer("request", m),
 					zap.Stringer("unsupported", m.consistency),
 					zap.Stringer("override", overrideConsistency))
 				err := patchQueryConsistency(raw.Body, overrideConsistency)
 				if err != nil {
 					c.proxy.logger.Error("unable to override write consistency for query",
-						zap.Stringer("message", m),
+						zap.Stringer("request", m),
 						zap.Error(err))
 				}
 			} else {
 				c.proxy.logger.Debug("no override required for query write consistency",
-					zap.Stringer("message", m),
+					zap.Stringer("request", m),
 					zap.Stringer("consistency", m.consistency))
 			}
 		case *partialBatch:
 			if c.isUnsupportedWriteConsistency(m.consistency) {
 				c.proxy.logger.Debug("overriding unsupported write consistency for batch",
-					zap.Stringer("message", m),
+					zap.Stringer("request", m),
 					zap.Stringer("unsupported", m.consistency),
 					zap.Stringer("override", overrideConsistency))
 				err := patchBatchConsistency(raw.Body, overrideConsistency)
 				if err != nil {
 					c.proxy.logger.Error("unable to override write consistency for batch",
-						zap.Stringer("message", m),
+						zap.Stringer("request", m),
 						zap.Error(err))
 				}
 			} else {
 				c.proxy.logger.Debug("no override required for batch write consistency",
-					zap.Stringer("message", m),
+					zap.Stringer("request", m),
 					zap.Stringer("consistency", m.consistency))
 			}
 		}
