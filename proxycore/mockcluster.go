@@ -16,23 +16,26 @@ package proxycore
 
 import (
 	"context"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/cql-proxy/parser"
-
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"go.uber.org/zap"
 )
 
 var (
@@ -57,10 +60,24 @@ func (h MockHost) equal(o MockHost) bool {
 type MockRequestHandler func(client *MockClient, frm *frame.Frame) message.Message
 
 func MockDefaultOptionsHandler(_ *MockClient, _ *frame.Frame) message.Message {
-	return &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.4.0"}, "COMPRESSION": {}}}
+	return &message.Supported{Options: map[string][]string{"CQL_VERSION": {"3.4.0"}, "COMPRESSION": codecs.CompressionNames}}
 }
 
-func MockDefaultStartupHandler(_ *MockClient, _ *frame.Frame) message.Message {
+func MockDefaultStartupHandler(cl *MockClient, frm *frame.Frame) message.Message {
+	if msg, ok := frm.Body.Message.(*message.Startup); ok {
+		if compression, ok := msg.Options["COMPRESSION"]; ok {
+			if codec, ok := codecs.DefaultRawCodecsWithCompression[strings.ToLower(compression)]; ok {
+				cl.codec = codec
+			} else {
+				errMsg := fmt.Sprintf("Unsupported compression type: %s (supported compression types: %s)",
+					compression, strings.Join(codecs.CompressionNames, ", "))
+				cl.send(frm.Header, &message.ProtocolError{ErrorMessage: errMsg})
+			}
+		}
+	} else {
+		return &message.ProtocolError{ErrorMessage: "unexpected message for startup"}
+	}
+
 	return &message.Ready{}
 }
 
@@ -82,6 +99,26 @@ func MockDefaultQueryHandler(cl *MockClient, frm *frame.Frame) message.Message {
 	}
 }
 
+func MockDefaultPrepareHandler(_ *MockClient, frm *frame.Frame) message.Message {
+	prepare := frm.Body.Message.(*message.Prepare)
+	// Generate a unique prepared id for each query that's stable if the query is the same so that the same
+	// query overwrites the same entry in the cache.
+	preparedId := md5.Sum([]byte(prepare.Query))
+	return &message.PreparedResult{
+		PreparedQueryId:  preparedId[:],
+		ResultMetadataId: preparedId[:],
+	}
+}
+
+func MockDefaultExecuteHandler(cl *MockClient, frm *frame.Frame) message.Message {
+	return &message.RowsResult{
+		Metadata: &message.RowsMetadata{
+			ColumnCount: 0,
+		},
+		Data: message.RowSet{},
+	}
+}
+
 type MockRequestHandlers map[primitive.OpCode]MockRequestHandler
 
 var DefaultMockRequestHandlers = MockRequestHandlers{
@@ -89,6 +126,8 @@ var DefaultMockRequestHandlers = MockRequestHandlers{
 	primitive.OpCodeStartup:  MockDefaultStartupHandler,
 	primitive.OpCodeRegister: MockDefaultRegisterHandler,
 	primitive.OpCodeQuery:    MockDefaultQueryHandler,
+	primitive.OpCodePrepare:  MockDefaultPrepareHandler,
+	primitive.OpCodeExecute:  MockDefaultExecuteHandler,
 }
 
 func NewMockRequestHandlers(overrides MockRequestHandlers) MockRequestHandlers {
@@ -108,12 +147,14 @@ type MockClient struct {
 	keyspace   string
 	registered int32
 	events     chan message.Event
+	codec      frame.RawCodec
 }
 
 func newMockClient(server *MockServer) *MockClient {
 	return &MockClient{
 		server: server,
 		events: make(chan message.Event),
+		codec:  codecs.DefaultRawCodec,
 	}
 }
 
@@ -121,19 +162,19 @@ func (c *MockClient) Register(version primitive.ProtocolVersion) {
 	atomic.CompareAndSwapInt32(&c.registered, 0, int32(version))
 }
 
-func (c MockClient) Keyspace() string {
+func (c *MockClient) Keyspace() string {
 	return c.keyspace
 }
 
-func (c MockClient) Local() MockHost {
+func (c *MockClient) Local() MockHost {
 	return c.server.local
 }
 
 func (c *MockClient) Receive(reader io.Reader) error {
-	frm, err := codec.DecodeFrame(reader)
+	frm, err := c.codec.DecodeFrame(reader)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
-			//c.proxy.logger.Error("unable to decode frame", zap.Error(err))
+			zap.L().Error("unable to decode frame", zap.Error(err))
 		}
 		return err
 	}
@@ -152,13 +193,13 @@ func (c *MockClient) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c MockClient) filterValues(version primitive.ProtocolVersion, stmt *parser.SelectStatement,
+func (c *MockClient) filterValues(version primitive.ProtocolVersion, stmt *parser.SelectStatement,
 	columns []*message.ColumnMetadata, vals map[string]message.Column, count int) (row []message.Column, err error) {
 	return parser.FilterValues(stmt, columns, func(name string) (value message.Column, err error) {
 		if val, ok := vals[name]; ok {
 			return val, nil
 		} else if name == parser.CountValueName {
-			return EncodeType(datatype.Int, version, count)
+			return codecs.EncodeType(datatype.Int, version, count)
 		} else {
 			return nil, fmt.Errorf("no column value for %s", name)
 		}
@@ -235,7 +276,7 @@ func (c *MockClient) InterceptQuery(hdr *frame.Header, msg *message.Query) messa
 
 func (c *MockClient) send(hdr *frame.Header, msg message.Message) {
 	_ = c.conn.Write(SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
+		return c.codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
 	}))
 }
 
@@ -405,7 +446,7 @@ func (s *MockServer) Serve(ctx context.Context, maxVersion primitive.ProtocolVer
 						registered := atomic.LoadInt32(&cl.registered)
 						if registered != 0 {
 							_ = cl.conn.Write(SenderFunc(func(writer io.Writer) error {
-								return codec.EncodeFrame(frame.NewFrame(primitive.ProtocolVersion(registered), -1, event), writer)
+								return cl.codec.EncodeFrame(frame.NewFrame(primitive.ProtocolVersion(registered), -1, event), writer)
 							}))
 						}
 					case <-cl.conn.IsClosed():
@@ -529,7 +570,7 @@ func (c *MockCluster) Shutdown() {
 }
 
 func encodeTypeFatal(version primitive.ProtocolVersion, dt datatype.DataType, val interface{}) []byte {
-	encoded, err := EncodeType(dt, version, val)
+	encoded, err := codecs.EncodeType(dt, version, val)
 	if err != nil {
 		panic("unable to encode type")
 	}

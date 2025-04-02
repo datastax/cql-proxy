@@ -33,9 +33,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/cql-proxy/parser"
 	"github.com/datastax/cql-proxy/proxycore"
-
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -45,7 +45,7 @@ import (
 )
 
 var (
-	encodedOneValue, _ = proxycore.EncodeType(datatype.Int, primitive.ProtocolVersion4, 1)
+	encodedOneValue, _ = codecs.EncodeType(datatype.Int, primitive.ProtocolVersion4, 1)
 )
 
 var ErrProxyClosed = errors.New("proxy closed")
@@ -84,13 +84,20 @@ type Config struct {
 	PreparedCache proxycore.PreparedCache
 }
 
+type sessionKey struct {
+	version     primitive.ProtocolVersion
+	keyspace    string
+	compression string
+}
+
 type Proxy struct {
 	ctx               context.Context
 	config            Config
 	logger            *zap.Logger
 	cluster           *proxycore.Cluster
-	sessions          [primitive.ProtocolVersionDse2 + 1]sync.Map // Cache sessions per protocol version
-	mu                sync.Mutex
+	sessionsMu        *sync.RWMutex
+	sessions          map[sessionKey]*proxycore.Session // Cache sessions per protocol version, compression, keyspace
+	mu                *sync.Mutex
 	isConnected       bool
 	isClosing         bool
 	clients           map[*client]struct{}
@@ -124,7 +131,7 @@ func (p *Proxy) OnEvent(event proxycore.Event) {
 		p.eventClients.Range(func(key, _ interface{}) bool {
 			cl := key.(*client)
 			err := cl.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-				return codec.EncodeFrame(frm, writer)
+				return cl.codec.EncodeFrame(frm, writer)
 			}))
 			cl.conn.LocalAddr()
 			if err != nil {
@@ -149,12 +156,15 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 		config.RetryPolicy = NewDefaultRetryPolicy()
 	}
 	return &Proxy{
-		ctx:       ctx,
-		config:    config,
-		logger:    proxycore.GetOrCreateNopLogger(config.Logger),
-		clients:   make(map[*client]struct{}),
-		listeners: make(map[*net.Listener]struct{}),
-		closed:    make(chan struct{}),
+		ctx:        ctx,
+		config:     config,
+		logger:     proxycore.GetOrCreateNopLogger(config.Logger),
+		sessionsMu: &sync.RWMutex{},
+		sessions:   make(map[sessionKey]*proxycore.Session),
+		mu:         &sync.Mutex{},
+		clients:    make(map[*client]struct{}),
+		listeners:  make(map[*net.Listener]struct{}),
+		closed:     make(chan struct{}),
 	}
 }
 
@@ -221,7 +231,7 @@ func (p *Proxy) Connect() error {
 		return fmt.Errorf("unable to connect session %w", err)
 	}
 
-	p.sessions[p.cluster.NegotiatedVersion].Store("", sess) // No keyspace
+	p.sessions[sessionKey{version: p.cluster.NegotiatedVersion}] = sess // No keyspace/compression
 
 	p.isConnected = true
 	return nil
@@ -315,17 +325,34 @@ func (p *Proxy) handle(conn net.Conn) {
 		ctx:                 p.ctx,
 		proxy:               p,
 		preparedSystemQuery: make(map[[preparedIdSize]byte]interface{}),
+		codec:               codecs.CustomRawCodec,
 	}
 	p.addClient(cl)
 	cl.conn = proxycore.NewConn(conn, cl)
 	cl.conn.Start()
 }
 
-func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace string) (*proxycore.Session, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if cachedSession, ok := p.sessions[version].Load(keyspace); ok {
-		return cachedSession.(*proxycore.Session), nil
+func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace, compression string) (*proxycore.Session, error) {
+	p.sessionsMu.RLock()
+	defer p.sessionsMu.RUnlock()
+	return p.maybeCreateSessionUnlocked(version, keyspace, compression)
+}
+
+func (p *Proxy) findSession(version primitive.ProtocolVersion, keyspace, compression string) (*proxycore.Session, error) {
+	p.sessionsMu.RLock()
+	defer p.sessionsMu.RUnlock()
+	key := sessionKey{version: version, keyspace: keyspace, compression: compression}
+	if s, ok := p.sessions[key]; ok {
+		return s, nil
+	} else {
+		return p.maybeCreateSessionUnlocked(version, keyspace, compression)
+	}
+}
+
+func (p *Proxy) maybeCreateSessionUnlocked(version primitive.ProtocolVersion, keyspace, compression string) (*proxycore.Session, error) {
+	key := sessionKey{version: version, keyspace: keyspace, compression: compression}
+	if cachedSession, ok := p.sessions[key]; ok {
+		return cachedSession, nil
 	} else {
 		sess, err := proxycore.ConnectSession(p.ctx, p.cluster, proxycore.SessionConfig{
 			ReconnectPolicy:   p.config.ReconnectPolicy,
@@ -338,20 +365,14 @@ func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace s
 			ConnectTimeout:    p.config.ConnectTimeout,
 			IdleTimeout:       p.config.IdleTimeout,
 			Logger:            p.logger,
+			Compression:       compression,
 		})
 		if err != nil {
 			return nil, err
 		}
-		p.sessions[version].Store(keyspace, sess)
-		return sess, nil
-	}
-}
 
-func (p *Proxy) findSession(version primitive.ProtocolVersion, keyspace string) (*proxycore.Session, error) {
-	if s, ok := p.sessions[version].Load(keyspace); ok {
-		return s.(*proxycore.Session), nil
-	} else {
-		return p.maybeCreateSession(version, keyspace)
+		p.sessions[key] = sess
+		return sess, nil
 	}
 }
 
@@ -466,7 +487,7 @@ func (p *Proxy) buildLocalRow() {
 }
 
 func (p *Proxy) encodeTypeFatal(dt datatype.DataType, val interface{}) []byte {
-	encoded, err := proxycore.EncodeType(dt, p.cluster.NegotiatedVersion, val)
+	encoded, err := codecs.EncodeType(dt, p.cluster.NegotiatedVersion, val)
 	if err != nil {
 		p.logger.Fatal("unable to encode type", zap.Error(err))
 	}
@@ -494,35 +515,6 @@ func (p *Proxy) isSelect(id [16]byte) bool {
 		return false
 	} else {
 		return val.(preparedMetadata).isSelect
-	}
-}
-
-// maybeStorePreparedMetadata stores the idempotence of a "PREPARE" request's query.
-// This information is used by future "EXECUTE" requests when they need to be retried.
-func (p *Proxy) maybeStorePreparedMetadata(raw *frame.RawFrame, isSelect bool, msg message.Message) {
-	if prepareMsg, ok := msg.(*message.Prepare); ok && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
-		frm, err := codec.ConvertFromRawFrame(raw)
-		if err != nil {
-			p.logger.Error("error attempting to decode prepared result message")
-		} else if preparedResultMsg, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
-			p.logger.Error("expected prepared result message, but got something else")
-		} else {
-			p.logger.Debug("prepared request",
-				zap.Stringer("request", prepareMsg),
-				zap.Stringer("response", preparedResultMsg))
-			idempotent, err := parser.IsQueryIdempotent(prepareMsg.Query)
-			if err != nil {
-				p.logger.Error("error parsing query for idempotence", zap.Error(err))
-			} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
-				p.preparedMetadata.Store(preparedIdKey(result.PreparedQueryId), preparedMetadata{
-					idempotent: idempotent,
-					isSelect:   isSelect,
-				})
-			} else {
-				p.logger.Error("expected prepared result, but got some other type of message",
-					zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
-			}
-		}
 	}
 }
 
@@ -556,12 +548,14 @@ type client struct {
 	proxy               *Proxy
 	conn                *proxycore.Conn
 	keyspace            string
+	compression         string
 	preparedSystemQuery map[[16]byte]interface{}
 	preparedSelectQuery map[[16]byte]interface{}
+	codec               frame.RawCodec
 }
 
 func (c *client) Receive(reader io.Reader) error {
-	raw, err := codec.DecodeRawFrame(reader)
+	raw, err := c.codec.DecodeRawFrame(reader)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			c.proxy.logger.Error("unable to decode frame", zap.Error(err))
@@ -576,7 +570,7 @@ func (c *client) Receive(reader io.Reader) error {
 		return nil
 	}
 
-	body, err := codec.DecodeBody(raw.Header, bytes.NewReader(raw.Body))
+	body, err := c.codec.DecodeBody(raw.Header, codecs.NewFrameBodyReader(raw.Body))
 	if err != nil {
 		c.proxy.logger.Error("unable to decode body", zap.Error(err))
 		return err
@@ -586,9 +580,20 @@ func (c *client) Receive(reader io.Reader) error {
 	case *message.Options:
 		c.send(raw.Header, &message.Supported{Options: map[string][]string{
 			"CQL_VERSION": {c.proxy.cluster.Info.CQLVersion},
-			"COMPRESSION": {},
+			"COMPRESSION": codecs.CompressionNames,
 		}})
 	case *message.Startup:
+		if compression, ok := msg.Options["COMPRESSION"]; ok {
+			if codec, ok := codecs.CustomRawCodecsWithCompression[strings.ToLower(compression)]; ok {
+				c.codec = codec
+				c.compression = compression
+			} else {
+				c.proxy.logger.Error("unsupported compression type used by client", zap.String("compression", compression))
+				errMsg := fmt.Sprintf("Unsupported compression type: %s (supported compression types: %s)",
+					compression, strings.Join(codecs.CompressionNames, ", "))
+				c.send(raw.Header, &message.ProtocolError{ErrorMessage: errMsg})
+			}
+		}
 		c.send(raw.Header, &message.Ready{})
 	case *message.Register:
 		for _, t := range msg.EventTypes {
@@ -598,14 +603,13 @@ func (c *client) Receive(reader io.Reader) error {
 		}
 		c.send(raw.Header, &message.Ready{})
 	case *message.Prepare:
-		c.handlePrepare(raw, msg)
-	case *partialExecute:
-		c.handleExecute(raw, msg, body.CustomPayload)
-	case *partialQuery:
-		c.handleQuery(raw, msg, body.CustomPayload)
-	case *partialBatch:
-		c.maybeOverrideUnsupportedWriteConsistency(false, raw, msg)
-		c.execute(raw, notDetermined, false, c.keyspace, msg)
+		c.handlePrepare(raw, msg, body)
+	case *codecs.PartialExecute:
+		c.handleExecute(raw, msg, body)
+	case *codecs.PartialQuery:
+		c.handleQuery(raw, msg, body)
+	case *codecs.PartialBatch:
+		c.execute(raw, notDetermined, false, c.keyspace, body)
 	default:
 		c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unsupported operation"})
 	}
@@ -613,18 +617,19 @@ func (c *client) Receive(reader io.Reader) error {
 	return nil
 }
 
-func (c *client) execute(raw *frame.RawFrame, state idempotentState, isSelect bool, keyspace string, msg message.Message) {
-	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace); err == nil {
+func (c *client) execute(raw *frame.RawFrame, state idempotentState, isSelect bool, keyspace string, body *frame.Body) {
+	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace, c.compression); err == nil {
 		req := &request{
 			client:   c,
 			session:  sess,
 			state:    state,
-			msg:      msg,
+			msg:      body.Message,
 			keyspace: keyspace,
 			done:     false,
 			stream:   raw.Header.StreamId,
+			version:  raw.Header.Version,
 			qp:       c.proxy.newQueryPlan(),
-			raw:      raw,
+			frm:      c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, body),
 			isSelect: isSelect,
 		}
 		req.Execute(true)
@@ -633,7 +638,7 @@ func (c *client) execute(raw *frame.RawFrame, state idempotentState, isSelect bo
 	}
 }
 
-func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
+func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare, body *frame.Body) {
 	c.proxy.logger.Debug("handling prepare", zap.String("query", msg.Query), zap.Int16("stream", raw.Header.StreamId))
 
 	keyspace := c.keyspace
@@ -681,25 +686,24 @@ func (c *client) handlePrepare(raw *frame.RawFrame, msg *message.Prepare) {
 
 	} else {
 		_, isSelect := stmt.(*parser.SelectStatement)
-		c.execute(raw, isIdempotent, isSelect, keyspace, msg) // Prepared statements can be retried themselves
+		c.execute(raw, isIdempotent, isSelect, keyspace, body) // Prepared statements can be retried themselves
 	}
 }
 
-func (c *client) handleExecute(raw *frame.RawFrame, msg *partialExecute, customPayload map[string][]byte) {
-	id := preparedIdKey(msg.queryId)
+func (c *client) handleExecute(raw *frame.RawFrame, msg *codecs.PartialExecute, body *frame.Body) {
+	id := preparedIdKey(msg.QueryId)
 	if stmt, ok := c.preparedSystemQuery[id]; ok {
 		c.interceptSystemQuery(raw.Header, stmt)
 	} else {
 		isSelect := c.proxy.isSelect(id)
-		c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, msg)
-		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, "", msg)
+		c.execute(raw, c.getDefaultIdempotency(body.CustomPayload), isSelect, "", body)
 	}
 }
 
-func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPayload map[string][]byte) {
-	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.query)
+func (c *client) handleQuery(raw *frame.RawFrame, msg *codecs.PartialQuery, body *frame.Body) {
+	handled, stmt, err := parser.IsQueryHandled(parser.IdentifierFromString(c.keyspace), msg.Query)
 	if handled {
-		c.proxy.logger.Debug("Query handled by proxy", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
+		c.proxy.logger.Debug("query handled by proxy", zap.String("query", msg.Query), zap.Int16("stream", raw.Header.StreamId))
 		if err != nil {
 			c.proxy.logger.Error("error parsing query to see if it's handled", zap.Error(err))
 			c.send(raw.Header, &message.Invalid{ErrorMessage: err.Error()})
@@ -707,10 +711,9 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *partialQuery, customPaylo
 			c.interceptSystemQuery(raw.Header, stmt)
 		}
 	} else {
-		c.proxy.logger.Debug("Query not handled by proxy, forwarding", zap.String("query", msg.query), zap.Int16("stream", raw.Header.StreamId))
+		c.proxy.logger.Debug("query not handled by proxy, forwarding", zap.String("query", msg.Query), zap.Int16("stream", raw.Header.StreamId))
 		_, isSelect := stmt.(*parser.SelectStatement)
-		c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, msg)
-		c.execute(raw, c.getDefaultIdempotency(customPayload), isSelect, c.keyspace, msg)
+		c.execute(raw, c.getDefaultIdempotency(body.CustomPayload), isSelect, c.keyspace, body)
 	}
 }
 
@@ -730,9 +733,9 @@ func (c *client) getDefaultIdempotency(customPayload map[string][]byte) idempote
 func (c *client) filterSystemLocalValues(stmt *parser.SelectStatement, filtered []*message.ColumnMetadata) (row []message.Column, err error) {
 	return parser.FilterValues(stmt, filtered, func(name string) (value message.Column, err error) {
 		if name == "rpc_address" {
-			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, c.localIP())
+			return codecs.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, c.localIP())
 		} else if name == "host_id" {
-			return proxycore.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(c.localIP().String()))
+			return codecs.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(c.localIP().String()))
 		} else if val, ok := c.proxy.systemLocalValues[name]; ok {
 			return val, nil
 		} else if name == parser.CountValueName {
@@ -761,19 +764,19 @@ func (c *client) localIP() net.IP {
 func (c *client) filterSystemPeerValues(stmt *parser.SelectStatement, filtered []*message.ColumnMetadata, peer *node, peerCount int) (row []message.Column, err error) {
 	return parser.FilterValues(stmt, filtered, func(name string) (value message.Column, err error) {
 		if name == "data_center" {
-			return proxycore.EncodeType(datatype.Varchar, c.proxy.cluster.NegotiatedVersion, peer.dc)
+			return codecs.EncodeType(datatype.Varchar, c.proxy.cluster.NegotiatedVersion, peer.dc)
 		} else if name == "host_id" {
-			return proxycore.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(peer.addr.String()))
+			return codecs.EncodeType(datatype.Uuid, c.proxy.cluster.NegotiatedVersion, nameBasedUUID(peer.addr.String()))
 		} else if name == "tokens" {
-			return proxycore.EncodeType(datatype.NewList(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, peer.tokens)
+			return codecs.EncodeType(datatype.NewList(datatype.Varchar), c.proxy.cluster.NegotiatedVersion, peer.tokens)
 		} else if name == "peer" {
-			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.addr.IP)
+			return codecs.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.addr.IP)
 		} else if name == "rpc_address" {
-			return proxycore.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.addr.IP)
+			return codecs.EncodeType(datatype.Inet, c.proxy.cluster.NegotiatedVersion, peer.addr.IP)
 		} else if val, ok := c.proxy.systemLocalValues[name]; ok {
 			return val, nil
 		} else if name == parser.CountValueName {
-			return proxycore.EncodeType(datatype.Int, c.proxy.cluster.NegotiatedVersion, peerCount)
+			return codecs.EncodeType(datatype.Int, c.proxy.cluster.NegotiatedVersion, peerCount)
 		} else {
 			return nil, fmt.Errorf("no column value for %s", name)
 		}
@@ -843,7 +846,7 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 			c.send(hdr, &message.Invalid{ErrorMessage: "Doesn't exist"})
 		}
 	case *parser.UseStatement:
-		if _, err := c.proxy.maybeCreateSession(hdr.Version, s.Keyspace); err != nil {
+		if _, err := c.proxy.maybeCreateSession(hdr.Version, s.Keyspace, c.compression); err != nil {
 			errMsg := "Proxy unable to create new session for keyspace"
 			var cqlError *proxycore.CqlError
 			if errors.As(err, &cqlError) {
@@ -868,7 +871,7 @@ func (c *client) interceptSystemQuery(hdr *frame.Header, stmt interface{}) {
 
 func (c *client) send(hdr *frame.Header, msg message.Message) {
 	_ = c.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
+		return c.codec.EncodeFrame(frame.NewFrame(hdr.Version, hdr.StreamId, msg), writer)
 	}))
 }
 
@@ -876,64 +879,63 @@ func (c *client) Closing(_ error) {
 	c.proxy.removeClient(c)
 }
 
-func (c *client) maybeOverrideUnsupportedWriteConsistency(isSelect bool, raw *frame.RawFrame, msg message.Message) {
+func (c *client) maybeOverrideUnsupportedWriteConsistency(isSelect bool, raw *frame.RawFrame, body *frame.Body) (frm interface{}) {
 	if !isSelect {
 		overrideConsistency := c.proxy.config.UnsupportedWriteConsistencyOverride.ConsistencyLevel
 
-		switch m := msg.(type) {
-		case *partialExecute:
-			if c.isUnsupportedWriteConsistency(m.consistency) {
+		switch m := body.Message.(type) {
+		case *codecs.PartialExecute:
+			if c.isUnsupportedWriteConsistency(m.Consistency) {
 				c.proxy.logger.Debug("overriding unsupported write consistency for execute",
 					zap.Stringer("request", m),
-					zap.Stringer("unsupported", m.consistency),
+					zap.Stringer("unsupported", m.Consistency),
 					zap.Stringer("override", overrideConsistency))
-				err := patchExecuteConsistency(raw.Body, overrideConsistency)
-				if err != nil {
-					c.proxy.logger.Error("unable to override write consistency for execute",
-						zap.Stringer("request", m),
-						zap.Error(err))
+				m.Consistency = overrideConsistency
+				return &frame.Frame{
+					Header: raw.Header,
+					Body:   body,
 				}
 			} else {
 				c.proxy.logger.Debug("no override required for execute write consistency",
 					zap.Stringer("request", m),
-					zap.Stringer("consistency", m.consistency))
+					zap.Stringer("consistency", m.Consistency))
 			}
-		case *partialQuery:
-			if c.isUnsupportedWriteConsistency(m.consistency) {
+		case *codecs.PartialQuery:
+			if c.isUnsupportedWriteConsistency(m.Consistency) {
 				c.proxy.logger.Debug("overriding unsupported write consistency for query",
 					zap.Stringer("request", m),
-					zap.Stringer("unsupported", m.consistency),
+					zap.Stringer("unsupported", m.Consistency),
 					zap.Stringer("override", overrideConsistency))
-				err := patchQueryConsistency(raw.Body, overrideConsistency)
-				if err != nil {
-					c.proxy.logger.Error("unable to override write consistency for query",
-						zap.Stringer("request", m),
-						zap.Error(err))
+				m.Consistency = overrideConsistency
+				return &frame.Frame{
+					Header: raw.Header,
+					Body:   body,
 				}
 			} else {
 				c.proxy.logger.Debug("no override required for query write consistency",
 					zap.Stringer("request", m),
-					zap.Stringer("consistency", m.consistency))
+					zap.Stringer("consistency", m.Consistency))
 			}
-		case *partialBatch:
-			if c.isUnsupportedWriteConsistency(m.consistency) {
+		case *codecs.PartialBatch:
+			if c.isUnsupportedWriteConsistency(m.Consistency) {
 				c.proxy.logger.Debug("overriding unsupported write consistency for batch",
 					zap.Stringer("request", m),
-					zap.Stringer("unsupported", m.consistency),
+					zap.Stringer("unsupported", m.Consistency),
 					zap.Stringer("override", overrideConsistency))
-				err := patchBatchConsistency(raw.Body, overrideConsistency)
-				if err != nil {
-					c.proxy.logger.Error("unable to override write consistency for batch",
-						zap.Stringer("request", m),
-						zap.Error(err))
+				m.Consistency = overrideConsistency
+				return &frame.Frame{
+					Header: raw.Header,
+					Body:   body,
 				}
 			} else {
 				c.proxy.logger.Debug("no override required for batch write consistency",
 					zap.Stringer("request", m),
-					zap.Stringer("consistency", m.consistency))
+					zap.Stringer("consistency", m.Consistency))
 			}
 		}
 	}
+
+	return raw
 }
 
 func (c *client) isUnsupportedWriteConsistency(consistency primitive.ConsistencyLevel) bool {
@@ -943,6 +945,37 @@ func (c *client) isUnsupportedWriteConsistency(consistency primitive.Consistency
 		}
 	}
 	return false
+}
+
+// maybeStorePreparedMetadata stores the idempotence of a "PREPARE" request's query.
+// This information is used by future "EXECUTE" requests when they need to be retried.
+func (c *client) maybeStorePreparedMetadata(raw *frame.RawFrame, isSelect bool, msg message.Message) {
+	logger := c.proxy.logger
+
+	if prepareMsg, ok := msg.(*message.Prepare); ok && raw.Header.OpCode == primitive.OpCodeResult { // Prepared result
+		frm, err := c.codec.ConvertFromRawFrame(raw)
+		if err != nil {
+			logger.Error("error attempting to decode prepared result message")
+		} else if preparedResultMsg, ok := frm.Body.Message.(*message.PreparedResult); !ok { // TODO: Use prepared type data to disambiguate idempotency
+			logger.Error("expected prepared result message, but got something else")
+		} else {
+			logger.Debug("prepared request",
+				zap.Stringer("request", prepareMsg),
+				zap.Stringer("response", preparedResultMsg))
+			idempotent, err := parser.IsQueryIdempotent(prepareMsg.Query)
+			if err != nil {
+				logger.Error("error parsing query for idempotence", zap.Error(err))
+			} else if result, ok := frm.Body.Message.(*message.PreparedResult); ok {
+				c.proxy.preparedMetadata.Store(preparedIdKey(result.PreparedQueryId), preparedMetadata{
+					idempotent: idempotent,
+					isSelect:   isSelect,
+				})
+			} else {
+				logger.Error("expected prepared result, but got some other type of message",
+					zap.Stringer("type", reflect.TypeOf(frm.Body.Message)))
+			}
+		}
+	}
 }
 
 func getOrCreateDefaultPreparedCache(cache proxycore.PreparedCache) (proxycore.PreparedCache, error) {

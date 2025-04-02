@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -386,7 +387,7 @@ func TestClientConn_Unprepared(t *testing.T) {
 	require.NoError(t, err)
 
 	// Pre-populate the prepared cache as if the query was prepared, but on another node
-	prepareFrame, err := codec.ConvertToRawFrame(frame.NewFrame(supported, 0, &message.Prepare{Query: "SELECT * FROM test.test"}))
+	prepareFrame, err := codecs.DefaultRawCodec.ConvertToRawFrame(frame.NewFrame(supported, 0, &message.Prepare{Query: "SELECT * FROM test.test"}))
 	require.NoError(t, err)
 
 	var preparedCache testPrepareCache
@@ -512,7 +513,7 @@ func (t *testPrepareRequest) OnClose(_ error) {
 
 func (t *testPrepareRequest) OnResult(raw *frame.RawFrame) {
 	assert.Equal(t.t, primitive.OpCodeResult, raw.Header.OpCode)
-	frm, err := codec.ConvertFromRawFrame(raw)
+	frm, err := codecs.DefaultRawCodec.ConvertFromRawFrame(raw)
 	require.NoError(t.t, err)
 	_, ok := frm.Body.Message.(*message.RowsResult)
 	assert.True(t.t, ok)
