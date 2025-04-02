@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -134,7 +135,7 @@ func (r testSessionRequest) OnClose(_ error) {
 }
 
 func (r testSessionRequest) OnResult(raw *frame.RawFrame) {
-	frm, err := codec.ConvertFromRawFrame(raw)
+	frm, err := codecs.DefaultRawCodec.ConvertFromRawFrame(raw)
 	require.NoError(r.t, err)
 
 	switch msg := frm.Body.Message.(type) {

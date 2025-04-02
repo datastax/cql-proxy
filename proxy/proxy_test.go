@@ -16,7 +16,9 @@ package proxy
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -25,7 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/cql-proxy/proxycore"
+	"github.com/gocql/gocql"
+	"github.com/pierrec/lz4/v4"
+	"go.uber.org/zap"
 
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
@@ -38,7 +44,13 @@ import (
 const (
 	testAddr      = "127.0.0.1"
 	testStartAddr = "127.0.0.0"
+	sizeOfUint32  = 4
 )
+
+func init() {
+	logger, _ := zap.NewDevelopment()
+	zap.ReplaceGlobals(logger)
+}
 
 func generateTestPort() int {
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
@@ -78,7 +90,7 @@ func TestProxy_ListenAndServe(t *testing.T) {
 			if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
 				return msg
 			} else {
-				column, err := proxycore.EncodeType(datatype.Varchar, frm.Header.Version, net.JoinHostPort(cl.Local().IP, strconv.Itoa(cl.Local().Port)))
+				column, err := codecs.EncodeType(datatype.Varchar, frm.Header.Version, net.JoinHostPort(cl.Local().IP, strconv.Itoa(cl.Local().Port)))
 				if err != nil {
 					return &message.ServerError{ErrorMessage: "Unable to encode type"}
 				}
@@ -306,6 +318,71 @@ func TestProxy_DseVersion(t *testing.T) {
 	checkDseVersion(cl.SendAndReceive(ctx, frame.NewFrame(primitive.ProtocolVersion4, 0, &message.Query{Query: "SELECT dse_version FROM system.peers"})))
 }
 
+func TestProxy_UnsupportedCompressionType(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 1, nil)
+	defer func() {
+		cancel()
+		tester.shutdown()
+	}()
+	require.NoError(t, err)
+
+	cl := connectTestClient(t, ctx, proxyContactPoint)
+
+	// Send a STARTUP message with an unsupported compression type
+	res, err := cl.SendAndReceive(ctx,
+		frame.NewFrame(primitive.ProtocolVersion4, 0,
+			&message.Startup{Options: map[string]string{"COMPRESSION": "unsupported"}}),
+	)
+	require.NoError(t, err)
+	require.IsType(t, &message.ProtocolError{}, res.Body.Message)
+
+	assert.Contains(t, res.Body.Message.(*message.ProtocolError).ErrorMessage,
+		"Unsupported compression type: unsupported (supported compression types: lz4, snappy)")
+}
+
+func TestProxy_Compression(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tester, proxyContactPoint, err := setupProxyTest(ctx, 1, nil)
+	defer func() {
+		cancel()
+		tester.shutdown()
+	}()
+	require.NoError(t, err)
+	tests := []struct {
+		compressor gocql.Compressor
+	}{
+		{
+			compressor: gocql.SnappyCompressor{},
+		},
+		{
+			compressor: lz4Compressor{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.compressor.Name(), func(t *testing.T) {
+			config := gocql.NewCluster(proxyContactPoint)
+			config.Authenticator = &gocql.PasswordAuthenticator{Username: "cassandra", Password: "cassandra"}
+			config.Compressor = tt.compressor
+
+			var sess *gocql.Session
+			require.True(t, waitUntil(5*time.Second, func() bool {
+				var err error
+				sess, err = config.CreateSession()
+				return err == nil && sess != nil
+			}), "failed to create session")
+			defer sess.Close()
+
+			assert.True(t, waitUntil(5*time.Second, func() bool {
+				var err error
+				err = sess.Query("select * from test").Iter().Close()
+				return err == nil
+			}), "failed to execute query")
+		})
+	}
+}
+
 func queryTestHosts(ctx context.Context, cl *proxycore.ClientConn) (map[string]struct{}, error) {
 	hosts := make(map[string]struct{})
 	for i := 0; i < 3; i++ {
@@ -373,7 +450,6 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 			return tester, proxyAddr, err
 		}
 	}
-
 	tester.proxy = NewProxy(ctx, Config{
 		Version:           primitive.ProtocolVersion4,
 		Resolver:          proxycore.NewResolverWithDefaultPort([]string{clusterAddr}, clusterPort),
@@ -385,6 +461,7 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 		RPCAddr:           cfg.rpcAddr,
 		Peers:             cfg.peers,
 		IdempotentGraph:   cfg.idempotentGraph,
+		Logger:            zap.L(),
 	})
 
 	err = tester.proxy.Connect()
@@ -405,6 +482,38 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 	}()
 
 	return tester, proxyAddr, nil
+}
+
+type lz4Compressor struct{}
+
+func (l lz4Compressor) Name() string {
+	return "lz4"
+}
+
+func (l lz4Compressor) Encode(data []byte) ([]byte, error) {
+	maxCompressedSize := lz4.CompressBlockBound(len(data)) + sizeOfUint32
+	compressed := make([]byte, maxCompressedSize)
+
+	binary.BigEndian.PutUint32(compressed, uint32(len(data)))
+
+	var compressor lz4.Compressor
+	n, err := compressor.CompressBlock(data, compressed[4:])
+	if err != nil {
+		return nil, err
+	}
+
+	return compressed[:n+sizeOfUint32], nil
+}
+
+func (l lz4Compressor) Decode(data []byte) ([]byte, error) {
+	if len(data) < sizeOfUint32 {
+		return nil, fmt.Errorf("unable to read compressed data length; expected at least %d bytes, got %d",
+			sizeOfUint32, len(data))
+	}
+	decompressedLen := binary.BigEndian.Uint32(data)
+	decompressed := make([]byte, decompressedLen)
+	_, err := lz4.UncompressBlock(data[sizeOfUint32:], decompressed)
+	return decompressed, err
 }
 
 func connectTestClient(t *testing.T, ctx context.Context, proxyContactPoint string) *proxycore.ClientConn {

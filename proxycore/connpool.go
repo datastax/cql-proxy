@@ -147,8 +147,13 @@ func (p *connPool) connect() (conn *ClientConn, err error) {
 		}
 	}()
 
+	var startupKeysAndValues []string
+	if p.config.Compression != "" {
+		startupKeysAndValues = []string{"COMPRESSION", p.config.Compression}
+	}
+
 	var version primitive.ProtocolVersion
-	version, err = conn.Handshake(ctx, p.config.Version, p.config.Auth)
+	version, err = conn.Handshake(ctx, p.config.Version, p.config.Auth, startupKeysAndValues...)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("handshake took longer than %s to complete", p.config.ConnectTimeout)

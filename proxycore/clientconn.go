@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -64,6 +65,7 @@ type ClientConn struct {
 	logger        *zap.Logger
 	closing       bool
 	closingMu     *sync.RWMutex
+	codec         frame.RawCodec
 }
 
 // ConnectClient creates a new connection to an endpoint within a downstream cluster using TLS if specified.
@@ -74,6 +76,7 @@ func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConf
 		closingMu:     &sync.RWMutex{},
 		preparedCache: config.PreparedCache,
 		logger:        GetOrCreateNopLogger(config.Logger),
+		codec:         codecs.CustomRawCodec,
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -83,9 +86,9 @@ func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConf
 	return c, nil
 }
 
-func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) (primitive.ProtocolVersion, error) {
+func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, startupKeysAndValues ...string) (primitive.ProtocolVersion, error) {
 	for {
-		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup()))
+		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup(startupKeysAndValues...)))
 		if err != nil {
 			return version, err
 		}
@@ -250,14 +253,14 @@ func (c *ClientConn) SetKeyspace(ctx context.Context, version primitive.Protocol
 }
 
 func (c *ClientConn) Receive(reader io.Reader) error {
-	raw, err := codec.DecodeRawFrame(reader)
+	raw, err := c.codec.DecodeRawFrame(reader)
 	if err != nil {
 		return err
 	}
 
 	if raw.Header.OpCode == primitive.OpCodeEvent {
 		if c.eventHandler != nil {
-			frm, err := codec.ConvertFromRawFrame(raw)
+			frm, err := c.codec.ConvertFromRawFrame(raw)
 			if err != nil {
 				return err
 			}
@@ -302,7 +305,7 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 	}
 
 	if primitive.ErrorCode(code) == primitive.ErrorCodeUnprepared {
-		frm, err := codec.ConvertFromRawFrame(raw)
+		frm, err := c.codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			c.logger.Error("failed to decode unprepared error response", zap.Error(err))
 			return false
@@ -341,7 +344,7 @@ func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
 		return
 	}
 	if primitive.ResultType(kind) == primitive.ResultTypePrepared {
-		frm, err := codec.ConvertFromRawFrame(raw)
+		frm, err := c.codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			c.logger.Error("failed to decode prepared result response", zap.Error(err))
 			return
@@ -405,7 +408,7 @@ func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame
 
 	select {
 	case r := <-request.res:
-		return codec.ConvertFromRawFrame(r)
+		return c.codec.ConvertFromRawFrame(r)
 	case e := <-request.err:
 		return nil, e
 	case <-ctx.Done():
@@ -471,10 +474,10 @@ func (r *requestSender) Send(writer io.Writer) error {
 	switch frm := r.request.Frame().(type) {
 	case *frame.Frame:
 		frm.Header.StreamId = r.stream
-		return codec.EncodeFrame(frm, writer)
+		return r.conn.codec.EncodeFrame(frm, writer)
 	case *frame.RawFrame:
 		frm.Header.StreamId = r.stream
-		return codec.EncodeRawFrame(frm, writer)
+		return r.conn.codec.EncodeRawFrame(frm, writer)
 	default:
 		return errors.New("unhandled frame type")
 	}
