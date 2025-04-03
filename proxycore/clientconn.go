@@ -88,9 +88,25 @@ func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConf
 
 func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, startupKeysAndValues ...string) (primitive.ProtocolVersion, error) {
 	for {
+		if len(startupKeysAndValues)%2 != 0 {
+			return version, errors.New("invalid startup key/value pairs")
+		}
+
 		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup(startupKeysAndValues...)))
 		if err != nil {
 			return version, err
+		}
+
+		for i := 0; i < len(startupKeysAndValues); i += 2 {
+			key := startupKeysAndValues[i]
+			value := startupKeysAndValues[i+1]
+			if strings.EqualFold("COMPRESSION", key) {
+				if codec, ok := codecs.CustomRawCodecsWithCompression[strings.ToLower(value)]; ok {
+					c.codec = codec
+				} else {
+					return version, fmt.Errorf("invalid compression type: %s", value)
+				}
+			}
 		}
 
 		switch msg := response.Body.Message.(type) {
@@ -447,7 +463,7 @@ func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.
 
 			switch response.Body.Message.(type) {
 			case *message.Supported:
-				logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
+				//logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
 				if idleTimer.Stop() {
 					idleTimer.Reset(idleTimeout)
 				}
