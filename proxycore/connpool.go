@@ -71,7 +71,7 @@ func connectPool(ctx context.Context, config connPoolConfig) (*connPool, error) 
 
 	for _, err := range errs {
 		if err != nil {
-			pool.logger.Error("unable to connect pool", zap.Stringer("host", config.Endpoint), zap.Error(err))
+			pool.logger.Error("unable to connect pool", zap.Stringer("endpoint", config.Endpoint), zap.Error(err))
 			if isCriticalErr(err) {
 				return nil, err
 			}
@@ -129,7 +129,7 @@ func (p *connPool) leastBusyConn() *ClientConn {
 }
 
 func (p *connPool) connect() (conn *ClientConn, err error) {
-	p.logger.Debug("creating connection pool",
+	p.logger.Debug("creating pooled connection",
 		zap.Stringer("endpoint", p.config.Endpoint),
 		zap.Stringer("connect timeout", p.config.ConnectTimeout))
 	ctx, cancel := context.WithTimeout(p.ctx, p.config.ConnectTimeout)
@@ -191,7 +191,7 @@ func (p *connPool) stayConnected(idx int) {
 			if !pendingConnect {
 				delay := reconnectPolicy.NextDelay()
 				p.logger.Info("pool connection attempting to reconnect after delay",
-					zap.Stringer("host", p.config.Endpoint), zap.Duration("delay", delay))
+					zap.Stringer("endpoint", p.config.Endpoint), zap.Duration("delay", delay))
 				connectTimer = time.NewTimer(reconnectPolicy.NextDelay())
 				pendingConnect = true
 			} else {
@@ -202,7 +202,7 @@ func (p *connPool) stayConnected(idx int) {
 					c, err := p.connect()
 					if err != nil {
 						p.logger.Error("pool connection failed to connect",
-							zap.Stringer("host", p.config.Endpoint), zap.Error(err))
+							zap.Stringer("endpoint", p.config.Endpoint), zap.Error(err))
 					} else {
 						p.connsMu.Lock()
 						conn, p.conns[idx] = c, c
@@ -218,7 +218,7 @@ func (p *connPool) stayConnected(idx int) {
 				done = true
 				_ = conn.Close()
 			case <-conn.IsClosed():
-				p.logger.Info("pool connection closed", zap.Stringer("host", p.config.Endpoint))
+				p.logger.Info("pool connection closed", zap.Stringer("endpoint", p.config.Endpoint), zap.Error(conn.Err()))
 				p.connsMu.Lock()
 				conn, p.conns[idx] = nil, nil
 				p.connsMu.Unlock()
