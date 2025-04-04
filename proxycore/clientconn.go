@@ -354,7 +354,11 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 // This is done so that the prepare request can be used to prepare other nodes that have not been prepared, but are
 // attempting to execute a request that has been prepared on another node in the cluster.
 func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
-	if request.IsPrepareRequest() { // Expect a prepared response from a prepare request
+	// Expect a prepared response from a prepare request. The request type is used because the response could be
+	// compressed (so the bytes can't be inspected for response type), and it's expensive to decompress and decode all
+	// response types to see if check for prepared responses.
+	if request.IsPrepareRequest() {
+
 		frm, err := c.codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			c.logger.Error("failed to decode prepared result response", zap.Error(err))
