@@ -354,18 +354,18 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 // This is done so that the prepare request can be used to prepare other nodes that have not been prepared, but are
 // attempting to execute a request that has been prepared on another node in the cluster.
 func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
-	kind, err := readInt(raw.Body)
-	if err != nil {
-		c.logger.Error("failed to read `kind` in result response", zap.Error(err))
-		return
-	}
-	if primitive.ResultType(kind) == primitive.ResultTypePrepared {
+	if request.IsPrepareRequest() { // Expect a prepared response from a prepare request
 		frm, err := c.codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			c.logger.Error("failed to decode prepared result response", zap.Error(err))
 			return
 		}
-		msg := frm.Body.Message.(*message.PreparedResult)
+		msg, isPreparedResponse := frm.Body.Message.(*message.PreparedResult)
+		if !isPreparedResponse {
+			c.logger.Error("unexpected response body for prepare request; unable to update prepared cache",
+				zap.Stringer("response", msg))
+			return
+		}
 		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId),
 			&PreparedEntry{
 				request.Frame().(*frame.RawFrame), // Store frame so we can re-prepare
@@ -513,6 +513,11 @@ func (i *internalRequest) Frame() interface{} {
 	return i.frame
 }
 
+func (i *internalRequest) IsPrepareRequest() bool {
+	_, isPrepare := i.frame.Body.Message.(*message.Prepare)
+	return isPrepare
+}
+
 func (i *internalRequest) OnClose(err error) {
 	select {
 	case i.err <- err:
@@ -540,6 +545,10 @@ func (r *prepareRequest) Execute(_ bool) {
 
 func (r *prepareRequest) Frame() interface{} {
 	return r.prepare
+}
+
+func (r *prepareRequest) IsPrepareRequest() bool {
+	return true
 }
 
 func (r *prepareRequest) OnClose(err error) {

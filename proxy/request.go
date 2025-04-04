@@ -97,6 +97,10 @@ func (r *request) sendRaw(raw *frame.RawFrame) {
 func (r *request) Frame() interface{} {
 	return r.frm
 }
+func (r *request) IsPrepareRequest() bool {
+	_, isPrepare := r.msg.(*message.Prepare)
+	return isPrepare
+}
 
 func (r *request) checkIdempotent() bool {
 	if notDetermined == r.state {

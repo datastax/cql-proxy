@@ -130,6 +130,10 @@ func (r testSessionRequest) Frame() interface{} {
 	})
 }
 
+func (r testSessionRequest) IsPrepareRequest() bool {
+	return false
+}
+
 func (r testSessionRequest) OnClose(_ error) {
 	require.Fail(r.t, "connection unexpectedly closed")
 }
