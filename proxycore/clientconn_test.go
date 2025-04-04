@@ -502,6 +502,10 @@ func (t *testPrepareRequest) Frame() interface{} {
 	return frame.NewFrame(t.version, 0, &message.Execute{QueryId: t.preparedId})
 }
 
+func (t *testPrepareRequest) IsPrepareRequest() bool {
+	return true
+}
+
 func (t *testPrepareRequest) Execute(next bool) {
 	err := t.cl.Send(t)
 	require.NoError(t.t, err)
@@ -532,6 +536,10 @@ func (t testInflightRequest) Frame() interface{} {
 	return frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{
 		Query: "SELECT * FROM system.local",
 	})
+}
+
+func (t testInflightRequest) IsPrepareRequest() bool {
+	return false
 }
 
 func (t testInflightRequest) OnClose(_ error) {

@@ -26,6 +26,10 @@ type Request interface {
 	// This must be idempotent.
 	Frame() interface{}
 
+	// IsPrepareRequest returns whether the request's frame is a `PREPARE` request. This is used to determine if the
+	// prepared cache should be updated.
+	IsPrepareRequest() bool
+
 	// Execute is called when a request need to be retried.
 	// This is currently only called for executing prepared requests (i.e. `EXECUTE` request frames). If `EXECUTE`
 	// request frames are not expected then the implementation should `panic()`.
