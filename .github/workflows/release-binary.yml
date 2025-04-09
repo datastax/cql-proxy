@@ -10,7 +10,7 @@ jobs:
   build:
     name: Build and Upload Release Assets
     runs-on: ubuntu-latest
-    container: golang:1.18-bullseye
+    container: golang:1.24.2-bullseye
     strategy:
       matrix:
         goosarch:
