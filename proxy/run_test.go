@@ -16,6 +16,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -27,11 +28,13 @@ import (
 	"path"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/datastax/cql-proxy/proxycore"
+	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 	"github.com/stretchr/testify/assert"
@@ -477,6 +480,194 @@ func TestRun_ProxyTLS(t *testing.T) {
 		Query: "SELECT * FROM system.local",
 	})
 	require.Equal(t, rs.RowCount(), 1)
+}
+
+func TestRun_UnsupportedWriteConsistency(t *testing.T) {
+	unsupportedConsistencies := []primitive.ConsistencyLevel{
+		primitive.ConsistencyLevelAny,
+		primitive.ConsistencyLevelOne,
+		primitive.ConsistencyLevelLocalOne,
+	}
+
+	selectConsistency := unsupportedConsistencies[0]
+
+	checkMutationConsistency := func(consistency primitive.ConsistencyLevel) {
+		for _, unsupported := range unsupportedConsistencies {
+			assert.NotEqual(t, unsupported, consistency, "received unsupported consistency")
+		}
+		assert.Equal(t, primitive.ConsistencyLevelLocalQuorum, consistency)
+	}
+
+	checkConsistency := func(query string, consistency primitive.ConsistencyLevel) {
+		if strings.Contains(query, "INSERT") {
+			checkMutationConsistency(consistency)
+		} else if strings.Contains(query, "SELECT") {
+			assert.Equal(t, selectConsistency, consistency)
+		} else {
+			assert.Fail(t, "received invalid query")
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	clusterPort, clusterAddr, proxyBindAddr, httpBindAddr := generateTestAddrs(testAddr)
+
+	cluster := proxycore.NewMockCluster(net.ParseIP(testStartAddr), clusterPort)
+
+	var prepared sync.Map
+
+	cluster.Handlers = proxycore.NewMockRequestHandlers(proxycore.MockRequestHandlers{
+		primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
+				return msg
+			} else {
+				query := frm.Body.Message.(*message.Query)
+				checkConsistency(query.Query, query.Options.Consistency)
+				return &message.RowsResult{
+					Metadata: &message.RowsMetadata{
+						ColumnCount: 0,
+					},
+					Data: message.RowSet{},
+				}
+			}
+		},
+		primitive.OpCodePrepare: func(client *proxycore.MockClient, frm *frame.Frame) message.Message {
+			prepare := frm.Body.Message.(*message.Prepare)
+			preparedId := md5.Sum([]byte(prepare.Query))
+			prepared.Store(preparedId, prepare.Query)
+			return &message.PreparedResult{
+				PreparedQueryId: preparedId[:],
+			}
+		},
+		primitive.OpCodeExecute: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			execute := frm.Body.Message.(*message.Execute)
+			preparedId := preparedIdKey(execute.QueryId)
+			query, ok := prepared.Load(preparedId)
+			assert.True(t, ok, "unable to find prepared ID")
+			checkConsistency(query.(string), execute.Options.Consistency)
+			return &message.RowsResult{
+				Metadata: &message.RowsMetadata{
+					ColumnCount: 0,
+				},
+				Data: message.RowSet{},
+			}
+		},
+		primitive.OpCodeBatch: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+			batch := frm.Body.Message.(*message.Batch)
+			checkMutationConsistency(batch.Consistency)
+			return &message.VoidResult{}
+		},
+	})
+
+	defer cluster.Shutdown()
+	err := cluster.Add(ctx, 1)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		rc := Run(ctx, []string{
+			"--bind", proxyBindAddr,
+			"--contact-points", clusterAddr,
+			"--port", strconv.Itoa(clusterPort),
+			"--health-check",
+			"--http-bind", httpBindAddr,
+			"--readiness-timeout", "200ms", // Use short timeout for the test
+			"--unsupported-write-consistencies", "any,one,local_one",
+		})
+		assert.Equal(t, 0, rc)
+		wg.Done()
+	}()
+
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	require.True(t, waitUntil(10*time.Second, func() bool {
+		return checkLiveness(httpBindAddr)
+	}))
+
+	cl, err := proxycore.ConnectClient(ctx, proxycore.NewEndpoint(proxyBindAddr), proxycore.ClientConnConfig{})
+	defer cl.Close()
+	require.NoError(t, err)
+
+	version, err := cl.Handshake(ctx, primitive.ProtocolVersion4, nil)
+	require.NoError(t, err)
+	assert.Equal(t, primitive.ProtocolVersion4, version)
+
+	insertPrepareResp, err := cl.SendAndReceive(
+		ctx,
+		frame.NewFrame(version, 0, &message.Prepare{Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')"}),
+	)
+	require.NoError(t, err)
+	require.Equal(t, primitive.OpCodeResult, insertPrepareResp.Header.OpCode)
+	insertPrepareResult, ok := insertPrepareResp.Body.Message.(*message.PreparedResult)
+	assert.True(t, ok, "expected prepared result")
+
+	selectPrepareResp, err := cl.SendAndReceive(
+		ctx,
+		frame.NewFrame(version, 0, &message.Prepare{Query: "SELECT * FROM test.test"}),
+	)
+	require.NoError(t, err)
+	require.Equal(t, primitive.OpCodeResult, selectPrepareResp.Header.OpCode)
+	selectPrepareResult, ok := selectPrepareResp.Body.Message.(*message.PreparedResult)
+	assert.True(t, ok, "expected prepared result")
+
+	t.Run("simple queries", func(t *testing.T) {
+		for _, unsupported := range unsupportedConsistencies {
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+				Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')",
+				Options: &message.QueryOptions{
+					Consistency: unsupported,
+				},
+			})
+			assert.NoError(t, err)
+		}
+
+		_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Query{
+			Query: "SELECT * FROM test",
+			Options: &message.QueryOptions{
+				Consistency: selectConsistency,
+			},
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("prepared queries", func(t *testing.T) {
+		for _, unsupported := range unsupportedConsistencies {
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Execute{
+				QueryId: insertPrepareResult.PreparedQueryId,
+				Options: &message.QueryOptions{
+					Consistency: unsupported,
+				},
+			})
+			assert.NoError(t, err)
+		}
+
+		_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Execute{
+			QueryId: selectPrepareResult.PreparedQueryId,
+			Options: &message.QueryOptions{
+				Consistency: selectConsistency,
+			},
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("batch", func(t *testing.T) {
+		for _, unsupported := range unsupportedConsistencies {
+			_, err = cl.Query(ctx, primitive.ProtocolVersion4, &message.Batch{
+				Children: []*message.BatchChild{
+					{Query: "INSERT INTO test (k, v) VALUES ('k1', 'v1')"},
+					{Id: insertPrepareResp.Body.Message.(*message.PreparedResult).PreparedQueryId},
+				},
+				Consistency: unsupported,
+			})
+			assert.NoError(t, err)
+		}
+	})
+
 }
 
 func writeTempYaml(o interface{}) (name string, err error) {
