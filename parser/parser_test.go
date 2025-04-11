@@ -17,7 +17,11 @@ package parser
 import (
 	"testing"
 
+	"github.com/datastax/go-cassandra-native-protocol/datacodec"
+	"github.com/datastax/go-cassandra-native-protocol/primitive"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParser(t *testing.T) {
@@ -35,56 +39,56 @@ func TestParser(t *testing.T) {
 			Selectors: []Selector{
 				&IDSelector{Name: "key"},
 				&AliasSelector{Alias: "address", Selector: &IDSelector{Name: "rpc_address"}},
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM local", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "local",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM \"local\"", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "local",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"", "SELECT count(*) FROM system.peers", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "peers",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"", "SELECT count(*) FROM \"system\".\"peers\"", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "peers",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM peers", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "peers",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"", "SELECT count(*) FROM system.peers_v2", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "peers_v2",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"system", "SELECT count(*) FROM peers_v2", true, true, &SelectStatement{
 			Keyspace: "system",
 			Table:    "peers_v2",
 			Selectors: []Selector{
-				&CountStarSelector{Name: "count(*)"},
+				&CountFuncSelector{Arg: "*"},
 			},
 		}, false},
 		{"", "SELECT func(key) FROM system.local", true, true, nil, true},
@@ -175,6 +179,60 @@ func TestParser(t *testing.T) {
 			assert.Equal(t, tt.handled, handled, "invalid handled", tt.query)
 			assert.Equal(t, tt.idempotent, idempotent, "invalid idempotency", tt.query)
 			assert.Equal(t, tt.stmt, stmt, "invalid parsed statement", tt.query)
+		})
+	}
+}
+
+func TestParserSystemNowFunction(t *testing.T) {
+	var tests = []struct {
+		query string
+		table string
+	}{
+		{"SELECT now() FROM system.local", "local"},
+		{"SELECT now() FROM system.peers", "peers"},
+	}
+
+	start, _, err := uuid.GetTime()
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			handled, stmt, err := IsQueryHandled(IdentifierFromString(""), tt.query)
+			assert.NoError(t, err, tt.query)
+			assert.True(t, handled, tt.query)
+			require.NotNil(t, stmt)
+			if selectStmt, ok := stmt.(*SelectStatement); ok {
+				require.Len(t, selectStmt.Selectors, 1)
+				selector := selectStmt.Selectors[0]
+				require.NotNil(t, selector)
+				if nowSelector, ok := selector.(*NowFuncSelector); ok {
+					values, err := nowSelector.Values(nil, nil)
+					assert.NoError(t, err)
+					assert.Len(t, values, 1)
+
+					var u primitive.UUID
+					wasNull, err := datacodec.Timeuuid.Decode(values[0], &u, primitive.ProtocolVersion4)
+					assert.False(t, wasNull)
+					assert.NoError(t, err)
+
+					v, err := uuid.FromBytes(u[:])
+					assert.NoError(t, err)
+					assert.Equal(t, uuid.RFC4122, v.Variant())
+					assert.Equal(t, uuid.Version(1), v.Version())
+					assert.GreaterOrEqual(t, v.Time(), start)
+
+					columns, err := nowSelector.Columns(nil, selectStmt)
+					assert.NoError(t, err)
+					assert.Len(t, columns, 1)
+					assert.Equal(t, "system.now()", columns[0].Name)
+					assert.Equal(t, "system", columns[0].Keyspace)
+					assert.Equal(t, tt.table, columns[0].Table)
+				} else {
+					assert.Fail(t, "expected now function selector")
+				}
+			} else {
+				assert.Fail(t, "expected select statement")
+			}
 		})
 	}
 }

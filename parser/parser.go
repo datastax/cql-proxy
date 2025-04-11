@@ -17,10 +17,19 @@
 
 package parser
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/datastax/go-cassandra-native-protocol/datatype"
+	"github.com/datastax/go-cassandra-native-protocol/message"
+	"github.com/google/uuid"
+)
 
 type Selector interface {
-	isSelector()
+	Values(columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error)
+	Columns(columns []*message.ColumnMetadata, stmt *SelectStatement) (filtered []*message.ColumnMetadata, err error)
 }
 
 type AliasSelector struct {
@@ -28,24 +37,107 @@ type AliasSelector struct {
 	Alias    string
 }
 
-func (a AliasSelector) isSelector() {}
+func (a AliasSelector) Values(columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
+	return a.Selector.Values(columns, valueFunc)
+}
+
+func (a AliasSelector) Columns(columns []*message.ColumnMetadata, stmt *SelectStatement) (filtered []*message.ColumnMetadata, err error) {
+	cols, err := a.Selector.Columns(columns, stmt)
+	if err != nil {
+		return
+	}
+	for _, column := range cols {
+		alias := *column // Make a copy so we can modify the name
+		alias.Name = a.Alias
+		filtered = append(filtered, &alias)
+	}
+	return
+}
 
 type IDSelector struct {
 	Name string
 }
 
-func (I IDSelector) isSelector() {}
+func (i IDSelector) Values(_ []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
+	value, err := valueFunc(i.Name)
+	if err != nil {
+		return
+	}
+	return []message.Column{value}, err
+}
+
+func (i IDSelector) Columns(columns []*message.ColumnMetadata, stmt *SelectStatement) (filtered []*message.ColumnMetadata, err error) {
+	if column := FindColumnMetadata(columns, i.Name); column != nil {
+		return []*message.ColumnMetadata{column}, nil
+	} else {
+		return nil, fmt.Errorf("invalid column %s", i.Name)
+	}
+}
 
 type StarSelector struct{}
 
-func (s StarSelector) isSelector() {}
-
-type CountStarSelector struct {
-	Name string
+func (s StarSelector) Values(columns []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
+	for _, column := range columns {
+		var val message.Column
+		val, err = valueFunc(column.Name)
+		if err != nil {
+			return
+		}
+		filtered = append(filtered, val)
+	}
+	return
 }
 
-func (c CountStarSelector) isSelector() {}
+func (s StarSelector) Columns(columns []*message.ColumnMetadata, _ *SelectStatement) (filtered []*message.ColumnMetadata, err error) {
+	filtered = columns
+	return
+}
 
+type CountFuncSelector struct {
+	Arg string
+}
+
+func (s CountFuncSelector) Values(_ []*message.ColumnMetadata, valueFunc ValueLookupFunc) (filtered []message.Column, err error) {
+	val, err := valueFunc(CountValueName)
+	if err != nil {
+		return
+	}
+	filtered = append(filtered, val)
+	return
+}
+
+func (s CountFuncSelector) Columns(_ []*message.ColumnMetadata, stmt *SelectStatement) (filtered []*message.ColumnMetadata, err error) {
+	name := "count"
+	if s.Arg != "*" {
+		name = fmt.Sprintf("system.count(%s)", strings.ToLower(s.Arg))
+	}
+	return []*message.ColumnMetadata{{
+		Keyspace: stmt.Keyspace,
+		Table:    stmt.Table,
+		Name:     name,
+		Type:     datatype.Int,
+	}}, nil
+}
+
+type NowFuncSelector struct{}
+
+func (s NowFuncSelector) Values(_ []*message.ColumnMetadata, _ ValueLookupFunc) (filtered []message.Column, err error) {
+	u, err := uuid.NewUUID()
+	if err != nil {
+		return
+	}
+	filtered = append(filtered, u[:])
+	return
+}
+
+func (s NowFuncSelector) Columns(_ []*message.ColumnMetadata, stmt *SelectStatement) (filtered []*message.ColumnMetadata, err error) {
+	return []*message.ColumnMetadata{{
+		Keyspace: stmt.Keyspace,
+		Table:    stmt.Table,
+		Name:     "system.now()",
+		Type:     datatype.Timeuuid,
+	}}, nil
+}
 type Statement interface {
 	isStatement()
 }
