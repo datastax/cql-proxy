@@ -1,4 +1,4 @@
-FROM golang:1.18 as builder
+FROM golang:1.24.2 as builder
 
 # Disable cgo to remove gcc dependency
 ENV CGO_ENABLED=0
