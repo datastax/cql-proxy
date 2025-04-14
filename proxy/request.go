@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/cql-proxy/parser"
 	"github.com/datastax/cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -47,8 +48,9 @@ type request struct {
 	retryCount int
 	host       *proxycore.Host
 	stream     int16
+	version    primitive.ProtocolVersion
 	qp         proxycore.QueryPlan
-	raw        *frame.RawFrame
+	frm        interface{}
 	isSelect   bool // Only used for prepared statements currently
 	mu         sync.Mutex
 }
@@ -81,19 +83,23 @@ func (r *request) executeInternal(next bool) {
 
 func (r *request) send(msg message.Message) {
 	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeFrame(frame.NewFrame(r.raw.Header.Version, r.stream, msg), writer)
+		return r.client.codec.EncodeFrame(frame.NewFrame(r.version, r.stream, msg), writer)
 	}))
 }
 
 func (r *request) sendRaw(raw *frame.RawFrame) {
 	raw.Header.StreamId = r.stream
 	_ = r.client.conn.Write(proxycore.SenderFunc(func(writer io.Writer) error {
-		return codec.EncodeRawFrame(raw, writer)
+		return r.client.codec.EncodeRawFrame(raw, writer)
 	}))
 }
 
 func (r *request) Frame() interface{} {
-	return r.raw
+	return r.frm
+}
+func (r *request) IsPrepareRequest() bool {
+	_, isPrepare := r.msg.(*message.Prepare)
+	return isPrepare
 }
 
 func (r *request) checkIdempotent() bool {
@@ -102,11 +108,11 @@ func (r *request) checkIdempotent() bool {
 		var err error
 		if r.msg != nil {
 			switch msg := r.msg.(type) {
-			case *partialQuery:
-				idempotent, err = parser.IsQueryIdempotent(msg.query)
-			case *partialExecute:
-				idempotent = r.client.proxy.isIdempotent(msg.queryId)
-			case *partialBatch:
+			case *codecs.PartialQuery:
+				idempotent, err = parser.IsQueryIdempotent(msg.Query)
+			case *codecs.PartialExecute:
+				idempotent = r.client.proxy.isIdempotent(msg.QueryId)
+			case *codecs.PartialBatch:
 				idempotent, err = r.isBatchIdempotent(msg)
 			default:
 				r.client.proxy.logger.Error("invalid message type encountered when checking for idempotence",
@@ -147,7 +153,7 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 	if !r.done {
 		if raw.Header.OpCode != primitive.OpCodeError ||
 			!r.handleErrorResult(raw) { // If the error result is retried then we don't send back this response
-			r.client.proxy.maybeStorePreparedMetadata(raw, r.isSelect, r.msg)
+			r.client.maybeStorePreparedMetadata(raw, r.isSelect, r.msg)
 			r.done = true
 			r.sendRaw(raw)
 		}
@@ -159,7 +165,7 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	logger := r.client.proxy.logger
 	decision := ReturnError
 
-	frm, err := codec.ConvertFromRawFrame(raw)
+	frm, err := r.client.codec.ConvertFromRawFrame(raw)
 	if err != nil {
 		logger.Error("unable to decode error frame for retry decision", zap.Error(err))
 	} else {
@@ -238,9 +244,9 @@ func (r *request) handleErrorResult(raw *frame.RawFrame) (retried bool) {
 	return retried
 }
 
-func (r *request) isBatchIdempotent(batch *partialBatch) (idempotent bool, err error) {
-	for _, queryOrId := range batch.queryOrIds {
-		switch q := queryOrId.(type) {
+func (r *request) isBatchIdempotent(batch *codecs.PartialBatch) (idempotent bool, err error) {
+	for _, query := range batch.Queries {
+		switch q := query.QueryOrId.(type) {
 		case string:
 			if idempotent, err = parser.IsQueryIdempotent(q); !idempotent {
 				return idempotent, err

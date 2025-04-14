@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/go-cassandra-native-protocol/frame"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -64,6 +65,7 @@ type ClientConn struct {
 	logger        *zap.Logger
 	closing       bool
 	closingMu     *sync.RWMutex
+	codec         frame.RawCodec
 }
 
 // ConnectClient creates a new connection to an endpoint within a downstream cluster using TLS if specified.
@@ -74,6 +76,7 @@ func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConf
 		closingMu:     &sync.RWMutex{},
 		preparedCache: config.PreparedCache,
 		logger:        GetOrCreateNopLogger(config.Logger),
+		codec:         codecs.CustomRawCodec,
 	}
 	var err error
 	c.conn, err = Connect(ctx, endpoint, c)
@@ -83,9 +86,25 @@ func ConnectClient(ctx context.Context, endpoint Endpoint, config ClientConnConf
 	return c, nil
 }
 
-func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator) (primitive.ProtocolVersion, error) {
+func (c *ClientConn) Handshake(ctx context.Context, version primitive.ProtocolVersion, auth Authenticator, startupKeysAndValues ...string) (primitive.ProtocolVersion, error) {
+	if len(startupKeysAndValues)%2 != 0 {
+		return version, errors.New("invalid startup key/value pairs")
+	}
+
+	for i := 0; i < len(startupKeysAndValues); i += 2 {
+		key := startupKeysAndValues[i]
+		value := startupKeysAndValues[i+1]
+		if strings.EqualFold("COMPRESSION", key) {
+			if codec, ok := codecs.CustomRawCodecsWithCompression[strings.ToLower(value)]; ok {
+				c.codec = codec
+			} else {
+				return version, fmt.Errorf("invalid compression type: %s", value)
+			}
+		}
+	}
+
 	for {
-		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup()))
+		response, err := c.SendAndReceive(ctx, frame.NewFrame(version, -1, message.NewStartup(startupKeysAndValues...)))
 		if err != nil {
 			return version, err
 		}
@@ -250,14 +269,14 @@ func (c *ClientConn) SetKeyspace(ctx context.Context, version primitive.Protocol
 }
 
 func (c *ClientConn) Receive(reader io.Reader) error {
-	raw, err := codec.DecodeRawFrame(reader)
+	raw, err := c.codec.DecodeRawFrame(reader)
 	if err != nil {
 		return err
 	}
 
 	if raw.Header.OpCode == primitive.OpCodeEvent {
 		if c.eventHandler != nil {
-			frm, err := codec.ConvertFromRawFrame(raw)
+			frm, err := c.codec.ConvertFromRawFrame(raw)
 			if err != nil {
 				return err
 			}
@@ -302,7 +321,7 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 	}
 
 	if primitive.ErrorCode(code) == primitive.ErrorCodeUnprepared {
-		frm, err := codec.ConvertFromRawFrame(raw)
+		frm, err := c.codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			c.logger.Error("failed to decode unprepared error response", zap.Error(err))
 			return false
@@ -335,18 +354,22 @@ func (c *ClientConn) maybePrepareAndExecute(request Request, raw *frame.RawFrame
 // This is done so that the prepare request can be used to prepare other nodes that have not been prepared, but are
 // attempting to execute a request that has been prepared on another node in the cluster.
 func (c *ClientConn) maybeCachePrepared(request Request, raw *frame.RawFrame) {
-	kind, err := readInt(raw.Body)
-	if err != nil {
-		c.logger.Error("failed to read `kind` in result response", zap.Error(err))
-		return
-	}
-	if primitive.ResultType(kind) == primitive.ResultTypePrepared {
-		frm, err := codec.ConvertFromRawFrame(raw)
+	// Expect a prepared response from a prepare request. The request type is used because the response could be
+	// compressed (so the bytes can't be inspected for response type), and it's expensive to decompress and decode all
+	// response types to see if check for prepared responses.
+	if request.IsPrepareRequest() {
+
+		frm, err := c.codec.ConvertFromRawFrame(raw)
 		if err != nil {
 			c.logger.Error("failed to decode prepared result response", zap.Error(err))
 			return
 		}
-		msg := frm.Body.Message.(*message.PreparedResult)
+		msg, isPreparedResponse := frm.Body.Message.(*message.PreparedResult)
+		if !isPreparedResponse {
+			c.logger.Error("unexpected response body for prepare request; unable to update prepared cache",
+				zap.Stringer("response", msg))
+			return
+		}
 		c.preparedCache.Store(hex.EncodeToString(msg.PreparedQueryId),
 			&PreparedEntry{
 				request.Frame().(*frame.RawFrame), // Store frame so we can re-prepare
@@ -405,7 +428,7 @@ func (c *ClientConn) SendAndReceive(ctx context.Context, f *frame.Frame) (*frame
 
 	select {
 	case r := <-request.res:
-		return codec.ConvertFromRawFrame(r)
+		return c.codec.ConvertFromRawFrame(r)
 	case e := <-request.err:
 		return nil, e
 	case <-ctx.Done():
@@ -444,7 +467,7 @@ func (c *ClientConn) Heartbeats(connectTimeout time.Duration, version primitive.
 
 			switch response.Body.Message.(type) {
 			case *message.Supported:
-				logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
+				//logger.Debug("successfully performed a heartbeat", zap.Stringer("remoteAddress", c.conn.RemoteAddr()))
 				if idleTimer.Stop() {
 					idleTimer.Reset(idleTimeout)
 				}
@@ -471,10 +494,10 @@ func (r *requestSender) Send(writer io.Writer) error {
 	switch frm := r.request.Frame().(type) {
 	case *frame.Frame:
 		frm.Header.StreamId = r.stream
-		return codec.EncodeFrame(frm, writer)
+		return r.conn.codec.EncodeFrame(frm, writer)
 	case *frame.RawFrame:
 		frm.Header.StreamId = r.stream
-		return codec.EncodeRawFrame(frm, writer)
+		return r.conn.codec.EncodeRawFrame(frm, writer)
 	default:
 		return errors.New("unhandled frame type")
 	}
@@ -492,6 +515,11 @@ func (i *internalRequest) Execute(_ bool) {
 
 func (i *internalRequest) Frame() interface{} {
 	return i.frame
+}
+
+func (i *internalRequest) IsPrepareRequest() bool {
+	_, isPrepare := i.frame.Body.Message.(*message.Prepare)
+	return isPrepare
 }
 
 func (i *internalRequest) OnClose(err error) {
@@ -521,6 +549,10 @@ func (r *prepareRequest) Execute(_ bool) {
 
 func (r *prepareRequest) Frame() interface{} {
 	return r.prepare
+}
+
+func (r *prepareRequest) IsPrepareRequest() bool {
+	return true
 }
 
 func (r *prepareRequest) OnClose(err error) {

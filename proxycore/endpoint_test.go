@@ -19,6 +19,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
@@ -58,7 +59,7 @@ func TestEndpoint_NewEndpoint(t *testing.T) {
 
 	const rpcAddr = "127.0.0.2"
 
-	rpcAddrBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
+	rpcAddrBytes, _ := codecs.EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
 
 	rs := NewResultSet(&message.RowsResult{
 		Metadata: &message.RowsMetadata{
@@ -88,10 +89,10 @@ func TestEndpoint_NewEndpointUnknownRPCAddress(t *testing.T) {
 	resolver := NewResolver("127.0.0.1")
 
 	const rpcAddr = "0.0.0.0"
-	rpcAddrBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
+	rpcAddrBytes, _ := codecs.EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
 
 	const peer = "127.0.0.2"
-	peerBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(peer))
+	peerBytes, _ := codecs.EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(peer))
 
 	rs := NewResultSet(&message.RowsResult{
 		Metadata: &message.RowsMetadata{
@@ -128,7 +129,7 @@ func TestEndpoint_NewEndpointInvalidRPCAddress(t *testing.T) {
 	resolver := NewResolver("127.0.0.1")
 
 	const peer = "127.0.0.2"
-	peerBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(peer))
+	peerBytes, _ := codecs.EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(peer))
 
 	rs := NewResultSet(&message.RowsResult{
 		Metadata: &message.RowsMetadata{
@@ -164,7 +165,7 @@ func TestEndpoint_NewEndpointInvalidPeer(t *testing.T) {
 	resolver := NewResolver("127.0.0.1")
 
 	const rpcAddr = "0.0.0.0"
-	rpcAddrBytes, _ := EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
+	rpcAddrBytes, _ := codecs.EncodeType(datatype.Inet, primitive.ProtocolVersion4, net.ParseIP(rpcAddr))
 
 	rs := NewResultSet(&message.RowsResult{
 		Metadata: &message.RowsMetadata{

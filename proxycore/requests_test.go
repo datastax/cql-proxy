@@ -58,11 +58,15 @@ type testPendingRequest struct {
 	errs   *[]error
 }
 
-func (t testPendingRequest) Execute(_ bool) {
+func (t *testPendingRequest) Execute(_ bool) {
 	panic("not implemented")
 }
 
-func (t testPendingRequest) Frame() interface{} {
+func (t *testPendingRequest) IsPrepareRequest() bool {
+	panic("not implemented")
+}
+
+func (t *testPendingRequest) Frame() interface{} {
 	panic("not implemented")
 }
 

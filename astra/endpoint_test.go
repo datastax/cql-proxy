@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/cql-proxy/proxycore"
 	"github.com/datastax/go-cassandra-native-protocol/datatype"
 	"github.com/datastax/go-cassandra-native-protocol/message"
@@ -256,11 +257,11 @@ func createServerTLSConfig(dnsName string) (*tls.Config, error) {
 
 func makeUUID(uuid string) []byte {
 	parsedUuid, _ := primitive.ParseUuid(uuid)
-	bytes, _ := proxycore.EncodeType(datatype.Uuid, primitive.ProtocolVersion4, parsedUuid)
+	bytes, _ := codecs.EncodeType(datatype.Uuid, primitive.ProtocolVersion4, parsedUuid)
 	return bytes
 }
 
 func makeVarchar(s string) []byte {
-	bytes, _ := proxycore.EncodeType(datatype.Varchar, primitive.ProtocolVersion4, s)
+	bytes, _ := codecs.EncodeType(datatype.Varchar, primitive.ProtocolVersion4, s)
 	return bytes
 }

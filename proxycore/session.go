@@ -54,6 +54,7 @@ type SessionConfig struct {
 	HeartBeatInterval time.Duration
 	IdleTimeout       time.Duration
 	Logger            *zap.Logger
+	Compression       string
 }
 
 type Session struct {

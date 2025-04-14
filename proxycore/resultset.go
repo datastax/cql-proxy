@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/datastax/cql-proxy/codecs"
 	"github.com/datastax/go-cassandra-native-protocol/message"
 	"github.com/datastax/go-cassandra-native-protocol/primitive"
 )
@@ -62,7 +63,7 @@ func (rs ResultSet) RowCount() int {
 }
 
 func (r Row) ByPos(i int) (interface{}, error) {
-	val, err := DecodeType(r.resultSet.result.Metadata.Columns[i].Type, r.resultSet.version, r.row[i])
+	val, err := codecs.DecodeType(r.resultSet.result.Metadata.Columns[i].Type, r.resultSet.version, r.row[i])
 	if err != nil {
 		return nil, err
 	}
