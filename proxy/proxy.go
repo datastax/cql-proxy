@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto"
@@ -22,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"math"
 	"math/big"
@@ -82,6 +84,7 @@ type Config struct {
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
+	EnableTracing bool
 }
 
 type sessionKey struct {
@@ -619,18 +622,20 @@ func (c *client) Receive(reader io.Reader) error {
 
 func (c *client) execute(raw *frame.RawFrame, state idempotentState, isSelect bool, keyspace string, body *frame.Body) {
 	if sess, err := c.proxy.findSession(raw.Header.Version, c.keyspace, c.compression); err == nil {
+		requestId, raw := c.handleRequestId(body, raw)
 		req := &request{
-			client:   c,
-			session:  sess,
-			state:    state,
-			msg:      body.Message,
-			keyspace: keyspace,
-			done:     false,
-			stream:   raw.Header.StreamId,
-			version:  raw.Header.Version,
-			qp:       c.proxy.newQueryPlan(),
-			frm:      c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, body),
-			isSelect: isSelect,
+			client:    c,
+			session:   sess,
+			state:     state,
+			msg:       body.Message,
+			requestId: requestId,
+			keyspace:  keyspace,
+			done:      false,
+			stream:    raw.Header.StreamId,
+			version:   raw.Header.Version,
+			qp:        c.proxy.newQueryPlan(),
+			frm:       c.maybeOverrideUnsupportedWriteConsistency(isSelect, raw, body),
+			isSelect:  isSelect,
 		}
 		req.Execute(true)
 	} else {
@@ -715,6 +720,40 @@ func (c *client) handleQuery(raw *frame.RawFrame, msg *codecs.PartialQuery, body
 		_, isSelect := stmt.(*parser.SelectStatement)
 		c.execute(raw, c.getDefaultIdempotency(body.CustomPayload), isSelect, c.keyspace, body)
 	}
+}
+
+func (c *client) handleRequestId(body *frame.Body, frm *frame.RawFrame) ([]byte, *frame.RawFrame) {
+	if !c.proxy.config.EnableTracing {
+		return nil, frm
+	}
+	if body.CustomPayload == nil {
+		frm.Header.Flags = frm.Header.Flags.Add(primitive.HeaderFlagCustomPayload)
+		body.CustomPayload = make(map[string][]byte)
+	}
+	var reqId []byte
+	if id, ok := body.CustomPayload["request-id"]; !ok {
+		cid, err := uuid.New().MarshalBinary()
+		if err != nil {
+			return nil, frm
+		}
+		body.CustomPayload["request-id"] = cid
+		reqId = cid
+		var buffer bytes.Buffer
+		writer := bufio.NewWriter(&buffer)
+		err = c.codec.EncodeBody(frm.Header, body, writer)
+		if err != nil {
+			return nil, frm
+		}
+		err = writer.Flush()
+		if err != nil {
+			return nil, frm
+		}
+		frm.Body = buffer.Bytes()
+	} else {
+		reqId = id
+	}
+	c.proxy.logger.Info("received request id", zap.String("idHex", hex.EncodeToString(reqId)))
+	return reqId, frm
 }
 
 func (c *client) getDefaultIdempotency(customPayload map[string][]byte) idempotentState {

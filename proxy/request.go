@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	"encoding/hex"
 	"errors"
 	"io"
 	"reflect"
@@ -44,6 +45,7 @@ type request struct {
 	state      idempotentState
 	keyspace   string
 	msg        message.Message
+	requestId  []byte
 	done       bool
 	retryCount int
 	host       *proxycore.Host
@@ -151,6 +153,9 @@ func (r *request) OnResult(raw *frame.RawFrame) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.done {
+		if r.requestId != nil {
+			r.client.proxy.logger.Info("received response id", zap.String("idHex", hex.EncodeToString(r.requestId)))
+		}
 		if raw.Header.OpCode != primitive.OpCodeError ||
 			!r.handleErrorResult(raw) { // If the error result is retried then we don't send back this response
 			r.client.maybeStorePreparedMetadata(raw, r.isSelect, r.msg)
