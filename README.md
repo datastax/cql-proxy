@@ -38,42 +38,36 @@ $ ./cql-proxy -h
 Usage: cql-proxy
 
 Flags:
-  -h, --help                                              Show context-sensitive help.
-  -b, --astra-bundle=STRING                               Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the
-                                                          token or contact points option ($ASTRA_BUNDLE).
-  -t, --astra-token=STRING                                Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path
-                                                          or contact points option ($ASTRA_TOKEN).
-  -i, --astra-database-id=STRING                          Database ID of the Astra database. Requires '--astra-token' ($ASTRA_DATABASE_ID)
-      --astra-api-url="https://api.astra.datastax.com"    URL for the Astra API ($ASTRA_API_URL)
-      --astra-timeout=10s                                 Timeout for contacting Astra when retrieving the bundle and metadata ($ASTRA_TIMEOUT)
-  -c, --contact-points=CONTACT-POINTS,...                 Contact points for cluster. Ignored if using the bundle path or token option ($CONTACT_POINTS).
-  -u, --username=STRING                                   Username to use for authentication ($USERNAME)
-  -p, --password=STRING                                   Password to use for authentication ($PASSWORD)
-  -r, --port=9042                                         Default port to use when connecting to cluster ($PORT)
-  -n, --protocol-version="v4"                             Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1,
-                                                          DSEv2) ($PROTOCOL_VERSION)
-  -m, --max-protocol-version="v4"                         Max protocol version supported by the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2)
-                                                          ($MAX_PROTOCOL_VERSION)
-  -a, --bind=":9042"                                      Address to use to bind server ($BIND)
-  -f, --config=CONFIG                                     YAML configuration file ($CONFIG_FILE)
-      --debug                                             Show debug logging ($DEBUG)
-      --health-check                                      Enable liveness and readiness checks ($HEALTH_CHECK)
-      --http-bind=":8000"                                 Address to use to bind HTTP server used for health checks ($HTTP_BIND)
-      --heartbeat-interval=30s                            Interval between performing heartbeats to the cluster ($HEARTBEAT_INTERVAL)
-      --idle-timeout=60s                                  Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed
-                                                          ($IDLE_TIMEOUT)
-      --readiness-timeout=30s                             Duration the proxy is unable to connect to the backend cluster before it is considered not ready
-                                                          ($READINESS_TIMEOUT)
-      --idempotent-graph                                  If true it will treat all graph queries as idempotent by default and retry them automatically. It may be
-                                                          dangerous to retry some graph queries -- use with caution ($IDEMPOTENT_GRAPH).
-      --num-conns=1                                       Number of connection to create to each node of the backend cluster ($NUM_CONNS)
-      --proxy-cert-file=STRING                            Path to a PEM encoded certificate file with its intermediate certificate chain. This is used to encrypt traffic
-                                                          for proxy clients ($PROXY_CERT_FILE)
-      --proxy-key-file=STRING                             Path to a PEM encoded private key file. This is used to encrypt traffic for proxy clients ($PROXY_KEY_FILE)
-      --rpc-address=STRING                                Address to advertise in the 'system.local' table for 'rpc_address'. It must be set if configuring peer proxies
-                                                          ($RPC_ADDRESS)
-      --data-center=STRING                                Data center to use in system tables ($DATA_CENTER)
-      --tokens=TOKENS,...                                 Tokens to use in the system tables. It's not recommended ($TOKENS)
+  -h, --help                                                                Show context-sensitive help.
+  -b, --astra-bundle=STRING                                                 Path to secure connect bundle for an Astra database. Requires '--username' and '--password'. Ignored if using the token or contact points option ($ASTRA_BUNDLE).
+  -t, --astra-token=STRING                                                  Token used to authenticate to an Astra database. Requires '--astra-database-id'. Ignored if using the bundle path or contact points option ($ASTRA_TOKEN).
+  -i, --astra-database-id=STRING                                            Database ID of the Astra database. Requires '--astra-token' ($ASTRA_DATABASE_ID)
+      --astra-api-url="https://api.astra.datastax.com"                      URL for the Astra API ($ASTRA_API_URL)
+      --astra-timeout=10s                                                   Timeout for contacting Astra when retrieving the bundle and metadata ($ASTRA_TIMEOUT)
+  -c, --contact-points=CONTACT-POINTS,...                                   Contact points for cluster. Ignored if using the bundle path or token option ($CONTACT_POINTS).
+  -u, --username=STRING                                                     Username to use for authentication ($USERNAME)
+  -p, --password=STRING                                                     Password to use for authentication ($PASSWORD)
+  -r, --port=9042                                                           Default port to use when connecting to cluster ($PORT)
+  -n, --protocol-version="v4"                                               Initial protocol version to use when connecting to the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2) ($PROTOCOL_VERSION)
+  -m, --max-protocol-version="v4"                                           Max protocol version supported by the backend cluster (default: v4, options: v3, v4, v5, DSEv1, DSEv2) ($MAX_PROTOCOL_VERSION)
+  -a, --bind=":9042"                                                        Address to use to bind server ($BIND)
+  -f, --config=CONFIG                                                       YAML configuration file ($CONFIG_FILE)
+      --debug                                                               Show debug logging ($DEBUG)
+      --health-check                                                        Enable liveness and readiness checks ($HEALTH_CHECK)
+      --http-bind=":8000"                                                   Address to use to bind HTTP server used for health checks ($HTTP_BIND)
+      --heartbeat-interval=30s                                              Interval between performing heartbeats to the cluster ($HEARTBEAT_INTERVAL)
+      --connect-timeout=10s                                                 Duration before an attempt to connect to a cluster is considered timed out ($CONNECT_TIMEOUT)
+      --idle-timeout=60s                                                    Duration between successful heartbeats before a connection to the cluster is considered unresponsive and closed ($IDLE_TIMEOUT)
+      --readiness-timeout=30s                                               Duration the proxy is unable to connect to the backend cluster before it is considered not ready ($READINESS_TIMEOUT)
+      --idempotent-graph                                                    If true it will treat all graph queries as idempotent by default and retry them automatically. It may be dangerous to retry some graph queries -- use with caution ($IDEMPOTENT_GRAPH).
+      --num-conns=1                                                         Number of connection to create to each node of the backend cluster ($NUM_CONNS)
+      --proxy-cert-file=STRING                                              Path to a PEM encoded certificate file with its intermediate certificate chain. This is used to encrypt traffic for proxy clients ($PROXY_CERT_FILE)
+      --proxy-key-file=STRING                                               Path to a PEM encoded private key file. This is used to encrypt traffic for proxy clients ($PROXY_KEY_FILE)
+      --rpc-address=STRING                                                  Address to advertise in the 'system.local' table for 'rpc_address'. It must be set if configuring peer proxies ($RPC_ADDRESS)
+      --data-center=STRING                                                  Data center to use in system tables ($DATA_CENTER)
+      --tokens=TOKENS,...                                                   Tokens to use in the system tables. It's not recommended ($TOKENS)
+      --unsupported-write-consistencies=UNSUPPORTED-WRITE-CONSISTENCIES,... A list of unsupported write consistency levels. The unsupported write consistency override setting will be used inplace of the unsupported level ($UNSUPPORTED_WRITE_CONSISTENCIES)
+      --unsupported-write-consistency-override=LOCAL_QUORUM                 A consistency level use to override unsupported write consistency levels
 ```
 
 To pass configuration to `cql-proxy`, either command-line flags, environment variables, or a configuration file can be used. Using the `docker` method as an example, the following samples show how the token and database ID are defined with each method.
