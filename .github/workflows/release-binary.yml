@@ -28,14 +28,16 @@ jobs:
       - name: Build ${{ matrix.goosarch }} binary
         run: |
           apt update
-          apt -y install zip git
+          apt -y install zip
           
           export GOOSARCH=${{ matrix.goosarch }}
           export GOOS=${GOOSARCH%/*}
           export GOARCH=${GOOSARCH#*/}
           
           mkdir -p artifacts
-          
+
+          git status
+
           if [ "$GOOS" = "windows" ]; then
             go build -o cql-proxy.exe
             zip -vr cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.zip cql-proxy.exe LICENSE
