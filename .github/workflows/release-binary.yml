@@ -28,14 +28,13 @@ jobs:
       - name: Build ${{ matrix.goosarch }} binary
         run: |
           apt update
-          apt -y install zip
+          apt -y install zip git
           
           export GOOSARCH=${{ matrix.goosarch }}
           export GOOS=${GOOSARCH%/*}
           export GOARCH=${GOOSARCH#*/}
           
           mkdir -p artifacts
-          git config --global --add safe.directory .
           
           if [ "$GOOS" = "windows" ]; then
             go build -o cql-proxy.exe
