@@ -35,6 +35,7 @@ jobs:
           export GOARCH=${GOOSARCH#*/}
           
           git config --global --add safe.directory /__w/cql-proxy/cql-proxy
+          mkdir -p artifacts
 
           if [ "$GOOS" = "windows" ]; then
             go build -o cql-proxy.exe
@@ -45,8 +46,10 @@ jobs:
             tar cvfz cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.tgz cql-proxy LICENSE
             sha256sum cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.tgz | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}-sha256.txt
           fi
+          mv cql-proxy-* artifacts
+
       - name: Store generated binaries
         uses: actions/upload-artifact@v4
         with:
           name: cql-proxy-${GOOS}-${GOARCH}
-          path: cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.tgz
+          path: artifacts/*
