@@ -33,9 +33,12 @@ jobs:
           export GOOSARCH=${{ matrix.goosarch }}
           export GOOS=${GOOSARCH%/*}
           export GOARCH=${GOOSARCH#*/}
-          
+
           mkdir -p artifacts
-          
+
+          # Issue 152.  Explicitly mark the checked-out directory as a safe git dir to enable VCS stamping
+          git config --global --add safe.directory /__w/cql-proxy/cql-proxy
+
           if [ "$GOOS" = "windows" ]; then
             go build -o cql-proxy.exe
             zip -vr cql-proxy-${GOOS}-${GOARCH}-${{ github.ref_name }}.zip cql-proxy.exe LICENSE
