@@ -39,17 +39,17 @@ jobs:
 
           if [ "$GOOS" = "windows" ]; then
             go build -o cql-proxy.exe
-            zip -vr cql-proxy-${GOOS}-${GOARCH}-0.2.0-1.zip cql-proxy.exe LICENSE
-            sha256sum cql-proxy-${GOOS}-${GOARCH}-0.2.0-1.zip | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-0.2.0-1-sha256.txt
+            zip -vr cql-proxy-${GOOS}-${GOARCH}-0.2.0.zip cql-proxy.exe LICENSE
+            sha256sum cql-proxy-${GOOS}-${GOARCH}-0.2.0.zip | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-0.2.0-sha256.txt
           else
             go build -o cql-proxy
-            tar cvfz cql-proxy-${GOOS}-${GOARCH}-0.2.0-1.tgz cql-proxy LICENSE
-            sha256sum cql-proxy-${GOOS}-${GOARCH}-0.2.0-1.tgz | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-0.2.0-1-sha256.txt
+            tar cvfz cql-proxy-${GOOS}-${GOARCH}-0.2.0.tgz cql-proxy LICENSE
+            sha256sum cql-proxy-${GOOS}-${GOARCH}-0.2.0.tgz | cut -d ' ' -f 1 > cql-proxy-${GOOS}-${GOARCH}-0.2.0-sha256.txt
           fi
           mv cql-proxy-* artifacts
 
       - name: Store generated binaries
         uses: actions/upload-artifact@v4
         with:
-          name: cql-proxy-${GOOS}-${GOARCH}-0.2.0-1
+          name: cql-proxy-0.2.0-${{ github.run_number }}-${{ strategy.job-index }}
           path: artifacts/*
