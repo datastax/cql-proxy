@@ -36,7 +36,7 @@ jobs:
           
           mkdir -p artifacts
 
-          git status
+          git config --global --add safe.directory /__w/cql-proxy/cql-proxy
 
           if [ "$GOOS" = "windows" ]; then
             go build -o cql-proxy.exe
@@ -49,9 +49,8 @@ jobs:
           fi
           
           mv cql-proxy-* artifacts
-      - name: Upload ${{ matrix.goosarch }} binaries
-        uses: softprops/action-gh-release@v1
+      - name: Store generated binaries
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}
-          files: |
-            artifacts/*
+          name: binaries
+	  path: artifacts
