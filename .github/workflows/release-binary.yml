@@ -52,5 +52,5 @@ jobs:
       - name: Store generated binaries
         uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binaries-${GOOS}-${GOARCH}-${{ github.ref_name }}
           path: artifacts
