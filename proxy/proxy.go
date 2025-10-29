@@ -95,7 +95,7 @@ type Proxy struct {
 	config            Config
 	logger            *zap.Logger
 	cluster           *proxycore.Cluster
-	sessionsMu        *sync.RWMutex
+	sessionsMu        *sync.Mutex
 	sessions          map[sessionKey]*proxycore.Session // Cache sessions per protocol version, compression, keyspace
 	mu                *sync.Mutex
 	isConnected       bool
@@ -159,7 +159,7 @@ func NewProxy(ctx context.Context, config Config) *Proxy {
 		ctx:        ctx,
 		config:     config,
 		logger:     proxycore.GetOrCreateNopLogger(config.Logger),
-		sessionsMu: &sync.RWMutex{},
+		sessionsMu: &sync.Mutex{},
 		sessions:   make(map[sessionKey]*proxycore.Session),
 		mu:         &sync.Mutex{},
 		clients:    make(map[*client]struct{}),
@@ -231,7 +231,9 @@ func (p *Proxy) Connect() error {
 		return fmt.Errorf("unable to connect session %w", err)
 	}
 
+	p.sessionsMu.Lock()
 	p.sessions[sessionKey{version: p.cluster.NegotiatedVersion}] = sess // No keyspace/compression
+	p.sessionsMu.Unlock()
 
 	p.isConnected = true
 	return nil
@@ -333,14 +335,14 @@ func (p *Proxy) handle(conn net.Conn) {
 }
 
 func (p *Proxy) maybeCreateSession(version primitive.ProtocolVersion, keyspace, compression string) (*proxycore.Session, error) {
-	p.sessionsMu.RLock()
-	defer p.sessionsMu.RUnlock()
+	p.sessionsMu.Lock()
+	defer p.sessionsMu.Unlock()
 	return p.maybeCreateSessionUnlocked(version, keyspace, compression)
 }
 
 func (p *Proxy) findSession(version primitive.ProtocolVersion, keyspace, compression string) (*proxycore.Session, error) {
-	p.sessionsMu.RLock()
-	defer p.sessionsMu.RUnlock()
+	p.sessionsMu.Lock()
+	defer p.sessionsMu.Unlock()
 	key := sessionKey{version: version, keyspace: keyspace, compression: compression}
 	if s, ok := p.sessions[key]; ok {
 		return s, nil
