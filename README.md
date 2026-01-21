@@ -4,15 +4,16 @@
 
 ## Table of Contents
 
-- [What is the cql-proxy?](https://github.com/datastax/cql-proxy#what-is-cqlproxy)
-- [When to use cql-proxy](https://github.com/datastax/cql-proxy#when-to-use-cql-proxy)
-- [Configuration](https://github.com/datastax/cql-proxy#configuration)
-- [Getting started](https://github.com/datastax/cql-proxy#getting-started)
-  - [Locally build and run](https://github.com/datastax/cql-proxy#locally-build-and-run)
-  - [Run a `cql-proxy` docker image](https://github.com/datastax/cql-proxy#run-a-cql-proxy-docker-image)
-  - [Use Kubernetes](https://github.com/datastax/cql-proxy#use-kubernetes)
-- [Known issues](https://github.com/datastax/cql-proxy#known-issues)
-    - [Token-aware load balancing](https://github.com/datastax/cql-proxy#token-aware-load-balancing)
+- [What is cql-proxy?](#what-is-cql-proxy)
+- [When to use cql-proxy](#when-to-use-cql-proxy)
+- [Configuration](#configuration)
+- [Getting started](#getting-started)
+  - [Locally build and run](#locally-build-and-run)
+  - [Run a `cql-proxy` docker image](#run-a-cql-proxy-docker-image)
+  - [Homebrew on a Mac](#homebrew-on-a-mac)
+  - [Use Kubernetes](#use-kubernetes)
+- [Known issues](#known-issues)
+    - [Token-aware load balancing](#token-aware-load-balancing)
 
 
 ## What is `cql-proxy`?
@@ -27,7 +28,7 @@ The `cql-proxy` sidecar enables unsupported CQL drivers to work with [DataStax A
 
 `cql-proxy` also enables applications that are currently using [Apache Cassandra][cassandra] or [DataStax Enterprise (DSE)][dse] to use Astra without requiring any code changes.  Your application just needs to be configured to use the proxy.
 
-If you're building a new application using DataStax [drivers], `cql-proxy` is not required, as the drivers can communicate directly with Astra. DataStax drivers have excellent support for Astra out-of-the-box, and are well-documented in the [driver-guide] guide. 
+If you're building a new application using DataStax [drivers], `cql-proxy` is not required, as the drivers can communicate directly with Astra. DataStax drivers have excellent support for Astra out-of-the-box, and are well-documented in the [driver-guide] guide.
 
 ## Configuration
 
@@ -149,11 +150,13 @@ peers:
 
 ## Getting started
 
-There are three methods for using `cql-proxy`:
+There are four methods for using `cql-proxy`:
 
 - Locally build and run `cql-proxy`
 - Run a docker image that has `cql-proxy` installed
+- Locally install on your Mac with Homebrew
 - Use a Kubernetes container to run `cql-proxy`
+
 ### Locally build and run
 
 1. Build `cql-proxy`.
@@ -210,6 +213,13 @@ There are three methods for using `cql-proxy`:
       ```
   If you wish to have the docker image removed after you are done with it, add `--rm` before the image name `datastax/cql-proxy:v0.2.0`.
 
+### Homebrew on a Mac
+
+Install with one simple command:
+```bash
+brew install cql-proxy
+```
+
 ### Use Kubernetes
 
 Using Kubernetes with `cql-proxy` requires a number of steps:
@@ -230,26 +240,26 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
       volumeMounts:
         - name: my-cm-vol
         mountPath: /tmp/
- 
 
-- Volume: Modify the `configMap` filename as required. In this example, it is named `cql-proxy-configmap`. Use the same name for the `volumes` that you used for the `volumeMounts`. 
+
+- Volume: Modify the `configMap` filename as required. In this example, it is named `cql-proxy-configmap`. Use the same name for the `volumes` that you used for the `volumeMounts`.
 
       volumes:
         - name: my-cm-vol
           configMap:
             name: cql-proxy-configmap        
-    
+
 3. Create a configmap. Use the same secure bundle that was specified in the `cql-proxy.yaml`.
-      
+
       ```sh
-      kubectl create configmap cql-proxy-configmap --from-file /tmp/scb.zip 
+      kubectl create configmap cql-proxy-configmap --from-file /tmp/scb.zip
       ```
 
-4. Check the configmap that was created. 
+4. Check the configmap that was created.
 
     ```sh
     kubectl describe configmap cql-proxy-configmap
-      
+
       Name:         cql-proxy-configmap
       Namespace:    default
       Labels:       <none>
@@ -273,6 +283,7 @@ Using Kubernetes with `cql-proxy` requires a number of steps:
     ```sh
     kubectl logs <deployment-name>
     ```
+
 ## Known issues
 
 ### Token-aware load balancing
