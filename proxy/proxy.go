@@ -82,6 +82,8 @@ type Config struct {
 	// PreparedCache a cache that stores prepared queries. If not set it uses the default implementation with a max
 	// capacity of ~100MB.
 	PreparedCache proxycore.PreparedCache
+	// ProxyAuth handles authentication between client and proxy. If not set, defaults to no authentication.
+	ProxyAuth proxycore.ProxyAuthenticator
 }
 
 type sessionKey struct {
@@ -594,9 +596,30 @@ func (c *client) Receive(reader io.Reader) error {
 				errMsg := fmt.Sprintf("Unsupported compression type: %s (supported compression types: %s)",
 					compression, strings.Join(codecs.CompressionNames, ", "))
 				c.send(raw.Header, &message.ProtocolError{ErrorMessage: errMsg})
+				return nil
 			}
 		}
-		c.send(raw.Header, &message.Ready{})
+		// Use ProxyAuth if configured, otherwise default to Ready
+		if c.proxy.config.ProxyAuth != nil {
+			c.send(raw.Header, c.proxy.config.ProxyAuth.MessageForStartup())
+		} else {
+			c.send(raw.Header, &message.Ready{})
+		}
+	case *message.AuthResponse:
+		if c.proxy.config.ProxyAuth != nil {
+			resp := body.Message.(*message.AuthResponse)
+			authResult := c.proxy.config.ProxyAuth.HandleAuthResponse(resp.Token)
+			if authResult != nil {
+				c.send(raw.Header, authResult)
+				// AuthSuccess is the final message - no need to send Ready after it
+			} else {
+				// Auth handler returned nil (shouldn't happen for real auth), send error
+				c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Authentication failed"})
+			}
+		} else {
+			// No ProxyAuth configured, but client sent AuthResponse - send error
+			c.send(raw.Header, &message.ProtocolError{ErrorMessage: "Unexpected AUTH_RESPONSE"})
+		}
 	case *message.Register:
 		for _, t := range msg.EventTypes {
 			if t == primitive.EventTypeSchemaChange {
