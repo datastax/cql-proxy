@@ -26,7 +26,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"runtime"
 	"time"
 
 	"github.com/datastax/astra-client-go/v2/astra"
@@ -53,10 +52,7 @@ func LoadBundleZip(reader *zip.Reader) (*Bundle, error) {
 		return nil, err
 	}
 
-	rootCAs, err := createCertPool()
-	if err != nil {
-		return nil, err
-	}
+	rootCAs := createCertPool()
 
 	ok := rootCAs.AppendCertsFromPEM(contents["ca.crt"])
 	if !ok {
@@ -200,10 +196,7 @@ func loadBytes(file *zip.File) ([]byte, error) {
 	return ioutil.ReadAll(r)
 }
 
-func createCertPool() (*x509.CertPool, error) {
-	ca, err := x509.SystemCertPool()
-	if err != nil && runtime.GOOS == "windows" {
-		return x509.NewCertPool(), nil
-	}
-	return ca, err
+
+func createCertPool() *x509.CertPool {
+	return x509.NewCertPool()
 }
