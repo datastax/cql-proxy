@@ -461,7 +461,7 @@ func TestRun_ProxyTLS(t *testing.T) {
 		return checkLiveness(httpBindAddr)
 	}))
 
-	rootCAs, err := createCertPool()
+	rootCAs, err := createSystemCertPool()
 	require.NoError(t, err)
 
 	ok := rootCAs.AppendCertsFromPEM(testCAPEM)
@@ -720,7 +720,7 @@ func checkReadiness(t *testing.T, host string) (outage time.Duration, status int
 	return outage, res.StatusCode
 }
 
-func createCertPool() (*x509.CertPool, error) {
+func createSystemCertPool() (*x509.CertPool, error) {
 	ca, err := x509.SystemCertPool()
 	if err != nil && runtime.GOOS == "windows" {
 		return x509.NewCertPool(), nil

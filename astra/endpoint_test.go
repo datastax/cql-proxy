@@ -233,10 +233,7 @@ func runTestMetaSvcAsync(sniProxyAddr string, contactPoints []string) (*http.Ser
 }
 
 func createServerTLSConfig(dnsName string) (*tls.Config, error) {
-	rootCAs, err := createCertPool()
-	if err != nil {
-		return nil, err
-	}
+	rootCAs := createCertPool()
 
 	if !rootCAs.AppendCertsFromPEM(testCAPEM) {
 		return nil, errors.New("unable to add cert to CA pool")
