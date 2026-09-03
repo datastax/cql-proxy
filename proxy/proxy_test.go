@@ -17,11 +17,14 @@ package proxy
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"go.uber.org/zap/zaptest/observer"
 	"log"
 	"math/big"
 	"net"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -424,6 +427,8 @@ type proxyTestConfig struct {
 	rpcAddr         string
 	peers           []PeerConfig
 	idempotentGraph bool
+	enableTracing   bool
+	logger          *zap.Logger
 }
 
 func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestConfig) (tester *proxyTester, proxyContactPoint string, err error) {
@@ -438,6 +443,10 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 
 	if cfg == nil {
 		cfg = &proxyTestConfig{}
+	}
+	logger := cfg.logger
+	if logger == nil {
+		logger = zap.L()
 	}
 
 	if cfg.handlers != nil {
@@ -461,7 +470,8 @@ func setupProxyTestWithConfig(ctx context.Context, numNodes int, cfg *proxyTestC
 		RPCAddr:           cfg.rpcAddr,
 		Peers:             cfg.peers,
 		IdempotentGraph:   cfg.idempotentGraph,
-		Logger:            zap.L(),
+		Logger:            logger,
+		EnableTracing:     cfg.enableTracing,
 	})
 
 	err = tester.proxy.Connect()
@@ -536,4 +546,84 @@ func waitUntil(d time.Duration, check func() bool) bool {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return false
+}
+
+func TestProxy_RequestTracing(t *testing.T) {
+	var tests = []struct {
+		name  string
+		reqId []byte
+	}{
+		{name: "proxy_generated_id"},
+		{name: "client_generated_id", reqId: []byte{1, 2, 3}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			cfg := &proxyTestConfig{}
+			cfg.enableTracing = true
+
+			// observe INFO logs produced by the proxy
+			core, logs := observer.New(zap.InfoLevel)
+			logger := zap.New(core)
+			cfg.logger = logger
+
+			var reqs []frame.Frame
+
+			cfg.handlers = proxycore.MockRequestHandlers{
+				primitive.OpCodeQuery: func(cl *proxycore.MockClient, frm *frame.Frame) message.Message {
+					if msg := cl.InterceptQuery(frm.Header, frm.Body.Message.(*message.Query)); msg != nil {
+						return msg
+					} else {
+						reqs = append(reqs, *frm)
+						return &message.RowsResult{
+							Metadata: &message.RowsMetadata{
+								ColumnCount: 0,
+							},
+							Data: message.RowSet{},
+						}
+					}
+				},
+			}
+
+			tester, proxyContactPoint, err := setupProxyTestWithConfig(ctx, 1, cfg)
+			defer func() {
+				cancel()
+				tester.shutdown()
+			}()
+			require.NoError(t, err)
+
+			cl := connectTestClient(t, ctx, proxyContactPoint)
+
+			query := frame.NewFrame(primitive.ProtocolVersion4, -1, &message.Query{Query: idempotentQuery})
+			if tt.reqId != nil {
+				query.SetCustomPayload(map[string][]byte{"request-id": tt.reqId})
+			}
+			_, err = cl.QueryFrame(ctx, query)
+			require.NoError(t, err)
+
+			// assert that request IDs have been logged
+			logsReq := logs.FilterMessage("received request id").All()
+			logsRes := logs.FilterMessage("received response id").All()
+			traceLogs := slices.Concat(logsReq, logsRes)
+			assert.Equal(t, 2, len(traceLogs))
+			for _, l := range traceLogs {
+				logCtx := l.ContextMap()
+				require.Contains(t, logCtx, "idHex")
+				if tt.reqId != nil {
+					assert.Equal(t, hex.EncodeToString(tt.reqId), logCtx["idHex"])
+				}
+			}
+
+			// assert request propagated to downstream cluster
+			assert.Equal(t, 1, len(reqs))
+			assert.NotNil(t, reqs[0].Body.CustomPayload)
+			proxyReqId := reqs[0].Body.CustomPayload["request-id"]
+			assert.NotNil(t, proxyReqId)
+			if tt.reqId != nil {
+				assert.Equal(t, tt.reqId, proxyReqId)
+			}
+		})
+	}
 }

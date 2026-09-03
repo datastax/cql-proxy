@@ -54,6 +54,7 @@ type runConfig struct {
 	Bind                                string        `yaml:"bind" help:"Address to use to bind server" short:"a" default:":9042" env:"BIND"`
 	Config                              *os.File      `yaml:"-" help:"YAML configuration file" short:"f" env:"CONFIG_FILE"` // Not available in the configuration file
 	Debug                               bool          `yaml:"debug" help:"Show debug logging" default:"false" env:"DEBUG"`
+	EnableTracing                       bool          `yaml:"enable-tracing" help:"Enable tracing of CQL requests" default:"false" env:"ENABLE_TRACING"`
 	HealthCheck                         bool          `yaml:"health-check" help:"Enable liveness and readiness checks" default:"false" env:"HEALTH_CHECK"`
 	HttpBind                            string        `yaml:"http-bind" help:"Address to use to bind HTTP server used for health checks" default:":8000" env:"HTTP_BIND"`
 	HeartbeatInterval                   time.Duration `yaml:"heartbeat-interval" help:"Interval between performing heartbeats to the cluster" default:"30s" env:"HEARTBEAT_INTERVAL"`
@@ -225,6 +226,7 @@ func Run(ctx context.Context, args []string) int {
 		IdempotentGraph:                     cfg.IdempotentGraph,
 		UnsupportedWriteConsistencies:       cfg.UnsupportedWriteConsistencies,
 		UnsupportedWriteConsistencyOverride: cfg.UnsupportedWriteConsistencyOverride,
+		EnableTracing:                       cfg.EnableTracing,
 	})
 
 	cfg.Bind = maybeAddPort(cfg.Bind, "9042")
