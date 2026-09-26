@@ -70,6 +70,8 @@ type runConfig struct {
 	Peers                               []PeerConfig  `yaml:"peers" kong:"-"` // Not available as a CLI flag
 	UnsupportedWriteConsistencies       []clWrapper   `yaml:"unsupported-write-consistencies" help:"A list of unsupported write consistency levels. The unsupported write consistency override setting will be used inplace of the unsupported level" env:"UNSUPPORTED_WRITE_CONSISTENCIES"`
 	UnsupportedWriteConsistencyOverride clWrapper     `yaml:"unsupported-write-consistency-override" help:"A consistency level use to override unsupported write consistency levels" env:"" default:"LOCAL_QUORUM"`
+	FakeAuth                             bool          `yaml:"fake-auth" help:"Enables an authenticator which will imitate authentication between the client and proxy but accepts any credentials provided." env:"FAKE_AUTH"`
+	ClientAuth                           bool          `yaml:"client-auth" help:"Enables real client authentication requiring username/password from clients. Requires CQL_CREDENTIALS environment variable." env:"CLIENT_AUTH"`
 }
 
 type clWrapper struct {
@@ -207,6 +209,24 @@ func Run(ctx context.Context, args []string) int {
 		auth = proxycore.NewPasswordAuth(cfg.Username, cfg.Password)
 	}
 
+	proxyAuth := proxycore.NewNoopProxyAuth()
+
+	if cfg.FakeAuth {
+		proxyAuth = proxycore.NewFakeProxyAuth()
+	} else if cfg.ClientAuth {
+		// Load credentials from environment
+		credStore := proxycore.NewCredentialStore()
+		credStore.LoadFromEnv()
+
+		if credStore.UserCount() == 0 {
+			logger.Warn("CQL_CREDENTIALS environment variable not set or empty. Client authentication enabled but no credentials loaded.")
+		} else {
+			logger.Info("Client authentication enabled", zap.Int("user_count", credStore.UserCount()))
+		}
+
+		proxyAuth = proxycore.NewPasswordProxyAuth(credStore)
+	}
+
 	p := NewProxy(ctx, Config{
 		Version:                             version,
 		MaxVersion:                          maxVersion,
@@ -225,6 +245,7 @@ func Run(ctx context.Context, args []string) int {
 		IdempotentGraph:                     cfg.IdempotentGraph,
 		UnsupportedWriteConsistencies:       cfg.UnsupportedWriteConsistencies,
 		UnsupportedWriteConsistencyOverride: cfg.UnsupportedWriteConsistencyOverride,
+		ProxyAuth:                           proxyAuth,
 	})
 
 	cfg.Bind = maybeAddPort(cfg.Bind, "9042")
